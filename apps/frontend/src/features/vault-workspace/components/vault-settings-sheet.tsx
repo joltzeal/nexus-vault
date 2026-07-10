@@ -1,0 +1,598 @@
+"use client"
+
+import { Check, Copy, Inbox, Mail, Shield, Trash2, Users, X } from "lucide-react"
+import { useMemo, useState } from "react"
+import { parseResourceMetadataJson } from "@nexus-vault/shared/resource-metadata"
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { Switch } from "@/components/ui/switch"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ResourceMediaGallery } from "@/features/vault-workspace/components/resource-media-gallery"
+import type { Resource, ResourceSubmissionItem, Space, Visibility } from "@/features/vault-workspace/types"
+import { cn } from "@/lib/utils"
+import {
+  getDisplayResourceTitle,
+  getInitials,
+  getResourceMedia,
+  getVisibilityCopy,
+} from "./view-models"
+
+export type SettingsTab = "share" | "members" | "submissions"
+
+export type ShareSettings = {
+  id?: string
+  visibility: Visibility
+  slug?: string
+}
+
+export type CollaboratorItem = {
+  id: string
+  userId: string
+  email: string
+  name?: string | null
+  role: "owner" | "admin" | "editor" | "viewer"
+  createdAt: string
+}
+
+export type CommentItem = {
+  id: string
+  resourceId: string
+  parentId?: string | null
+  authorName: string
+  body: string
+  createdAt: string
+  deletedAt?: string | null
+}
+
+export type NotificationItem = {
+  id: string
+  vaultId?: string | null
+  type: string
+  title: string
+  body: string
+  readAt?: string | null
+  createdAt: string
+}
+
+export type StarredVaultItem = {
+  id: string
+  title: string
+  description: string
+  visibility: Visibility
+  starCount: number
+  forkCount: number
+  createdAt: string
+}
+
+export type CollaboratorForm = {
+  email: string
+  name: string
+  role: "admin" | "editor" | "viewer"
+}
+
+export function VaultSettingsSheet({
+  activeTab,
+  canDeleteVault,
+  collectionEnabled,
+  collaboratorForm,
+  collaborators,
+  isBusy,
+  onCollaboratorFormChange,
+  onCollectionEnabledChange,
+  onOpenChange,
+  onSubmitCollaborator,
+  onSubmitShare,
+  onApproveSubmission,
+  onRejectSubmission,
+  onTabChange,
+  onDeleteVault,
+  onVisibilityChange,
+  open,
+  password,
+  setPassword,
+  share,
+  spaces,
+  submissions,
+}: {
+  activeTab: SettingsTab
+  canDeleteVault: boolean
+  collectionEnabled: boolean
+  collaboratorForm: CollaboratorForm
+  collaborators: CollaboratorItem[]
+  isBusy: boolean
+  onCollaboratorFormChange: (form: CollaboratorForm) => void
+  onCollectionEnabledChange: (enabled: boolean) => void
+  onOpenChange: (open: boolean) => void
+  onSubmitCollaborator: () => void
+  onSubmitShare: () => void
+  onApproveSubmission: (submissionId: string, spaceId?: string) => void
+  onRejectSubmission: (submissionId: string) => void
+  onTabChange: (tab: SettingsTab) => void
+  onDeleteVault: () => void
+  onVisibilityChange: (visibility: Visibility) => void
+  open: boolean
+  password: string
+  setPassword: (value: string) => void
+  share: ShareSettings
+  spaces: Space[]
+  submissions: ResourceSubmissionItem[]
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-[380px] gap-0 border-line bg-ink-850 p-0 text-fg sm:max-w-[380px]">
+        <SheetHeader className="border-b border-line px-[18px] py-4">
+          <SheetTitle className="font-display">
+            {activeTab === "share"
+              ? "分享 Vault"
+              : activeTab === "members"
+                ? "协作者"
+                : "收集"}
+          </SheetTitle>
+          <SheetDescription className="sr-only">
+            管理当前 vault 的分享、协作者与资源收集。
+          </SheetDescription>
+        </SheetHeader>
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => onTabChange(value as SettingsTab)}
+          className="flex min-h-0 flex-1 flex-col gap-0"
+        >
+          <TabsList variant="line" className="h-9 w-full justify-start rounded-none border-b border-line px-3 pt-1">
+            <TabsTrigger value="share">
+              <Shield data-icon="inline-start" />
+              分享
+            </TabsTrigger>
+            <TabsTrigger value="members">
+              <Users data-icon="inline-start" />
+              协作者
+            </TabsTrigger>
+            <TabsTrigger value="submissions">
+              <Inbox data-icon="inline-start" />
+              收集
+              {submissions.length > 0 && (
+                <span className="mono rounded-chip bg-jade px-1 text-[9px] font-semibold text-[#04140f]">
+                  {submissions.length}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="share" className="min-h-0 overflow-auto px-[18px] py-4">
+            <SharePanel
+              canDeleteVault={canDeleteVault}
+              isBusy={isBusy}
+              onDeleteVault={onDeleteVault}
+              onSubmit={onSubmitShare}
+              onVisibilityChange={onVisibilityChange}
+              password={password}
+              setPassword={setPassword}
+              share={share}
+            />
+          </TabsContent>
+          <TabsContent value="members" className="min-h-0 overflow-auto px-[18px] py-4">
+            <MembersPanel
+              form={collaboratorForm}
+              isBusy={isBusy}
+              items={collaborators}
+              onFormChange={onCollaboratorFormChange}
+              onSubmit={onSubmitCollaborator}
+            />
+          </TabsContent>
+          <TabsContent value="submissions" className="min-h-0 overflow-auto px-[18px] py-4">
+            <SubmissionsPanel
+              collectionEnabled={collectionEnabled}
+              isBusy={isBusy}
+              items={submissions}
+              onApprove={onApproveSubmission}
+              onCollectionEnabledChange={onCollectionEnabledChange}
+              onReject={onRejectSubmission}
+              spaces={spaces}
+            />
+          </TabsContent>
+        </Tabs>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+function SharePanel({
+  canDeleteVault,
+  isBusy,
+  onDeleteVault,
+  onSubmit,
+  onVisibilityChange,
+  password,
+  setPassword,
+  share,
+}: {
+  canDeleteVault: boolean
+  isBusy: boolean
+  onDeleteVault: () => void
+  onSubmit: () => void
+  onVisibilityChange: (visibility: Visibility) => void
+  password: string
+  setPassword: (value: string) => void
+  share: ShareSettings
+}) {
+  const [copyLabel, setCopyLabel] = useState("复制")
+  const sharePath = share.slug ? `/s/${share.slug}` : ""
+  const shareUrl = useMemo(() => {
+    if (!sharePath) return ""
+    if (typeof window === "undefined") return sharePath
+    return `${window.location.origin}${sharePath}`
+  }, [sharePath])
+
+  async function handleCopyShareUrl() {
+    if (!shareUrl) return
+    await navigator.clipboard.writeText(shareUrl)
+    setCopyLabel("已复制")
+    window.setTimeout(() => setCopyLabel("复制"), 1200)
+  }
+
+  const shareUrlVisible = share.visibility === "public" || share.visibility === "password"
+
+  return (
+    <section className="flex flex-col gap-5">
+      <div>
+        <div className="mono mb-2 text-[10px] uppercase tracking-[.14em] text-fg-dim">可见性</div>
+        <div className="flex flex-col gap-2">
+          {(["public", "password", "private"] as Visibility[]).map((visibility) => (
+            <button
+              className={cn(
+                "flex items-center gap-3 rounded-card border border-line bg-ink-800 px-3 py-3 text-left transition hover:border-ink-700",
+                share.visibility === visibility && "border-jade-dim bg-[var(--jade-glow)]"
+              )}
+              key={visibility}
+              onClick={() => onVisibilityChange(visibility)}
+              type="button"
+            >
+              <span className="grid size-8 place-items-center rounded-chip bg-ink-900 text-fg-dim">
+                <Shield />
+              </span>
+              <span className="min-w-0 flex-1">
+                <b className="block text-sm">{getVisibilityCopy(visibility)}</b>
+                <span className="block text-xs text-fg-dim">
+                  {visibility === "public"
+                    ? "任何人可通过分享链接查看"
+                    : visibility === "password"
+                      ? "访问者需要输入密码"
+                      : "仅 owner 与协作者可见"}
+                </span>
+              </span>
+              <span className={cn("size-4 rounded-chip border border-line", share.visibility === visibility && "border-jade bg-[radial-gradient(circle,var(--jade)_38%,transparent_42%)]")} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {share.visibility === "password" && (
+        <Field>
+          <FieldLabel htmlFor="share-password">访问密码</FieldLabel>
+          <Input
+            autoComplete="new-password"
+            id="share-password"
+            name="nv-share-access-password"
+            placeholder="保存前会在浏览器中 SHA-256 hash"
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </Field>
+      )}
+
+      {shareUrlVisible && (
+        <div>
+          <div className="mono mb-2 text-[10px] uppercase tracking-[.14em] text-fg-dim">分享链接</div>
+          <div className="flex items-center gap-2">
+            <div className="mono flex min-h-9 min-w-0 flex-1 items-center truncate rounded-input border border-line bg-ink-900 px-2.5 py-2 text-xs text-fg-muted">
+              {shareUrl || "保存分享设置后生成短链"}
+            </div>
+            <Button size="sm" variant="outline" onClick={handleCopyShareUrl} disabled={!shareUrl} className="min-h-9">
+              <Copy data-icon="inline-start" />
+              {copyLabel}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <Button onClick={onSubmit} disabled={isBusy || (share.visibility === "password" && !password.trim())}>
+        保存分享设置
+      </Button>
+
+      {canDeleteVault && (
+        <div className="rounded-card border border-destructive/30 bg-destructive/10 p-3">
+          <div className="flex items-start gap-3">
+            <div className="grid size-8 shrink-0 place-items-center rounded-chip bg-destructive/10 text-destructive">
+              <Trash2 />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-semibold text-destructive">删除 Vault</h3>
+              <p className="mt-1 text-xs leading-5 text-fg-muted">
+                删除后会归档这个 vault，并从当前列表移除。
+              </p>
+            </div>
+          </div>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button className="mt-3 w-full" variant="destructive" disabled={isBusy}>
+                <Trash2 data-icon="inline-start" />
+                删除当前 Vault
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>删除这个 Vault?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  此操作会归档当前 vault，资源、space、分享入口和协作入口都将无法继续使用。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={onDeleteVault}>
+                  删除
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function MembersPanel({
+  form,
+  isBusy,
+  items,
+  onFormChange,
+  onSubmit,
+}: {
+  form: CollaboratorForm
+  isBusy: boolean
+  items: CollaboratorItem[]
+  onFormChange: (form: CollaboratorForm) => void
+  onSubmit: () => void
+}) {
+  return (
+    <section className="flex flex-col gap-5">
+      <div className="rounded-card border border-line bg-ink-800 p-3">
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="collaborator-email">邮箱</FieldLabel>
+            <Input
+              id="collaborator-email"
+              placeholder="name@example.com"
+              value={form.email}
+              onChange={(event) => onFormChange({ ...form, email: event.target.value })}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="collaborator-name">名称</FieldLabel>
+            <Input
+              id="collaborator-name"
+              value={form.name}
+              onChange={(event) => onFormChange({ ...form, name: event.target.value })}
+            />
+          </Field>
+          <Field>
+            <FieldLabel>角色</FieldLabel>
+            <Select
+              value={form.role}
+              onValueChange={(role) => onFormChange({ ...form, role: role as CollaboratorForm["role"] })}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="admin">admin</SelectItem>
+                  <SelectItem value="editor">editor</SelectItem>
+                  <SelectItem value="viewer">viewer</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Button onClick={onSubmit} disabled={isBusy || !form.email.trim()}>
+            <Mail data-icon="inline-start" />
+            添加协作者
+          </Button>
+        </FieldGroup>
+      </div>
+
+      <div>
+        <div className="mono mb-2 text-[10px] uppercase tracking-[.14em] text-fg-dim">
+          协作者 · {items.length}
+        </div>
+        <div className="flex flex-col gap-2">
+          {items.map((item, index) => (
+            <div className="flex items-center gap-3 rounded-card border border-line bg-ink-800 px-3 py-2" key={item.id}>
+              <div className={`grid size-8 place-items-center rounded-chip border border-line text-xs font-semibold ${memberAvatarClass(index)}`}>
+                {getInitials(item.name || item.email)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <b className="block truncate text-sm">{item.name || item.email}</b>
+                <span className="mono block truncate text-[11px] text-fg-dim">{item.email}</span>
+              </div>
+              <span className={cn("mono rounded-input border border-line px-2 py-1 text-[11px] text-fg-muted", item.role === "owner" && "border-jade-dim text-jade")}>
+                {item.role}
+              </span>
+            </div>
+          ))}
+          {items.length === 0 && (
+            <div className="rounded-card border border-line bg-ink-800 p-4 text-sm text-fg-dim">
+              还没有协作者。
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function memberAvatarClass(index: number) {
+  const classes = [
+    "bg-linear-to-br from-[#3a5a6e] to-[#243846]",
+    "bg-linear-to-br from-[#5a4a6e] to-[#2e2440]",
+    "bg-linear-to-br from-[#6e5a3a] to-[#403624]",
+    "bg-linear-to-br from-[#3a6e5c] to-[#244038]",
+  ]
+  return classes[index % classes.length]
+}
+
+function SubmissionsPanel({
+  collectionEnabled,
+  isBusy,
+  items,
+  onApprove,
+  onCollectionEnabledChange,
+  onReject,
+  spaces,
+}: {
+  collectionEnabled: boolean
+  isBusy: boolean
+  items: ResourceSubmissionItem[]
+  onApprove: (submissionId: string, spaceId?: string) => void
+  onCollectionEnabledChange: (enabled: boolean) => void
+  onReject: (submissionId: string) => void
+  spaces: Space[]
+}) {
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="rounded-card border border-line bg-ink-800 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold">公开收集</h3>
+            <p className="mt-1 text-xs leading-5 text-fg-muted">
+              开启后，公开或密码分享页中的访问者可以提交资源，提交后仍需审核。
+            </p>
+          </div>
+          <Switch
+            checked={collectionEnabled}
+            disabled={isBusy}
+            onCheckedChange={onCollectionEnabledChange}
+          />
+        </div>
+      </div>
+
+      {items.map((item) => {
+        const targetSpace = spaces.find((space) => space.id === item.spaceId)
+        const metadata = parseResourceMetadataJson(item.metadataJson)
+        const previewResource: Resource = {
+          id: item.id,
+          spaceId: item.spaceId ?? "",
+          title: item.title,
+          type: item.type,
+          url: item.url,
+          description: item.description,
+          metadataStatus: metadata ? "completed" : "pending",
+          metadata: metadata
+            ? {
+                provider: item.type,
+                data: metadata,
+              }
+            : null,
+          position: 0,
+          createdAt: item.createdAt,
+        }
+        const title = getDisplayResourceTitle(previewResource)
+        const media = getResourceMedia(previewResource)
+
+        return (
+          <article className="rounded-card border border-line bg-ink-800 p-3" key={item.id}>
+            <div className="flex items-start gap-3">
+              <div className="grid size-8 shrink-0 place-items-center rounded-chip border border-line bg-ink-900 text-xs font-semibold text-jade">
+                {item.type.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="truncate text-sm font-semibold">{title}</h3>
+                <p className="mono mt-1 truncate text-[11px] text-fg-dim">{item.url}</p>
+                {item.description && (
+                  <p className="mt-2 line-clamp-2 text-xs text-fg-muted">{item.description}</p>
+                )}
+              </div>
+            </div>
+            {media.length > 0 && (
+              <div className="mt-3">
+                <ResourceMediaGallery media={media} title={title} />
+              </div>
+            )}
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-fg-dim">
+              <span className="mono rounded-chip border border-line bg-ink-900 px-1.5 py-0.5">
+                {targetSpace?.name ?? "默认 Space"}
+              </span>
+              {(item.submitterName || item.submitterEmail) && (
+                <span className="mono rounded-chip border border-line bg-ink-900 px-1.5 py-0.5">
+                  {item.submitterName || item.submitterEmail}
+                </span>
+              )}
+              <span className="mono rounded-chip border border-line bg-ink-900 px-1.5 py-0.5">
+                {formatSubmissionTime(item.createdAt)}
+              </span>
+            </div>
+            <div className="mt-3 flex justify-end gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onReject(item.id)}
+                disabled={isBusy}
+              >
+                <X data-icon="inline-start" />
+                拒绝
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => onApprove(item.id, item.spaceId ?? undefined)}
+                disabled={isBusy}
+              >
+                <Check data-icon="inline-start" />
+                通过
+              </Button>
+            </div>
+          </article>
+        )
+      })}
+      {items.length === 0 && (
+        <div className="rounded-card border border-line bg-ink-800 p-5 text-center text-sm text-fg-dim">
+          暂无收集提交。
+        </div>
+      )}
+    </section>
+  )
+}
+
+function formatSubmissionTime(value: string) {
+  const time = new Date(value).getTime()
+  if (Number.isNaN(time)) return value
+  const minutes = Math.max(1, Math.round((Date.now() - time) / 60000))
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  return `${Math.round(hours / 24)}d`
+}

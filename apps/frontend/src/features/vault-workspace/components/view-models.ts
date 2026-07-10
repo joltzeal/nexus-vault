@@ -1,0 +1,405 @@
+import {
+  formatBytes,
+  formatResourceType,
+} from "@/features/vault-workspace/formatters"
+import type {
+  MetadataStatus,
+  Resource,
+  ResourceSet,
+  ResourceType,
+  Space,
+  Visibility,
+} from "@/features/vault-workspace/types"
+
+export type MediaItem = {
+  kind: "image" | "video"
+  src: string
+  preview?: string
+  duration?: string
+}
+
+export type ResourcePillItem =
+  | {
+      key: string
+      kind: "text"
+      label: string
+    }
+  | {
+      key: string
+      kind: "status"
+      label: string
+      status: "online" | "offline" | "maintenance" | "degraded"
+      title?: string
+    }
+  | {
+      key: string
+      kind: "copy"
+      label: string
+      value: string
+      ariaLabel: string
+    }
+
+type CloudDriveAvailabilityStatus = "available" | "unavailable" | "unknown"
+
+export function getSortedSpaces(set?: ResourceSet) {
+  return [...(set?.spaces ?? [])].sort((a, b) => a.position - b.position)
+}
+
+export function groupResourcesBySpace(resources: Resource[], spaces: Space[]) {
+  const knownSpaceIds = new Set(spaces.map((space) => space.id))
+  const grouped = new Map<string, Resource[]>()
+
+  for (const space of spaces) grouped.set(space.id, [])
+
+  for (const resource of resources) {
+    if (!knownSpaceIds.has(resource.spaceId)) continue
+    grouped.set(resource.spaceId, [...(grouped.get(resource.spaceId) ?? []), resource])
+  }
+
+  for (const [spaceId, items] of grouped) {
+    grouped.set(
+      spaceId,
+      [...items].sort((a, b) => a.position - b.position || b.createdAt.localeCompare(a.createdAt))
+    )
+  }
+
+  return grouped
+}
+
+export function getResourceTitle(resource: Resource) {
+  return getDisplayResourceTitle(resource)
+}
+
+export function getDisplayResourceTitle(resource: Pick<Resource, "type" | "url" | "title" | "metadata">) {
+  const metadataTitle = normalizeDisplayTitle(resource.metadata?.data?.title)
+  if (metadataTitle) return metadataTitle
+
+  const resourceTitle = normalizeDisplayTitle(resource.title)
+  if (resourceTitle) return resourceTitle
+
+  if (resource.type === "magnet") {
+    const hash = getMagnetHash(resource.url)
+    return hash ? `Magnet · ${hash.slice(0, 8)}...` : "Magnet"
+  }
+
+  return formatResourceType(resource.type)
+}
+
+export function getResourceDescription(resource: Resource) {
+  return resource.description || resource.metadata?.data?.description || ""
+}
+
+export function getResourceSize(resource: Resource) {
+  const metadata = resource.metadata?.data
+  return formatBytes(metadata?.size)
+}
+
+export function getResourceDisplayUrl(resource: Resource) {
+  const value = resource.url.trim()
+  if (resource.type !== "magnet") return value
+  if (value.toLowerCase().startsWith("magnet:?")) return value
+
+  return /^[a-zA-Z0-9]{32,64}$/.test(value)
+    ? `magnet:?xt=urn:btih:${value.toUpperCase()}`
+    : value
+}
+
+export function getResourceTags(resource: Resource) {
+  const metadata = resource.metadata?.data
+  const tags = [
+    formatResourceType(resource.type),
+    metadata?.fileType,
+    metadata?.fileCount ? `${metadata.fileCount} files` : undefined,
+  ]
+
+  return tags.filter((tag): tag is string => Boolean(tag)).slice(0, 3)
+}
+
+export function getResourcePillItems(resource: Resource): ResourcePillItem[] {
+  return resourcePillStrategies.flatMap((strategy) => strategy(resource))
+}
+
+export function getResourceMedia(resource: Resource): MediaItem[] {
+  const metadata = resource.metadata?.data
+  const twitter = getTwitterMetadata(metadata?.extra?.twitter)
+  const twitterPhotos = twitter?.photos?.map((photo) => photo.url) ?? []
+  const twitterVideos: MediaItem[] = []
+  for (const video of twitter?.videos ?? []) {
+    if (!video) continue
+    twitterVideos.push({
+      kind: "video",
+      src: video.url,
+      preview: video.preview,
+    })
+  }
+  if (twitterVideos.length > 0) return twitterVideos
+
+  const images = uniqueImages([metadata?.cover, ...(metadata?.screenshots ?? [])])
+
+  return [
+    ...uniqueImages([...twitterPhotos, ...images]).map((src) => ({
+      kind: resource.type === "youtube" ? ("video" as const) : ("image" as const),
+      src,
+    })),
+  ]
+}
+
+export function getResourceCloudDriveData(resource: Resource) {
+  const metadata = resource.metadata?.data
+  const cloudDrive = getCloudDriveMetadata(metadata?.extra?.cloudDrive)
+
+  if (!cloudDrive) return null
+
+  return {
+    password: cloudDrive.password,
+    availability: cloudDrive.availability,
+  }
+}
+
+export function getMetadataState(status: MetadataStatus) {
+  const map = {
+    completed: { className: "ms-completed", label: "就绪" },
+    pending: { className: "ms-pending", label: "待处理" },
+    processing: { className: "ms-processing", label: "解析中" },
+    failed: { className: "ms-failed", label: "解析失败" },
+  } satisfies Record<MetadataStatus, { className: string; label: string }>
+
+  return map[status]
+}
+
+export function getTypePill(type: ResourceType) {
+  if (type === "magnet") return { className: "tp-magnet", label: "MAG" }
+  if (type === "twitter") return { className: "tp-http", label: "X" }
+  if (type === "baidu_pan") return { className: "tp-drive", label: "BD" }
+  if (type === "quark_pan") return { className: "tp-drive", label: "QK" }
+  if (type === "youtube") return { className: "tp-youtube", label: "YT" }
+  if (type === "onedrive" || type === "google_drive" || type === "dropbox" || type === "alist") {
+    return { className: "tp-drive", label: type === "google_drive" ? "GD" : "OD" }
+  }
+  return { className: "tp-http", label: type === "http" ? "WEB" : "LINK" }
+}
+
+export function getVisibilityCopy(visibility: Visibility) {
+  const map = {
+    public: "公开",
+    private: "私有",
+    password: "密码保护",
+  } satisfies Record<Visibility, string>
+
+  return map[visibility]
+}
+
+export function getInitials(value?: string | null) {
+  const source = value?.trim() || "NV"
+  return source
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "NV"
+}
+
+export function getVaultStats(set?: ResourceSet, collaboratorsCount = 0) {
+  return [
+    { label: "resources", value: set?.resources.length ?? 0 },
+    { label: "spaces", value: set?.spaces.length ?? 0 },
+    { label: "members", value: collaboratorsCount },
+    { label: "stars", value: set?.starCount ?? 0 },
+    { label: "forks", value: set?.forkCount ?? 0 },
+  ]
+}
+
+export function getResourceMeta(resource: Resource) {
+  const metadata = resource.metadata?.data
+
+  return {
+    provider: resource.metadata?.provider ?? resource.type,
+    createdAt: formatDateTime(resource.createdAt),
+    fileCount: metadata?.fileCount ?? 0,
+    treeCount: metadata?.tree?.length ?? 0,
+    source: metadata?.source?.attribution,
+    errorMessage: resource.metadata?.errorMessage,
+  }
+}
+
+function uniqueImages(images: Array<string | undefined>) {
+  return images.filter(
+    (image, index, list): image is string => Boolean(image) && list.indexOf(image) === index
+  )
+}
+
+function normalizeDisplayTitle(value?: string | null) {
+  const title = value?.trim()
+  if (!title) return ""
+
+  const fallbackTitles = new Set([
+    "名称未知",
+    "untitled resource",
+    "untitled link",
+    "untitled tweet",
+  ])
+
+  return fallbackTitles.has(title.toLowerCase()) ? "" : title
+}
+
+function getMagnetHash(value: string) {
+  const normalized = value.trim()
+  const direct = normalized.match(/^[a-fA-F0-9]{32,64}$/)?.[0]
+  if (direct) return direct.toUpperCase()
+
+  const btih = normalized.match(/urn:btih:([a-zA-Z0-9]{32,64})/i)?.[1]
+  return btih?.toUpperCase() ?? ""
+}
+
+type ResourcePillStrategy = (resource: Resource) => ResourcePillItem[]
+
+const resourcePillStrategies: ResourcePillStrategy[] = [
+  getResourceTagPills,
+  getResourceSizePills,
+  getCloudDrivePills,
+]
+
+function getResourceTagPills(resource: Resource) {
+  return getResourceTags(resource).map((label, index) => ({
+    key: `tag:${index}:${label}`,
+    kind: "text" as const,
+    label,
+  }))
+}
+
+function getResourceSizePills(resource: Resource): ResourcePillItem[] {
+  const metadata = resource.metadata?.data
+  if (resource.type === "http" || resource.type === "twitter") return []
+  if (typeof metadata?.size !== "number") return []
+
+  return [
+    {
+      key: "size",
+      kind: "text",
+      label: formatBytes(metadata.size),
+    },
+  ]
+}
+
+function getCloudDrivePills(resource: Resource): ResourcePillItem[] {
+  const cloudDrive = getCloudDriveMetadata(resource.metadata?.data?.extra?.cloudDrive)
+  if (!cloudDrive) return []
+
+  const pills: ResourcePillItem[] = []
+
+  if (cloudDrive.availability) {
+    const availabilityLabels = {
+      available: "可用",
+      unavailable: "失效",
+      unknown: "未知",
+    } as const
+    const availabilityStatuses = {
+      available: "online",
+      unavailable: "offline",
+      unknown: "maintenance",
+    } as const
+
+    pills.push({
+      key: "cloud-drive:availability",
+      kind: "status",
+      label: availabilityLabels[cloudDrive.availability.status],
+      status: availabilityStatuses[cloudDrive.availability.status],
+      title: cloudDrive.availability.reason,
+    })
+  }
+
+  if (cloudDrive.password) {
+    pills.push({
+      key: "cloud-drive:password",
+      kind: "copy",
+      label: "密码",
+      value: cloudDrive.password,
+      ariaLabel: "复制网盘密码",
+    })
+  }
+
+  return pills
+}
+
+function getTwitterMetadata(value: unknown) {
+  if (!isRecord(value)) return null
+
+  return {
+    photos: Array.isArray(value.photos)
+      ? value.photos
+          .map((photo) => {
+            if (!isRecord(photo) || typeof photo.url !== "string") return null
+            return { url: photo.url }
+          })
+          .filter(isTwitterPhoto)
+      : [],
+    videos: Array.isArray(value.videos)
+      ? value.videos
+          .map((video) => {
+            if (!isRecord(video) || typeof video.url !== "string") return null
+            return {
+              url: video.url,
+              preview: typeof video.preview === "string" ? video.preview : undefined,
+            }
+          })
+          .filter(isTwitterVideo)
+      : [],
+  }
+}
+
+function isTwitterPhoto(value: { url: string } | null): value is { url: string } {
+  return value !== null
+}
+
+function isTwitterVideo(
+  value: { url: string; preview?: string } | null
+): value is { url: string; preview?: string } {
+  return value !== null
+}
+
+function getCloudDriveMetadata(value: unknown) {
+  if (!isRecord(value)) return null
+
+  const availabilityStatus = getCloudDriveAvailabilityStatus(
+    isRecord(value.availability) ? value.availability.status : undefined
+  )
+  const availability = isRecord(value.availability)
+    ? {
+        status: availabilityStatus,
+        httpStatus:
+          typeof value.availability.httpStatus === "number"
+            ? value.availability.httpStatus
+            : undefined,
+        reason:
+          typeof value.availability.reason === "string"
+            ? value.availability.reason
+            : undefined,
+      }
+    : undefined
+
+  return {
+    password: typeof value.password === "string" ? value.password : undefined,
+    availability,
+  }
+}
+
+function getCloudDriveAvailabilityStatus(value: unknown): CloudDriveAvailabilityStatus {
+  return value === "available" || value === "unavailable" || value === "unknown"
+    ? value
+    : "unknown"
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date)
+}

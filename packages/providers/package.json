@@ -1,0 +1,12 @@
+{
+  "name": "@nexus-vault/providers",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@the-convocation/twitter-scraper": "^0.22.3"
+  }
+}

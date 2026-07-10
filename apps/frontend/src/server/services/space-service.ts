@@ -1,0 +1,127 @@
+import { and, eq, isNull } from "drizzle-orm"
+
+import { resources, spaces } from "@nexus-vault/db/schema"
+import { notFound } from "@/server/api/errors"
+import type { Actor, Db } from "@/server/api/types"
+import { requireVaultPermission } from "@/server/services/permission-service"
+import { getVaultOrThrow } from "@/server/services/vault-service"
+import { newId } from "@/server/utils/id"
+
+export async function createSpace(
+  db: Db,
+  vaultId: string,
+  input: {
+    name: string
+    description: string
+    icon?: string
+    actor?: Actor
+    userEmail?: string
+  }
+) {
+  await getVaultOrThrow(db, vaultId)
+  await requireVaultPermission(db, {
+    vaultId,
+    actor: input.actor,
+    userEmail: input.userEmail,
+    action: "space:create",
+  })
+
+  const spaceId = newId("space")
+  await db.insert(spaces).values({
+    id: spaceId,
+    vaultId,
+    name: input.name,
+    description: input.description,
+    icon: input.icon ?? "tv",
+  })
+
+  return { id: spaceId }
+}
+
+export async function updateSpace(
+  db: Db,
+  vaultId: string,
+  spaceId: string,
+  input: {
+    name?: string
+    description?: string
+    icon?: string
+    position?: number
+    actor?: Actor
+    userEmail?: string
+  }
+) {
+  await getVaultOrThrow(db, vaultId)
+  await getSpaceInVaultOrThrow(db, vaultId, spaceId)
+  await requireVaultPermission(db, {
+    vaultId,
+    actor: input.actor,
+    userEmail: input.userEmail,
+    action: "space:update",
+  })
+
+  await db
+    .update(spaces)
+    .set({
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.icon !== undefined ? { icon: input.icon } : {}),
+      ...(input.position !== undefined ? { position: input.position } : {}),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(and(eq(spaces.id, spaceId), eq(spaces.vaultId, vaultId), isNull(spaces.deletedAt)))
+
+  return { id: spaceId }
+}
+
+export async function archiveSpace(
+  db: Db,
+  vaultId: string,
+  spaceId: string,
+  input: {
+    actor?: Actor
+    userEmail?: string
+  }
+) {
+  await getVaultOrThrow(db, vaultId)
+  await getSpaceInVaultOrThrow(db, vaultId, spaceId)
+  await requireVaultPermission(db, {
+    vaultId,
+    actor: input.actor,
+    userEmail: input.userEmail,
+    action: "space:delete",
+  })
+
+  const now = new Date().toISOString()
+  await db
+    .update(spaces)
+    .set({ deletedAt: now, updatedAt: now })
+    .where(and(eq(spaces.id, spaceId), eq(spaces.vaultId, vaultId), isNull(spaces.deletedAt)))
+  await db
+    .update(resources)
+    .set({ deletedAt: now, updatedAt: now })
+    .where(and(eq(resources.vaultId, vaultId), eq(resources.spaceId, spaceId), isNull(resources.deletedAt)))
+
+  return { id: spaceId, archived: true }
+}
+
+export async function getSpaceInVaultOrThrow(db: Db, vaultId: string, spaceId: string) {
+  const [space] = await db
+    .select({ id: spaces.id })
+    .from(spaces)
+    .where(and(eq(spaces.id, spaceId), eq(spaces.vaultId, vaultId), isNull(spaces.deletedAt)))
+    .limit(1)
+
+  if (!space) throw notFound("Space not found.")
+  return space
+}
+
+export async function getDefaultSpaceId(db: Db, vaultId: string) {
+  const [space] = await db
+    .select({ id: spaces.id })
+    .from(spaces)
+    .where(and(eq(spaces.vaultId, vaultId), isNull(spaces.deletedAt)))
+    .limit(1)
+
+  return space?.id
+}

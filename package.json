@@ -1,0 +1,37 @@
+{
+	"name": "nexus-vault",
+	"version": "0.1.0",
+	"private": true,
+	"scripts": {
+		"dev": "pnpm --filter @nexus-vault/frontend dev",
+		"build": "pnpm --filter @nexus-vault/frontend build",
+		"start": "pnpm --filter @nexus-vault/frontend start",
+		"lint": "pnpm --filter @nexus-vault/frontend lint",
+		"typecheck": "pnpm --filter @nexus-vault/frontend typecheck",
+		"test": "pnpm --filter @nexus-vault/frontend test",
+		"check:resource-input": "pnpm --filter @nexus-vault/frontend check:resource-input",
+		"deploy": "pnpm --filter @nexus-vault/frontend deploy",
+		"upload": "pnpm --filter @nexus-vault/frontend upload",
+		"preview": "pnpm --filter @nexus-vault/frontend preview",
+		"cf-typegen": "pnpm --filter @nexus-vault/frontend cf-typegen",
+		"db:generate": "node scripts/generate-migrations.mjs",
+		"db:migrate:local": "pnpm --filter @nexus-vault/frontend db:migrate:local",
+		"db:seed:local": "pnpm --filter @nexus-vault/frontend db:seed:local"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20260603.1",
+		"@eslint/eslintrc": "^3",
+		"@tailwindcss/postcss": "^4",
+		"@types/node": "^20",
+		"@types/pg": "^8.20.0",
+		"@types/react": "^19.1.7",
+		"@types/react-dom": "^19.1.7",
+		"drizzle-kit": "^0.31.10",
+		"eslint": "^9",
+		"eslint-config-next": "16.2.6",
+		"tailwindcss": "^4",
+		"tsx": "^4.22.4",
+		"typescript": "^5.7.4",
+		"wrangler": "^4.98.0"
+	}
+}

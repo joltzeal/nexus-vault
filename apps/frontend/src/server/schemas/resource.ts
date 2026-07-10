@@ -1,0 +1,41 @@
+import { z } from "zod"
+
+export const resourceTypeSchema = z.enum([
+  "magnet",
+  "twitter",
+  "baidu_pan",
+  "quark_pan",
+  "onedrive",
+  "google_drive",
+  "dropbox",
+  "alist",
+  "http",
+  "youtube",
+  "other",
+])
+
+export const createResourceSchema = z.object({
+  vaultId: z.string().trim().min(1).optional(),
+  spaceId: z.string().trim().min(1).optional(),
+  type: resourceTypeSchema.optional(),
+  title: z.string().trim().min(1).max(200).optional(),
+  description: z.string().trim().max(2000).optional().default(""),
+  url: z.string().trim().min(1).max(4096),
+})
+
+export const createResourceWithVaultSchema = createResourceSchema.extend({
+  vaultId: z.string().trim().min(1),
+})
+
+export const updateResourceSchema = z
+  .object({
+    spaceId: z.string().trim().min(1).nullable().optional(),
+    type: resourceTypeSchema.optional(),
+    title: z.string().trim().min(1).max(200).optional(),
+    description: z.string().trim().max(2000).optional(),
+    url: z.string().trim().min(1).max(2048).optional(),
+    position: z.number().int().min(0).optional(),
+  })
+  .refine((input) => Object.keys(input).length > 0, {
+    message: "At least one field is required.",
+  })
