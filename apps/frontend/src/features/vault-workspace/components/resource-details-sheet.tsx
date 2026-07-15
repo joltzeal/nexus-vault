@@ -23,7 +23,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
-import type { Resource, Space } from "@/features/vault-workspace/types"
+import type { MetadataStatus, Resource, ResourceType, Space } from "@/features/vault-workspace/types"
 import { formatBytes, formatResourceType } from "@/features/vault-workspace/formatters"
 import { getResourceDisplayUrl, getResourceMeta, getResourceTitle } from "./view-models"
 
@@ -60,23 +60,31 @@ export function ResourceDetailsSheet({
   const meta = resource ? getResourceMeta(resource) : null
   const metadata = resource?.metadata?.data
   const displayUrl = resource ? getResourceDisplayUrl(resource) : ""
+  const sizeLabel = formatKnownBytes(metadata?.size)
+  const typeLabel = resource
+    ? formatMetadataFileType(metadata?.fileType) ||
+      RESOURCE_TYPE_LABELS[resource.type] ||
+      formatResourceType(resource.type)
+    : ""
+  const fileCount = metadata?.fileCount ?? meta?.fileCount
+  const createdAt = meta?.createdAt
   const hasChanges = useMemo(() => {
     if (!resource) return false
 
     return (
       form.title.trim() !== resource.title ||
       form.description.trim() !== resource.description ||
-      form.url.trim() !== resource.url ||
+      form.url.trim() !== displayUrl ||
       form.spaceId !== resource.spaceId
     )
-  }, [form, resource])
+  }, [displayUrl, form, resource])
 
   useEffect(() => {
     if (!resource) return
     setForm({
       title: resource.title,
       description: resource.description,
-      url: resource.url,
+      url: getResourceDisplayUrl(resource),
       spaceId: resource.spaceId,
     })
   }, [resource])
@@ -89,7 +97,7 @@ export function ResourceDetailsSheet({
             {resource ? getResourceTitle(resource) : "Resource"}
           </SheetTitle>
           <SheetDescription>
-            {resource ? `${formatResourceType(resource.type)} · ${meta?.provider ?? resource.type}` : "资源详情"}
+            {resource ? formatResourceType(resource.type) : "资源详情"}
           </SheetDescription>
         </SheetHeader>
 
@@ -97,19 +105,39 @@ export function ResourceDetailsSheet({
           <div className="min-h-0 flex-1 overflow-auto px-[18px] py-4">
             <section className="rounded-card border border-line bg-ink-800 p-3">
               <div className="mono mb-2 text-[10px] uppercase tracking-[.14em] text-fg-dim">
-                Metadata
+                信息
               </div>
               <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-2 text-xs">
                 <dt className="text-fg-dim">状态</dt>
-                <dd>{resource.metadataStatus}</dd>
-                <dt className="text-fg-dim">大小</dt>
-                <dd>{formatBytes(metadata?.size)}</dd>
+                <dd>
+                  <span className="text-fg-muted">
+                    {METADATA_STATUS_LABELS[resource.metadataStatus]}
+                  </span>
+                </dd>
                 <dt className="text-fg-dim">类型</dt>
-                <dd>{metadata?.fileType ?? formatResourceType(resource.type)}</dd>
-                <dt className="text-fg-dim">文件数</dt>
-                <dd>{metadata?.fileCount ?? meta?.fileCount ?? 0}</dd>
-                <dt className="text-fg-dim">创建时间</dt>
-                <dd>{meta?.createdAt}</dd>
+                <dd>
+                  <span className="text-fg-muted">
+                    {typeLabel}
+                  </span>
+                </dd>
+                {sizeLabel && (
+                  <>
+                    <dt className="text-fg-dim">大小</dt>
+                    <dd>{sizeLabel}</dd>
+                  </>
+                )}
+                {typeof fileCount === "number" && fileCount > 0 && (
+                  <>
+                    <dt className="text-fg-dim">文件数</dt>
+                    <dd>{fileCount}</dd>
+                  </>
+                )}
+                {createdAt && (
+                  <>
+                    <dt className="text-fg-dim">创建时间</dt>
+                    <dd>{createdAt}</dd>
+                  </>
+                )}
               </dl>
               {meta?.errorMessage && (
                 <p className="mt-3 rounded-input border border-rose/30 bg-rose/10 px-2.5 py-2 text-xs text-rose">
@@ -120,31 +148,32 @@ export function ResourceDetailsSheet({
 
             <FieldGroup className="mt-4">
               <Field>
-                <FieldLabel htmlFor="resource-detail-title">标题</FieldLabel>
-                <Input
-                  disabled={!canEdit || isBusy}
-                  id="resource-detail-title"
-                  value={form.title}
-                  onChange={(event) => setForm((value) => ({ ...value, title: event.target.value }))}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="resource-detail-url">链接</FieldLabel>
-                <div className="flex gap-2">
+                <FieldLabel htmlFor="resource-detail-url">链接（必填）</FieldLabel>
+                <div className="grid grid-cols-[minmax(0,1fr)_36px] items-center gap-2">
                   <Input
-                    className="min-w-0"
+                    className="h-9 min-w-0 bg-ink-900 font-mono text-xs"
                     disabled={!canEdit || isBusy}
                     id="resource-detail-url"
                     value={form.url}
                     onChange={(event) => setForm((value) => ({ ...value, url: event.target.value }))}
                   />
-                  <Button size="icon-sm" variant="outline" asChild>
-                    <a href={displayUrl} rel="noreferrer" target="_blank">
+                  <Button className="size-9 px-0" size="sm" variant="outline" asChild>
+                    <a href={form.url.trim() || displayUrl} rel="noreferrer" target="_blank">
                       <ExternalLink />
                       <span className="sr-only">打开链接</span>
                     </a>
                   </Button>
                 </div>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="resource-detail-title">标题</FieldLabel>
+                <Textarea
+                  className="min-h-16 resize-y bg-ink-900 text-sm"
+                  disabled={!canEdit || isBusy}
+                  id="resource-detail-title"
+                  value={form.title}
+                  onChange={(event) => setForm((value) => ({ ...value, title: event.target.value }))}
+                />
               </Field>
               <Field>
                 <FieldLabel>Space</FieldLabel>
@@ -202,4 +231,67 @@ export function ResourceDetailsSheet({
       </SheetContent>
     </Sheet>
   )
+}
+
+const METADATA_STATUS_LABELS: Record<MetadataStatus, string> = {
+  pending: "待处理",
+  processing: "处理中",
+  completed: "已完成",
+  failed: "处理失败",
+}
+
+const RESOURCE_TYPE_LABELS: Record<ResourceType, string> = {
+  magnet: "磁力链接",
+  twitter: "X/Twitter",
+  baidu_pan: "百度网盘",
+  pan_115: "115 盘",
+  pan_123: "123 云盘",
+  quark_pan: "夸克网盘",
+  uc_pan: "UC 网盘",
+  xunlei_pan: "迅雷网盘",
+  pikpak: "PikPak",
+  onedrive: "OneDrive",
+  google_drive: "Google Drive",
+  dropbox: "Dropbox",
+  alist: "AList",
+  http: "Website",
+  youtube: "YouTube",
+  other: "其他",
+}
+
+const METADATA_FILE_TYPE_LABELS: Record<string, string> = {
+  archive: "Archive",
+  audio: "Audio",
+  document: "Document",
+  file: "File",
+  folder: "Folder",
+  image: "Image",
+  link: "Link",
+  magnet: "Magnet",
+  other: "Other",
+  subtitle: "Subtitle",
+  text: "Text",
+  torrent: "Torrent",
+  unknown: "Unknown",
+  video: "Video",
+}
+
+function formatKnownBytes(value?: number | null) {
+  if (typeof value !== "number" || value <= 0) return ""
+  return formatBytes(value)
+}
+
+function formatMetadataFileType(value?: string | null) {
+  const normalized = value?.trim().toLowerCase()
+  if (!normalized) return ""
+
+  return METADATA_FILE_TYPE_LABELS[normalized] ?? toTitleCase(normalized)
+}
+
+function toTitleCase(value: string) {
+  return value
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
 }

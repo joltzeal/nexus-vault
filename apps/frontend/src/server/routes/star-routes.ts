@@ -6,8 +6,11 @@ import type { ApiEnv } from "@/server/api/types"
 import { parseJson } from "@/server/api/validation"
 import { starSchema } from "@/server/schemas/vault"
 import {
+  listStarredResources,
   listStarredVaults,
+  starResource,
   starVault,
+  unstarResource,
   unstarVault,
 } from "@/server/services/star-service"
 
@@ -15,6 +18,13 @@ export const starRoutes = new Hono<ApiEnv>()
 
 starRoutes.get("/stars", async (c) => {
   const rows = await listStarredVaults(c.get("db"), {
+    actor: requireActor(c),
+  })
+  return ok(c, { items: rows })
+})
+
+starRoutes.get("/resource-stars", async (c) => {
+  const rows = await listStarredResources(c.get("db"), {
     actor: requireActor(c),
   })
   return ok(c, { items: rows })
@@ -33,6 +43,20 @@ starRoutes.delete("/vaults/:vaultId/star", async (c) => {
   const input = await parseJson(c, starSchema)
   const result = await unstarVault(c.get("db"), c.req.param("vaultId"), {
     ...input,
+    actor: requireActor(c),
+  })
+  return ok(c, result)
+})
+
+starRoutes.post("/resources/:resourceId/star", async (c) => {
+  const result = await starResource(c.get("db"), c.req.param("resourceId"), {
+    actor: requireActor(c),
+  })
+  return ok(c, result)
+})
+
+starRoutes.delete("/resources/:resourceId/star", async (c) => {
+  const result = await unstarResource(c.get("db"), c.req.param("resourceId"), {
     actor: requireActor(c),
   })
   return ok(c, result)

@@ -7,6 +7,7 @@ import { requireActor } from "@/server/api/actor"
 import { upsertCollaboratorSchema } from "@/server/schemas/collaborator"
 import {
   listCollaborators,
+  removeCollaborator,
   upsertCollaborator,
 } from "@/server/services/collaborator-service"
 import { enqueueNotificationTask } from "@/server/services/notification-service"
@@ -31,9 +32,16 @@ collaboratorRoutes.post("/vaults/:vaultId/collaborators", async (c) => {
     userId: result.userId,
     vaultId: c.req.param("vaultId"),
     type: "collaborator.upserted",
-    title: "你已被添加到资源集",
-    body: `角色：${input.role}`,
+    title: "你已被添加为编辑者",
+    body: "你现在可以为这个 vault 贡献资源。",
     requestedAt: new Date().toISOString(),
   })
   return ok(c, result, 201)
+})
+
+collaboratorRoutes.delete("/vaults/:vaultId/collaborators/:collaboratorId", async (c) => {
+  const result = await removeCollaborator(c.get("db"), c.req.param("vaultId"), c.req.param("collaboratorId"), {
+    actor: requireActor(c),
+  })
+  return ok(c, result)
 })

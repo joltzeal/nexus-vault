@@ -67,11 +67,11 @@ export function ResourceMediaGallery({
                   </p>
                 </div>
               </div>
-              <div className="relative grid min-h-[260px] place-items-center overflow-hidden rounded-input border border-line bg-black/35">
+              <div className="relative grid max-h-[78vh] min-h-[260px] place-items-start overflow-auto rounded-input border border-line bg-black/35">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   alt={`${title} preview ${previewIndex + 1}`}
-                  className="max-h-[72vh] w-full object-contain"
+                  className="h-auto w-full max-w-none object-contain"
                   src={activeItem.src}
                 />
                 {media.length > 1 && (

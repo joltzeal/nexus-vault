@@ -15,6 +15,9 @@
 		"binding": "ASSETS",
 		"directory": ".open-next/assets"
 	},
+	"vars": {
+		"ALLOW_USER_REGISTRATION": "false"
+	},
 	"images": {
 		// Enable image optimization
 		// see https://opennext.js.org/cloudflare/howtos/image
@@ -77,7 +80,76 @@
 	"observability": {
 		"enabled": true
 	},
-	"upload_source_maps": true
+	"upload_source_maps": true,
+	"env": {
+		"production": {
+			"name": "nexus-vault",
+			"vars": {
+				"ALLOW_USER_REGISTRATION": "false",
+				"NEXTJS_ENV": "production"
+			},
+			"images": {
+				"binding": "IMAGES"
+			},
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "nexus-vault",
+					// Add the generated production D1 ID here if Wrangler asks for it:
+					// "database_id": "<nexus-vault-d1-id>",
+					"migrations_dir": "../../migrations"
+				}
+			],
+			"kv_namespaces": [
+				{
+					"binding": "CACHE"
+					// Add the generated production KV ID here if Wrangler asks for it:
+					// "id": "<nexus-vault-cache-id>"
+				}
+			],
+			"r2_buckets": [
+				{
+					"binding": "MEDIA",
+					"bucket_name": "nexus-vault-media"
+				}
+			],
+			"queues": {
+				"producers": [
+					{
+						"binding": "METADATA_QUEUE",
+						"queue": "nexus-vault-metadata"
+					},
+					{
+						"binding": "NOTIFICATION_QUEUE",
+						"queue": "nexus-vault-notifications"
+					}
+				],
+				"consumers": [
+					{
+						"queue": "nexus-vault-metadata",
+						"max_batch_size": 5,
+						"max_batch_timeout": 10,
+						"max_retries": 3
+					},
+					{
+						"queue": "nexus-vault-notifications",
+						"max_batch_size": 10,
+						"max_batch_timeout": 10,
+						"max_retries": 3
+					}
+				]
+			},
+			"services": [
+				{
+					"binding": "WORKER_SELF_REFERENCE",
+					"service": "nexus-vault"
+				}
+			],
+			"observability": {
+				"enabled": true
+			}
+		}
+	}
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

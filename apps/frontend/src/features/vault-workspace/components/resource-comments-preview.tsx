@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { CommentItem } from "@/features/vault-workspace/components/vault-settings-sheet"
+import type { CommentItem } from "@/features/vault-workspace/types"
 import { cn } from "@/lib/utils"
 import { getInitials } from "./view-models"
 
@@ -56,7 +56,7 @@ export function ResourceCommentsPreview({
   return (
     <div className="border-t border-line-soft">
       {shown.map((comment, index) => (
-        <div className="flex gap-2 py-2" key={comment.id}>
+        <div className="flex gap-2 pt-2" key={comment.id}>
           <div className={`grid size-6 shrink-0 place-items-center rounded-chip border border-line text-[10px] font-semibold ${avatarClass(index)}`}>
             {getInitials(comment.authorName)}
           </div>

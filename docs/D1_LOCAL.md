@@ -42,10 +42,11 @@ rtk pnpm db:migrate:local
 Do not run remote creation/deploy commands for the local MVP.
 
 When remote deployment is intentionally introduced later, create the remote D1
-database and replace the placeholder `database_id` in `wrangler.jsonc`:
+database and use the production Wrangler environment:
 
 ```bash
 rtk wrangler d1 create nexus-vault
+rtk pnpm db:migrate:production
 ```
 
 ## API Surface

@@ -4,7 +4,12 @@ export const resourceTypeSchema = z.enum([
   "magnet",
   "twitter",
   "baidu_pan",
+  "pan_115",
+  "pan_123",
   "quark_pan",
+  "uc_pan",
+  "xunlei_pan",
+  "pikpak",
   "onedrive",
   "google_drive",
   "dropbox",
@@ -19,7 +24,7 @@ export const createResourceSchema = z.object({
   spaceId: z.string().trim().min(1).optional(),
   type: resourceTypeSchema.optional(),
   title: z.string().trim().min(1).max(200).optional(),
-  description: z.string().trim().max(2000).optional().default(""),
+  description: z.string().trim().optional().default(""),
   url: z.string().trim().min(1).max(4096),
 })
 
@@ -32,10 +37,20 @@ export const updateResourceSchema = z
     spaceId: z.string().trim().min(1).nullable().optional(),
     type: resourceTypeSchema.optional(),
     title: z.string().trim().min(1).max(200).optional(),
-    description: z.string().trim().max(2000).optional(),
+    description: z.string().trim().optional(),
     url: z.string().trim().min(1).max(2048).optional(),
     position: z.number().int().min(0).optional(),
   })
   .refine((input) => Object.keys(input).length > 0, {
     message: "At least one field is required.",
   })
+
+export const reorderResourcesSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.string().trim().min(1),
+      spaceId: z.string().trim().min(1),
+      position: z.number().int().min(0),
+    })
+  ).min(1),
+})

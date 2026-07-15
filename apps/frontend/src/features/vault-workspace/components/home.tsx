@@ -1,9 +1,10 @@
 "use client"
 
 import type { FormEvent } from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { authClient } from "@nexus-vault/auth/client"
+import { toast } from "sonner"
 import {
   ArrowRight,
   Boxes,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { apiRequest } from "@/features/vault-workspace/api-client"
 import { AuthDialog } from "@/features/vault-workspace/components/vault-dialogs"
 import {
   emptyAuthForm,
@@ -64,12 +66,40 @@ const features = [
 
 const trustItems = ["私有优先", "密码分享", "成员权限", "可控评论"]
 
+type AuthPolicy = {
+  allowSignUp: boolean
+  reason: "public-registration" | "first-user" | "disabled"
+}
+
 export function Home() {
   const router = useRouter()
+  const [authPolicy, setAuthPolicy] = useState<AuthPolicy>({
+    allowSignUp: false,
+    reason: "disabled",
+  })
   const [authDialogOpen, setAuthDialogOpen] = useState(false)
   const [authMode, setAuthMode] = useState<AuthMode>("sign-in")
   const [authForm, setAuthForm] = useState<AuthForm>(emptyAuthForm)
   const [authError, setAuthError] = useState("")
+  const showPublicAuth = authPolicy.reason === "public-registration"
+  const showFirstUserSetup = authPolicy.reason === "first-user"
+  const showLoginEntry = authPolicy.reason !== "first-user"
+  const showRegisterEntry = authPolicy.allowSignUp
+
+  useEffect(() => {
+    void loadAuthPolicy()
+  }, [])
+
+  async function loadAuthPolicy() {
+    try {
+      const policy = await apiRequest<AuthPolicy>("/auth-policy")
+      setAuthPolicy(policy)
+      return policy
+    } catch (error) {
+      console.warn("Failed to load auth policy.", error)
+      return authPolicy
+    }
+  }
 
   async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -77,10 +107,34 @@ export function Home() {
     const email = authForm.email.trim()
     const password = authForm.password
     const name = authForm.name.trim()
-    if (!email || !password || (authMode === "sign-up" && !name)) return
+    if (!email) return
+    if (authMode !== "forgot-password" && !password) return
+    if (authMode === "sign-up" && !authPolicy.allowSignUp) {
+      setAuthError("注册已关闭。")
+      return
+    }
+    if (authMode === "sign-up" && !name) return
 
     try {
       setAuthError("")
+      if (authMode === "forgot-password") {
+        const result = await authClient.requestPasswordReset({
+          email,
+          redirectTo: `${window.location.origin}/auth/reset-password`,
+        })
+
+        if (result.error) {
+          setAuthError(result.error.message ?? "密码重置邮件发送失败，请稍后再试。")
+          return
+        }
+
+        setAuthForm(emptyAuthForm)
+        setAuthDialogOpen(false)
+        setAuthMode("sign-in")
+        toast.success("如果该邮箱存在，请查看密码重置邮件。")
+        return
+      }
+
       const result =
         authMode === "sign-up"
           ? await authClient.signUp.email({ email, password, name })
@@ -100,9 +154,13 @@ export function Home() {
   }
 
   function openAuth(mode: AuthMode) {
-    setAuthMode(mode)
-    setAuthError("")
-    setAuthDialogOpen(true)
+    void (async () => {
+      const policy = await loadAuthPolicy()
+      if (mode === "sign-up" && !policy.allowSignUp) return
+      setAuthMode(policy.reason === "first-user" ? "sign-up" : mode)
+      setAuthError("")
+      setAuthDialogOpen(true)
+    })()
   }
 
   return (
@@ -117,15 +175,21 @@ export function Home() {
               Nexus<span className="text-jade">Vault</span>
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="ghost" onClick={() => openAuth("sign-in")}>
-              登录
-            </Button>
-            <Button size="sm" onClick={() => openAuth("sign-up")}>
-              <Fingerprint data-icon="inline-start" />
-              创建账号
-            </Button>
-          </div>
+          {(showLoginEntry || showRegisterEntry) && (
+            <div className="flex items-center gap-2">
+              {showLoginEntry && (
+                <Button size="sm" variant="ghost" onClick={() => openAuth("sign-in")}>
+                  登录
+                </Button>
+              )}
+              {showRegisterEntry && (
+                <Button size="sm" onClick={() => openAuth("sign-up")}>
+                  <Fingerprint data-icon="inline-start" />
+                  {showFirstUserSetup ? "创建管理员" : "创建账号"}
+                </Button>
+              )}
+            </div>
+          )}
         </header>
 
         <div className="grid flex-1 gap-8 py-12 md:py-16 lg:grid-cols-[1.02fr_0.98fr] lg:items-center">
@@ -140,15 +204,21 @@ export function Home() {
             <p className="mt-5 max-w-[610px] text-[15px] leading-7 text-fg-muted md:text-base">
               NexusVault 帮你收纳链接、磁力、网盘、视频和文档资料。每个资源都有清晰归属、访问权限、评论上下文和可分享入口。
             </p>
-            <div className="mt-7 flex flex-wrap items-center gap-3">
-              <Button size="lg" onClick={() => openAuth("sign-up")}>
-                开始创建 Vault
-                <ArrowRight data-icon="inline-end" />
-              </Button>
-              <Button size="lg" variant="outline" onClick={() => openAuth("sign-in")}>
-                已有账号登录
-              </Button>
-            </div>
+            {(showLoginEntry || showRegisterEntry) && (
+              <div className="mt-7 flex flex-wrap items-center gap-3">
+                {showRegisterEntry && (
+                  <Button size="lg" onClick={() => openAuth("sign-up")}>
+                    {showFirstUserSetup ? "创建第一个管理员" : "开始创建 Vault"}
+                    <ArrowRight data-icon="inline-end" />
+                  </Button>
+                )}
+                {showLoginEntry && (
+                  <Button size="lg" variant="outline" onClick={() => openAuth("sign-in")}>
+                    {showPublicAuth ? "已有账号登录" : "登录已有账号"}
+                  </Button>
+                )}
+              </div>
+            )}
             <div className="mt-8 grid max-w-[560px] gap-2 sm:grid-cols-2">
               {trustItems.map((item) => (
                 <div
@@ -233,6 +303,7 @@ export function Home() {
       </section>
 
       <AuthDialog
+        allowSignUp={authPolicy.allowSignUp}
         error={authError}
         form={authForm}
         mode={authMode}
@@ -242,6 +313,7 @@ export function Home() {
         onOpenChange={setAuthDialogOpen}
         onSubmit={handleAuthSubmit}
         open={authDialogOpen}
+        registrationReason={authPolicy.reason}
       />
     </main>
   )

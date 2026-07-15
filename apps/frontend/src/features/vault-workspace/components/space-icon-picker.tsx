@@ -15,10 +15,12 @@ import {
   HardDrive,
   Image,
   Music,
+  Palette,
   Sparkles,
   Tv,
 } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import {
   Popover,
   PopoverContent,
@@ -60,15 +62,27 @@ export function SpaceIcon({
 export function SpaceIconPicker({
   disabled,
   onSelect,
+  trigger = "current",
   value,
 }: {
   disabled: boolean
   onSelect: (value: string) => void
+  trigger?: "current" | "action"
   value?: string
 }) {
   const selected = value ?? "tv"
+  const isActionTrigger = trigger === "action"
 
   if (disabled) {
+    if (isActionTrigger) {
+      return (
+        <Button size="icon-sm" variant="ghost" type="button" disabled>
+          <Palette />
+          <span className="sr-only">修改 Space 图标</span>
+        </Button>
+      )
+    }
+
     return (
       <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-jade [&_svg]:size-3.5">
         <SpaceIcon name={selected} />
@@ -79,13 +93,20 @@ export function SpaceIconPicker({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
-          className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-jade transition hover:bg-ink-750 hover:text-jade-bright [&_svg]:size-3.5"
-          type="button"
-        >
-          <SpaceIcon name={selected} />
-          <span className="sr-only">选择 Space 图标</span>
-        </button>
+        {isActionTrigger ? (
+          <Button size="icon-sm" variant="ghost" type="button">
+            <Palette />
+            <span className="sr-only">修改 Space 图标</span>
+          </Button>
+        ) : (
+          <button
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-jade transition hover:bg-ink-750 hover:text-jade-bright [&_svg]:size-3.5"
+            type="button"
+          >
+            <SpaceIcon name={selected} />
+            <span className="sr-only">选择 Space 图标</span>
+          </button>
+        )}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-[252px] border-line bg-ink-850 p-2 text-fg">
         <div className="grid grid-cols-4 gap-1">

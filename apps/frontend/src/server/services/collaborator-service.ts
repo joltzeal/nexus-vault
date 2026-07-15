@@ -34,7 +34,7 @@ export async function listCollaborators(
     })
     .from(collaborators)
     .innerJoin(users, eq(collaborators.userId, users.id))
-    .where(eq(collaborators.vaultId, vaultId))
+    .where(and(eq(collaborators.vaultId, vaultId), eq(collaborators.role, "editor")))
 }
 
 export async function upsertCollaborator(
@@ -43,7 +43,6 @@ export async function upsertCollaborator(
   input: {
     email: string
     name?: string
-    role: "owner" | "admin" | "editor" | "viewer"
     actor?: Actor
     actorEmail?: string
   }
@@ -70,7 +69,7 @@ export async function upsertCollaborator(
   if (existing) {
     await db
       .update(collaborators)
-      .set({ role: input.role, updatedAt: new Date().toISOString() })
+      .set({ role: "editor", updatedAt: new Date().toISOString() })
       .where(eq(collaborators.id, existing.id))
     return { id: existing.id, userId }
   }
@@ -80,7 +79,69 @@ export async function upsertCollaborator(
     id: collaboratorId,
     vaultId,
     userId,
-    role: input.role,
+    role: "editor",
+  })
+
+  return { id: collaboratorId, userId }
+}
+
+export async function removeCollaborator(
+  db: Db,
+  vaultId: string,
+  collaboratorId: string,
+  input: {
+    actor?: Actor
+    actorEmail?: string
+  }
+) {
+  await getVaultOrThrow(db, vaultId)
+  await requireVaultPermission(db, {
+    vaultId,
+    actor: input.actor,
+    userEmail: input.actorEmail,
+    action: "collaborator:manage",
+  })
+
+  const [existing] = await db
+    .select({
+      id: collaborators.id,
+      role: collaborators.role,
+    })
+    .from(collaborators)
+    .where(and(eq(collaborators.id, collaboratorId), eq(collaborators.vaultId, vaultId)))
+    .limit(1)
+
+  if (!existing) return { id: collaboratorId, removed: false }
+
+  await db.delete(collaborators).where(eq(collaborators.id, collaboratorId))
+  return { id: collaboratorId, removed: true }
+}
+
+export async function ensureEditorCollaborator(
+  db: Db,
+  vaultId: string,
+  userId: string
+) {
+  const [existing] = await db
+    .select({ id: collaborators.id })
+    .from(collaborators)
+    .where(and(eq(collaborators.vaultId, vaultId), eq(collaborators.userId, userId)))
+    .limit(1)
+
+  if (existing) {
+    await db
+      .update(collaborators)
+      .set({ role: "editor", updatedAt: new Date().toISOString() })
+      .where(eq(collaborators.id, existing.id))
+    return { id: existing.id, userId }
+  }
+
+  const collaboratorId = newId("collaborator")
+  await db.insert(collaborators).values({
+    id: collaboratorId,
+    vaultId,
+    userId,
+    role: "editor",
   })
 
   return { id: collaboratorId, userId }

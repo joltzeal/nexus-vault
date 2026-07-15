@@ -28,9 +28,10 @@ export function MarkdownContent({
         "[&_h2]:font-display [&_h2]:text-[15px] [&_h2]:font-semibold [&_h2]:text-fg",
         "[&_h3]:font-display [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-fg",
         "[&_h4]:font-display [&_h4]:text-[13px] [&_h4]:font-semibold [&_h4]:text-fg",
+        "[&_img]:mx-auto [&_img]:block [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-input [&_img]:border [&_img]:border-line [&_img]:bg-ink-900",
         "[&_li]:pl-0.5 [&_ol]:ml-5 [&_ol]:list-decimal [&_pre]:overflow-auto [&_pre]:rounded-input [&_pre]:border [&_pre]:border-line [&_pre]:bg-ink-900 [&_pre]:p-3 [&_pre_code]:border-0 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:ml-5 [&_ul]:list-disc",
         singleLine &&
-          "block overflow-hidden text-ellipsis whitespace-nowrap leading-5 [&_*]:inline [&_br]:hidden [&_ol]:ml-0 [&_ul]:ml-0",
+          "block overflow-hidden text-ellipsis whitespace-nowrap leading-5 [&_*:not(img)]:inline [&_br]:hidden [&_ol]:ml-0 [&_ul]:ml-0",
         className
       )}
     >

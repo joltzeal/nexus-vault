@@ -7,11 +7,13 @@ import { requireActor } from "@/server/api/actor"
 import {
   createResourceSchema,
   createResourceWithVaultSchema,
+  reorderResourcesSchema,
   updateResourceSchema,
 } from "@/server/schemas/resource"
 import {
   archiveResource,
   createResource,
+  reorderResources,
   updateResource,
 } from "@/server/services/resource-service"
 import { enqueueMetadataTask } from "@/server/services/metadata-service"
@@ -36,6 +38,15 @@ resourceRoutes.post("/vaults/:vaultId/resources", async (c) => {
   })
   enqueueMetadataTask(c, result.metadataTask)
   return ok(c, result, 201)
+})
+
+resourceRoutes.patch("/vaults/:vaultId/resources/reorder", async (c) => {
+  const input = await parseJson(c, reorderResourcesSchema)
+  const result = await reorderResources(c.get("db"), c.req.param("vaultId"), {
+    ...input,
+    actor: requireActor(c),
+  })
+  return ok(c, result)
 })
 
 resourceRoutes.patch("/resources/:resourceId", async (c) => {

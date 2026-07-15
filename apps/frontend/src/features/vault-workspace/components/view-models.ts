@@ -2,6 +2,10 @@ import {
   formatBytes,
   formatResourceType,
 } from "@/features/vault-workspace/formatters"
+import {
+  createCanonicalMagnetUrl,
+  parseMagnetLink,
+} from "@nexus-vault/shared/resource-input"
 import type {
   MetadataStatus,
   Resource,
@@ -97,7 +101,8 @@ export function getResourceSize(resource: Resource) {
 export function getResourceDisplayUrl(resource: Resource) {
   const value = resource.url.trim()
   if (resource.type !== "magnet") return value
-  if (value.toLowerCase().startsWith("magnet:?")) return value
+  const parsed = parseMagnetLink(value)
+  if (parsed) return createCanonicalMagnetUrl(parsed.infoHash)
 
   return /^[a-zA-Z0-9]{32,64}$/.test(value)
     ? `magnet:?xt=urn:btih:${value.toUpperCase()}`
@@ -144,6 +149,13 @@ export function getResourceMedia(resource: Resource): MediaItem[] {
   ]
 }
 
+export function getResourceFaviconUrl(resource: Resource) {
+  if (resource.type !== "http") return ""
+
+  const http = getHttpMetadata(resource.metadata?.data?.extra?.http)
+  return http?.favicon ?? ""
+}
+
 export function getResourceCloudDriveData(resource: Resource) {
   const metadata = resource.metadata?.data
   const cloudDrive = getCloudDriveMetadata(metadata?.extra?.cloudDrive)
@@ -171,7 +183,12 @@ export function getTypePill(type: ResourceType) {
   if (type === "magnet") return { className: "tp-magnet", label: "MAG" }
   if (type === "twitter") return { className: "tp-http", label: "X" }
   if (type === "baidu_pan") return { className: "tp-drive", label: "BD" }
+  if (type === "pan_115") return { className: "tp-drive", label: "115" }
+  if (type === "pan_123") return { className: "tp-drive", label: "123" }
   if (type === "quark_pan") return { className: "tp-drive", label: "QK" }
+  if (type === "uc_pan") return { className: "tp-drive", label: "UC" }
+  if (type === "xunlei_pan") return { className: "tp-drive", label: "XL" }
+  if (type === "pikpak") return { className: "tp-drive", label: "PK" }
   if (type === "youtube") return { className: "tp-youtube", label: "YT" }
   if (type === "onedrive" || type === "google_drive" || type === "dropbox" || type === "alist") {
     return { className: "tp-drive", label: type === "google_drive" ? "GD" : "OD" }
@@ -380,6 +397,14 @@ function getCloudDriveMetadata(value: unknown) {
   return {
     password: typeof value.password === "string" ? value.password : undefined,
     availability,
+  }
+}
+
+function getHttpMetadata(value: unknown) {
+  if (!isRecord(value)) return null
+
+  return {
+    favicon: typeof value.favicon === "string" ? value.favicon : undefined,
   }
 }
 

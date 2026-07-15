@@ -4,10 +4,12 @@ import type { FormEvent } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { authClient } from "@nexus-vault/auth/client"
+import { createCloudDriveUrlWithPassword } from "@nexus-vault/shared/resource-input"
 import { toast } from "sonner"
 
 import { apiRequest } from "@/features/vault-workspace/api-client"
 import {
+  AuthDialog,
   CreateResourceDialog,
   CreateSetDialog,
   CreateSpaceDialog,
@@ -17,11 +19,10 @@ import {
   type ResourceDetailsForm,
 } from "@/features/vault-workspace/components/resource-details-sheet"
 import { ShareSubmissionDialog } from "@/features/vault-workspace/components/share-submission-dialog"
+import { StarPage } from "@/features/vault-workspace/components/star-page"
 import { VaultDocument } from "@/features/vault-workspace/components/vault-document"
 import {
-  type CollaboratorForm,
   type CollaboratorItem,
-  type CommentItem,
   type NotificationItem,
   type SettingsTab,
   type ShareSettings,
@@ -29,20 +30,40 @@ import {
   VaultSettingsSheet,
 } from "@/features/vault-workspace/components/vault-settings-sheet"
 import { VaultSidebar } from "@/features/vault-workspace/components/vault-sidebar"
-import { VaultTopbar } from "@/features/vault-workspace/components/vault-topbar"
-import { formatResourceType } from "@/features/vault-workspace/formatters"
+import {
+  VaultTopbar,
+  type VaultSearchItem,
+} from "@/features/vault-workspace/components/vault-topbar"
 import { mapVaultDetail, mapVaultListItem } from "@/features/vault-workspace/mappers"
 import {
   emptyResourceForm,
   emptySetForm,
   emptySpaceForm,
+  emptyAuthForm,
+  type CommentItem,
+  type AuthForm,
+  type AuthMode,
   type Resource,
   type ResourceSubmissionItem,
   type ResourceSet,
   type Space,
+  type StarredResourceItem,
   type VaultWorkspaceInitialData,
   type Visibility,
 } from "@/features/vault-workspace/types"
+
+type AuthPolicy = {
+  allowSignUp: boolean
+  reason: "public-registration" | "first-user" | "disabled"
+}
+
+type VaultAlerts = {
+  notifications: NotificationItem[]
+  pendingSubmissions: ResourceSubmissionItem[]
+  unreadNotificationCount: number
+}
+
+const LOCAL_NSFW_STORAGE_KEY = "nexus-vault:nsfw-enabled"
 
 export function VaultWorkspaceClient({
   initialData,
@@ -52,9 +73,25 @@ export function VaultWorkspaceClient({
   const router = useRouter()
   const session = authClient.useSession()
   const [sets, setSets] = useState<ResourceSet[]>(initialData.sets)
+  const [externalActiveSet, setExternalActiveSet] = useState<ResourceSet | null>(null)
   const [activeSetId, setActiveSetId] = useState(initialData.activeSetId)
+  const [activePage, setActivePage] = useState<"workspace" | "star">(() => {
+    if (initialData.mode === "share") return "workspace"
+    if (typeof window === "undefined") return "workspace"
+    return new URLSearchParams(window.location.search).get("page") === "star"
+      ? "star"
+      : "workspace"
+  })
   const [query, setQuery] = useState("")
   const [setDialogOpen, setSetDialogOpen] = useState(false)
+  const [authDialogOpen, setAuthDialogOpen] = useState(false)
+  const [authPolicy, setAuthPolicy] = useState<AuthPolicy>({
+    allowSignUp: false,
+    reason: "disabled",
+  })
+  const [authMode, setAuthMode] = useState<AuthMode>("sign-in")
+  const [authForm, setAuthForm] = useState<AuthForm>(emptyAuthForm)
+  const [authError, setAuthError] = useState("")
   const [spaceDialogOpen, setSpaceDialogOpen] = useState(false)
   const [resourceDialogOpen, setResourceDialogOpen] = useState(false)
   const [resourceDetailsOpen, setResourceDetailsOpen] = useState(false)
@@ -64,6 +101,7 @@ export function VaultWorkspaceClient({
   const [isLoading, setIsLoading] = useState(false)
   const [apiError, setApiError] = useState(initialData.error ?? "")
   const [setForm, setSetForm] = useState(emptySetForm)
+  const [setDialogMode, setSetDialogMode] = useState<"create" | "edit">("create")
   const [spaceForm, setSpaceForm] = useState(emptySpaceForm)
   const [editingSpaceId, setEditingSpaceId] = useState("")
   const [resourceForm, setResourceForm] = useState(emptyResourceForm)
@@ -72,47 +110,48 @@ export function VaultWorkspaceClient({
   const [share, setShare] = useState<ShareSettings>({ visibility: "private" })
   const [sharePassword, setSharePassword] = useState("")
   const [collaborators, setCollaborators] = useState<CollaboratorItem[]>([])
-  const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>({
-    email: "",
-    name: "",
-    role: "viewer",
-  })
-  const [comments, setComments] = useState<CommentItem[]>([])
+  const [commentsByResourceId, setCommentsByResourceId] = useState<Record<string, CommentItem[]>>(
+    () => getCommentsByResourceId(initialData.sets)
+  )
   const [commentBody, setCommentBody] = useState("")
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
   const [starredVaults, setStarredVaults] = useState<StarredVaultItem[]>([])
+  const [starredResources, setStarredResources] = useState<StarredResourceItem[]>([])
   const [submissions, setSubmissions] = useState<ResourceSubmissionItem[]>([])
+  const [localNsfwEnabled, setLocalNsfwEnabled] = useState<boolean | null>(null)
   const toastedMetadataFailureIds = useRef<Set<string>>(new Set())
 
   const currentUser =
     session.data?.user ??
     (initialData.actorEmail
-      ? { email: initialData.actorEmail, name: initialData.actorName }
+      ? { id: initialData.actorId, email: initialData.actorEmail, name: initialData.actorName }
       : undefined)
+  const currentUserId = session.data?.user?.id ?? initialData.actorId
   const currentUserName = currentUser?.name ?? ""
-  const activeSet = sets.find((set) => set.id === activeSetId) ?? sets[0]
+  const ownedActiveSet = sets.find((set) => set.id === activeSetId)
+  const activeSet =
+    ownedActiveSet ??
+    (externalActiveSet?.id === activeSetId ? externalActiveSet : null) ??
+    sets[0]
+  const isShareMode = initialData.mode === "share"
+  const mediaVisible = activeSet
+    ? localNsfwEnabled === null
+      ? !activeSet.nsfwEnabled
+      : !localNsfwEnabled
+    : true
+  const resolvingResourceIds =
+    activeSet?.resources
+      .filter(
+        (resource) =>
+          resource.metadataStatus === "pending" || resource.metadataStatus === "processing"
+      )
+      .map((resource) => resource.id)
+      .join("|") ?? ""
 
   const filteredResources = useMemo(() => {
-    const resources = activeSet?.resources ?? []
-    const normalizedQuery = query.trim().toLowerCase()
-    if (!normalizedQuery) return resources
-
-    return resources.filter((resource) =>
-      [
-        resource.title,
-        resource.url,
-        resource.description,
-        resource.metadata?.data?.title,
-        activeSet?.spaces.find((space) => space.id === resource.spaceId)?.name ?? "",
-        formatResourceType(resource.type),
-        resource.metadataStatus,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery)
-    )
-  }, [activeSet, query])
+    return activeSet?.resources ?? []
+  }, [activeSet])
 
   const visibleActiveSet = useMemo(
     () =>
@@ -127,15 +166,34 @@ export function VaultWorkspaceClient({
 
   const selectedResource =
     activeSet?.resources.find((resource) => resource.id === selectedResourceId)
-  const totalResources = sets.reduce((count, set) => count + set.resources.length, 0)
-  const isVaultOwner = collaborators.some(
-    (collaborator) =>
-      collaborator.role === "owner" && collaborator.email === currentUser?.email
+  const isVaultOwner = Boolean(
+    activeSet?.ownerId && currentUserId && activeSet.ownerId === currentUserId
   )
+  const isVaultEditor = activeSet?.actorRole === "editor"
+  const canAddResource = isVaultOwner || isVaultEditor
+  const canEditSelectedResource =
+    isVaultOwner ||
+    Boolean(isVaultEditor && selectedResource?.createdBy && selectedResource.createdBy === currentUserId)
+  const currentUserImage =
+    currentUser && "image" in currentUser && typeof currentUser.image === "string"
+      ? currentUser.image
+      : undefined
 
   useEffect(() => {
     document.title = activeSet?.name ? `${activeSet.name} · NexusVault` : "NexusVault"
   }, [activeSet?.name])
+
+  useEffect(() => {
+    try {
+      const value = window.localStorage.getItem(LOCAL_NSFW_STORAGE_KEY)
+      if (value === "true") setLocalNsfwEnabled(true)
+      else if (value === "false") setLocalNsfwEnabled(false)
+      else setLocalNsfwEnabled(null)
+    } catch (error) {
+      console.warn("Failed to read local NSFW preference.", error)
+      setLocalNsfwEnabled(null)
+    }
+  }, [])
 
   useEffect(() => {
     if (!activeSet) return
@@ -165,12 +223,19 @@ export function VaultWorkspaceClient({
   }, [apiError])
 
   useEffect(() => {
+    if (currentUser) return
+
+    void loadAuthPolicy()
+  }, [currentUser?.email])
+
+  useEffect(() => {
     if (!currentUser || !activeSet?.id) {
       setShare({ visibility: activeSet?.visibility ?? "private" })
       setCollaborators([])
       setNotifications([])
       setUnreadNotificationCount(0)
       setStarredVaults([])
+      setStarredResources([])
       setSubmissions([])
       return
     }
@@ -179,13 +244,9 @@ export function VaultWorkspaceClient({
   }, [activeSet?.id, currentUser?.email])
 
   useEffect(() => {
-    if (!currentUser || !activeSet?.id || !selectedResource?.id) {
-      setComments([])
-      return
-    }
-
+    if (!activeSet?.id || !selectedResource?.id) return
     void loadComments(activeSet.id, selectedResource.id)
-  }, [activeSet?.id, currentUser?.email, selectedResource?.id])
+  }, [activeSet?.id, selectedResource?.id])
 
   useEffect(() => {
     if (!currentUser || !activeSet?.id || !isVaultOwner) return
@@ -197,8 +258,28 @@ export function VaultWorkspaceClient({
     return () => window.clearInterval(intervalId)
   }, [activeSet?.id, currentUser?.email, isVaultOwner])
 
-  async function loadVaults(nextActiveSetId?: string) {
-    setIsLoading(true)
+  useEffect(() => {
+    if (!currentUser || isShareMode || !activeSet?.id || !resolvingResourceIds) return
+
+    const intervalId = window.setInterval(() => {
+      void loadVaults(activeSet.id, {
+        includeOpenedVaultInList: Boolean(ownedActiveSet),
+        silent: true,
+      })
+    }, 4000)
+
+    return () => window.clearInterval(intervalId)
+  }, [activeSet?.id, currentUser?.email, isShareMode, ownedActiveSet?.id, resolvingResourceIds])
+
+  async function loadVaults(
+    nextActiveSetId?: string,
+    options: {
+      includeOpenedVaultInList?: boolean
+      silent?: boolean
+    } = {}
+  ) {
+    const includeOpenedVaultInList = options.includeOpenedVaultInList ?? true
+    if (!options.silent) setIsLoading(true)
     setApiError("")
 
     try {
@@ -207,17 +288,22 @@ export function VaultWorkspaceClient({
           id: string
           title: string
           description: string
+          cover: string
           visibility: Visibility
           collectionEnabled: boolean
+          nsfwEnabled: boolean
           ownerName: string | null
+          ownerId: string | null
           starCount: number
           forkCount: number
+          resourceCount: number
           createdAt: string
+          actorRole?: "owner" | "editor" | "anonymous"
         }>
       }>("/vaults")
       const listItems = data.items.map(mapVaultListItem)
       const targetId =
-        nextActiveSetId && listItems.some((set) => set.id === nextActiveSetId)
+        nextActiveSetId
           ? nextActiveSetId
           : listItems.some((set) => set.id === activeSetId)
             ? activeSetId
@@ -225,6 +311,8 @@ export function VaultWorkspaceClient({
 
       if (!targetId) {
         setSets([])
+        setExternalActiveSet(null)
+        setCommentsByResourceId({})
         setActiveSetId("")
         setSelectedResourceId("")
         return
@@ -235,13 +323,17 @@ export function VaultWorkspaceClient({
           id: string
           title: string
           description: string
+          cover: string
           ownerName: string | null
+          ownerId: string | null
           visibility: Visibility
           collectionEnabled: boolean
+          nsfwEnabled: boolean
           starCount: number
           forkCount: number
           createdAt: string
         }
+        actorRole?: "owner" | "editor" | "anonymous"
         spaces: Space[]
         resources: Array<Resource & { spaceId: string | null }>
       }>(`/vaults/${targetId}`)
@@ -249,19 +341,35 @@ export function VaultWorkspaceClient({
         ...mapVaultDetail(detail),
         isStarred: starredVaults.some((vault) => vault.id === detail.vault.id),
       }
+      setCommentsByResourceId((current) => ({
+        ...current,
+        ...getCommentsByResourceId([hydratedSet]),
+      }))
 
-      setSets((currentSets) =>
-        markStarredSets(
-          mergeVaultListWithExisting(listItems, currentSets, hydratedSet),
-          starredVaults
+      if (includeOpenedVaultInList) {
+        setExternalActiveSet(null)
+        setSets((currentSets) =>
+          markStarredSets(
+            mergeVaultListWithExisting(listItems, currentSets, hydratedSet),
+            starredVaults
+          )
         )
-      )
+      } else {
+        setExternalActiveSet(hydratedSet)
+        setSets((currentSets) =>
+          markStarredSets(mergeVaultListWithExisting(listItems, currentSets), starredVaults)
+        )
+      }
       setActiveSetId(hydratedSet.id)
-      setSelectedResourceId(hydratedSet.resources[0]?.id ?? "")
+      setSelectedResourceId((currentResourceId) =>
+        hydratedSet.resources.some((resource) => resource.id === currentResourceId)
+          ? currentResourceId
+          : hydratedSet.resources[0]?.id ?? ""
+      )
     } catch (error) {
       setApiError(error instanceof Error ? error.message : "API request failed.")
     } finally {
-      setIsLoading(false)
+      if (!options.silent) setIsLoading(false)
     }
   }
 
@@ -280,86 +388,66 @@ export function VaultWorkspaceClient({
       console.warn("Failed to load vault collaborators.", reason)
       return null
     })
-    const notificationRequest = apiRequest<{ items: NotificationItem[] }>(
-      "/notifications"
-    ).catch((reason: unknown) => {
-      console.warn("Failed to load notifications.", reason)
-      return null
-    })
-    const notificationSummaryRequest = apiRequest<{ unreadCount: number }>(
-      "/notifications/summary"
-    ).catch((reason: unknown) => {
-      console.warn("Failed to load notification summary.", reason)
-      return null
-    })
+    const alertsRequest = apiRequest<VaultAlerts>(`/vaults/${vaultId}/alerts`).catch(
+      (reason: unknown) => {
+        console.warn("Failed to load vault alerts.", reason)
+        return null
+      }
+    )
     const starredRequest = apiRequest<{ items: StarredVaultItem[] }>("/stars").catch(
       (reason: unknown) => {
         console.warn("Failed to load starred vaults.", reason)
         return null
       }
     )
-    const submissionRequest = apiRequest<{ items: ResourceSubmissionItem[] }>(
-      `/vaults/${vaultId}/submissions?status=pending`
+    const starredResourceRequest = apiRequest<{ items: StarredResourceItem[] }>(
+      "/resource-stars"
     ).catch((reason: unknown) => {
-      console.warn("Failed to load resource submissions.", reason)
+      console.warn("Failed to load starred resources.", reason)
       return null
     })
     const [
       shareData,
       collaboratorData,
-      notificationData,
-      notificationSummary,
+      alertsData,
       starredData,
-      submissionData,
+      starredResourceData,
     ] =
       await Promise.all([
         shareRequest,
         collaboratorRequest,
-        notificationRequest,
-        notificationSummaryRequest,
+        alertsRequest,
         starredRequest,
-        submissionRequest,
+        starredResourceRequest,
       ])
 
     setShare(shareData?.share ?? { visibility: fallbackVisibility })
-    if (collaboratorData) setCollaborators(collaboratorData.items)
-    if (notificationData) setNotifications(notificationData.items)
-    if (notificationSummary) setUnreadNotificationCount(notificationSummary.unreadCount)
+    setCollaborators(collaboratorData?.items ?? [])
+    if (alertsData) {
+      setNotifications(alertsData.notifications)
+      setUnreadNotificationCount(alertsData.unreadNotificationCount)
+      setSubmissions(alertsData.pendingSubmissions)
+    }
     if (starredData) {
       setStarredVaults(starredData.items)
       setSets((currentSets) => markStarredSets(currentSets, starredData.items))
     }
-    if (submissionData) setSubmissions(submissionData.items)
+    if (starredResourceData) setStarredResources(starredResourceData.items)
   }
 
   async function refreshVaultAlerts(vaultId: string) {
-    const notificationRequest = apiRequest<{ items: NotificationItem[] }>(
-      "/notifications"
-    ).catch((reason: unknown) => {
-      console.warn("Failed to refresh notifications.", reason)
-      return null
-    })
-    const notificationSummaryRequest = apiRequest<{ unreadCount: number }>(
-      "/notifications/summary"
-    ).catch((reason: unknown) => {
-      console.warn("Failed to refresh notification summary.", reason)
-      return null
-    })
-    const submissionRequest = apiRequest<{ items: ResourceSubmissionItem[] }>(
-      `/vaults/${vaultId}/submissions?status=pending`
-    ).catch((reason: unknown) => {
-      console.warn("Failed to refresh resource submissions.", reason)
-      return null
-    })
-    const [notificationData, notificationSummary, submissionData] = await Promise.all([
-      notificationRequest,
-      notificationSummaryRequest,
-      submissionRequest,
-    ])
+    const alerts = await apiRequest<VaultAlerts>(`/vaults/${vaultId}/alerts`).catch(
+      (reason: unknown) => {
+        console.warn("Failed to refresh vault alerts.", reason)
+        return null
+      }
+    )
 
-    if (notificationData) setNotifications(notificationData.items)
-    if (notificationSummary) setUnreadNotificationCount(notificationSummary.unreadCount)
-    if (submissionData) setSubmissions(submissionData.items)
+    if (!alerts) return
+
+    setNotifications(alerts.notifications)
+    setUnreadNotificationCount(alerts.unreadNotificationCount)
+    setSubmissions(alerts.pendingSubmissions)
   }
 
   async function loadComments(vaultId: string, resourceId: string) {
@@ -367,7 +455,10 @@ export function VaultWorkspaceClient({
       const data = await apiRequest<{ items: CommentItem[] }>(
         `/vaults/${vaultId}/resources/${resourceId}/comments`
       )
-      setComments(data.items)
+      setCommentsByResourceId((current) => ({
+        ...current,
+        [resourceId]: data.items,
+      }))
     } catch (error) {
       setApiError(error instanceof Error ? error.message : "Failed to load comments.")
     }
@@ -399,28 +490,35 @@ export function VaultWorkspaceClient({
       )
       setSharePassword("")
       await loadVaultPanels(activeSet.id)
+      toast.success("分享设置已保存")
     } catch (error) {
       setApiError(error instanceof Error ? error.message : "Failed to save share settings.")
     }
   }
 
-  async function handleSaveCollaborator() {
+  function handleMediaVisibleChange(visible: boolean) {
+    const nextNsfwEnabled = !visible
+    setLocalNsfwEnabled(nextNsfwEnabled)
+
+    try {
+      window.localStorage.setItem(LOCAL_NSFW_STORAGE_KEY, String(nextNsfwEnabled))
+    } catch (error) {
+      console.warn("Failed to save local NSFW preference.", error)
+    }
+  }
+
+  async function handleRemoveCollaborator(collaboratorId: string) {
     if (!activeSet) return
 
     try {
       setApiError("")
-      await apiRequest(`/vaults/${activeSet.id}/collaborators`, {
-        method: "POST",
-        body: JSON.stringify({
-          email: collaboratorForm.email.trim(),
-          name: collaboratorForm.name.trim() || undefined,
-          role: collaboratorForm.role,
-        }),
+      await apiRequest(`/vaults/${activeSet.id}/collaborators/${collaboratorId}`, {
+        method: "DELETE",
       })
-      setCollaboratorForm({ email: "", name: "", role: "viewer" })
       await loadVaultPanels(activeSet.id)
+      toast.success("Editor 已移除")
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : "Failed to save collaborator.")
+      setApiError(error instanceof Error ? error.message : "Failed to remove collaborator.")
     }
   }
 
@@ -497,10 +595,71 @@ export function VaultWorkspaceClient({
     }
   }
 
+  async function handleToggleResourceStar(resourceId: string) {
+    if (!activeSet) return
+    if (!currentUser) {
+      toast.info("请先登录后再收藏资源。")
+      return
+    }
+
+    const resource = activeSet.resources.find((item) => item.id === resourceId)
+    if (!resource) return
+    const nextStarred = !resource.isStarred
+
+    setSets((currentSets) =>
+      currentSets.map((set) =>
+        set.id === activeSet.id
+          ? {
+              ...set,
+              resources: set.resources.map((item) =>
+                item.id === resourceId ? { ...item, isStarred: nextStarred } : item
+              ),
+            }
+          : set
+      )
+    )
+
+    try {
+      await apiRequest(`/resources/${resourceId}/star`, {
+        method: nextStarred ? "POST" : "DELETE",
+      })
+      if (nextStarred) await loadStarredResources()
+      else {
+        setStarredResources((current) =>
+          current.filter((item) => item.sourceResourceId !== resourceId)
+        )
+      }
+      toast.success(nextStarred ? "资源已收藏" : "已取消收藏")
+    } catch (error) {
+      setSets((currentSets) =>
+        currentSets.map((set) =>
+          set.id === activeSet.id
+            ? {
+                ...set,
+                resources: set.resources.map((item) =>
+                  item.id === resourceId ? { ...item, isStarred: resource.isStarred } : item
+                ),
+              }
+            : set
+        )
+      )
+      setApiError(error instanceof Error ? error.message : "Failed to update resource star.")
+    }
+  }
+
+  async function loadStarredResources() {
+    const data = await apiRequest<{ items: StarredResourceItem[] }>("/resource-stars")
+    setStarredResources(data.items)
+  }
+
   async function handleForkVault() {
     if (!activeSet) return
     if (!currentUser) {
       toast.info("请先登录后再 fork vault。")
+      return
+    }
+    if (isVaultOwner) {
+      toast.info("不能 fork 自己的 vault。")
       return
     }
 
@@ -511,7 +670,11 @@ export function VaultWorkspaceClient({
           method: "POST",
         }
       )
-      toast.success("已复制一份到你的 vaults。")
+      if (isShareMode) {
+        router.push("/")
+        router.refresh()
+        return
+      }
       await loadVaults(result.id)
     } catch (error) {
       setApiError(error instanceof Error ? error.message : "Failed to fork vault.")
@@ -575,12 +738,35 @@ export function VaultWorkspaceClient({
     }
   }
 
-  async function handleOpenNotifications() {
-    if (!currentUser) return
+  async function handleToggleVaultNsfw(enabled: boolean) {
+    if (!activeSet) return
+
+    const previousSets = sets
+
+    setSets((currentSets) =>
+      currentSets.map((set) =>
+        set.id === activeSet.id ? { ...set, nsfwEnabled: enabled } : set
+      )
+    )
 
     try {
-      const data = await apiRequest<{ items: NotificationItem[] }>("/notifications")
-      const unreadIds = data.items
+      setApiError("")
+      await apiRequest(`/vaults/${activeSet.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ nsfwEnabled: enabled }),
+      })
+      toast.success(enabled ? "Vault 已默认隐藏媒体" : "Vault 已默认显示媒体")
+    } catch (error) {
+      setSets(previousSets)
+      setApiError(error instanceof Error ? error.message : "Failed to update NSFW mode.")
+    }
+  }
+
+  async function handleOpenNotifications() {
+    if (!currentUser || !activeSet?.id) return
+
+    try {
+      const unreadIds = notifications
         .filter(
           (notification) =>
             notification.type === "resource_submission.created" && !notification.readAt
@@ -589,22 +775,66 @@ export function VaultWorkspaceClient({
       const readAt = new Date().toISOString()
 
       setNotifications(
-        data.items.map((notification) =>
+        notifications.map((notification) =>
           unreadIds.includes(notification.id) ? { ...notification, readAt } : notification
         )
       )
       setUnreadNotificationCount(0)
 
-      await Promise.all(
-        unreadIds.map((notificationId) =>
-          apiRequest(`/notifications/${notificationId}/read`, {
-            method: "PATCH",
-            body: JSON.stringify({}),
-          })
-        )
-      )
+      if (unreadIds.length === 0) return
+
+      await apiRequest(`/vaults/${activeSet.id}/alerts/read`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          notificationIds: unreadIds,
+        }),
+      })
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : "Failed to load notifications.")
+      setApiError(error instanceof Error ? error.message : "Failed to update notifications.")
+    }
+  }
+
+  async function handleSearchSelect(item: VaultSearchItem) {
+    setActivePage("workspace")
+    await loadVaults(item.vaultId, {
+      includeOpenedVaultInList: item.kind !== "starred",
+    })
+
+    if (item.kind === "resource" && item.resourceId) {
+      setSelectedResourceId(item.resourceId)
+      scrollToWorkspaceTarget(`resource-${item.resourceId}`)
+      return
+    }
+
+    if (item.kind === "space" && item.spaceId) {
+      scrollToWorkspaceTarget(item.spaceId)
+    }
+  }
+
+  async function handleOpenStarredVault(vaultId: string) {
+    setActivePage("workspace")
+    await loadVaults(vaultId, { includeOpenedVaultInList: false })
+  }
+
+  async function handleUnstarResourceFromStarPage(sourceResourceId: string) {
+    try {
+      await apiRequest(`/resources/${sourceResourceId}/star`, {
+        method: "DELETE",
+      })
+      setStarredResources((current) =>
+        current.filter((item) => item.sourceResourceId !== sourceResourceId)
+      )
+      setSets((currentSets) =>
+        currentSets.map((set) => ({
+          ...set,
+          resources: set.resources.map((resource) =>
+            resource.id === sourceResourceId ? { ...resource, isStarred: false } : resource
+          ),
+        }))
+      )
+      toast.success("已取消收藏")
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "Failed to unstar resource.")
     }
   }
 
@@ -647,9 +877,76 @@ export function VaultWorkspaceClient({
     await authClient.signOut()
     await session.refetch()
     setSets([])
+    setExternalActiveSet(null)
     setActiveSetId("")
     setSelectedResourceId("")
     router.refresh()
+  }
+
+  async function loadAuthPolicy() {
+    try {
+      const policy = await apiRequest<AuthPolicy>("/auth-policy")
+      setAuthPolicy(policy)
+      return policy
+    } catch (error) {
+      console.warn("Failed to load auth policy.", error)
+      return authPolicy
+    }
+  }
+
+  async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const email = authForm.email.trim()
+    const password = authForm.password
+    const name = authForm.name.trim()
+    if (!email) return
+    if (authMode !== "forgot-password" && !password) return
+    if (authMode === "sign-up" && !authPolicy.allowSignUp) {
+      setAuthError("注册已关闭。")
+      return
+    }
+    if (authMode === "sign-up" && !name) return
+
+    try {
+      setAuthError("")
+      if (authMode === "forgot-password") {
+        const result = await authClient.requestPasswordReset({
+          email,
+          redirectTo: `${window.location.origin}/auth/reset-password`,
+        })
+
+        if (result.error) {
+          setAuthError(result.error.message ?? "密码重置邮件发送失败，请稍后再试。")
+          return
+        }
+
+        setAuthForm(emptyAuthForm)
+        setAuthDialogOpen(false)
+        setAuthMode("sign-in")
+        toast.success("如果该邮箱存在，请查看密码重置邮件。")
+        return
+      }
+
+      const result =
+        authMode === "sign-up"
+          ? await authClient.signUp.email({ email, password, name })
+          : await authClient.signIn.email({ email, password })
+
+      if (result.error) {
+        setAuthError(result.error.message ?? "认证失败，请稍后再试。")
+        return
+      }
+
+      setAuthForm(emptyAuthForm)
+      setAuthDialogOpen(false)
+      await session.refetch()
+      toast.success(authMode === "sign-up" ? "注册成功，已登录" : "登录成功")
+      router.refresh()
+      if (!isShareMode) await loadVaults(activeSet?.id)
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "认证失败，请稍后再试。")
+    }
   }
 
   async function handleCreateSet(event: FormEvent<HTMLFormElement>) {
@@ -660,11 +957,31 @@ export function VaultWorkspaceClient({
 
     try {
       setApiError("")
+      if (setDialogMode === "edit") {
+        if (!activeSet) return
+
+        await apiRequest(`/vaults/${activeSet.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            title: name,
+            description: setForm.description.trim(),
+            cover: setForm.cover.trim(),
+            visibility: setForm.visibility === "password" ? "private" : setForm.visibility,
+          }),
+        })
+        setSetForm(emptySetForm)
+        setSetDialogOpen(false)
+        await loadVaults(activeSet.id)
+        toast.success("Vault 信息已保存")
+        return
+      }
+
       const created = await apiRequest<{ id: string; defaultSpaceId: string }>("/vaults", {
         method: "POST",
         body: JSON.stringify({
           title: name,
           description: setForm.description.trim(),
+          cover: setForm.cover.trim(),
           visibility: setForm.visibility === "password" ? "private" : setForm.visibility,
         }),
       })
@@ -673,8 +990,27 @@ export function VaultWorkspaceClient({
       setSetDialogOpen(false)
       await loadVaults(created.id)
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : "Failed to create vault.")
+      setApiError(error instanceof Error ? error.message : "Failed to save vault.")
     }
+  }
+
+  function openCreateVaultDialog() {
+    setSetDialogMode("create")
+    setSetForm(emptySetForm)
+    setSetDialogOpen(true)
+  }
+
+  function openEditVaultDialog() {
+    if (!activeSet) return
+
+    setSetDialogMode("edit")
+    setSetForm({
+      name: activeSet.name,
+      description: activeSet.description,
+      cover: activeSet.cover,
+      visibility: activeSet.visibility,
+    })
+    setSetDialogOpen(true)
   }
 
   async function handleCreateSpace(event: FormEvent<HTMLFormElement>) {
@@ -719,7 +1055,10 @@ export function VaultWorkspaceClient({
     if (!activeSet) return
 
     const title = resourceForm.title.trim()
-    const url = resourceForm.url.trim()
+    const url = createCloudDriveUrlWithPassword(
+      resourceForm.url,
+      resourceForm.extractionCode
+    )
     if (!url) return
 
     try {
@@ -744,11 +1083,15 @@ export function VaultWorkspaceClient({
         setSelectedResourceId(created.id)
       }, 1500)
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : "Failed to create resource.")
+      const message = error instanceof Error ? error.message : "Failed to create resource."
+      setApiError(message)
+      toast.error(message)
     }
   }
 
   function openResourceDialog() {
+    if (!canAddResource) return
+
     setResourceForm((form) => ({
       ...form,
       spaceId: activeSet?.spaces[0]?.id ?? "",
@@ -757,6 +1100,8 @@ export function VaultWorkspaceClient({
   }
 
   function openResourceDialogForSpace(spaceId: string) {
+    if (!canAddResource) return
+
     setResourceForm((form) => ({
       ...form,
       spaceId,
@@ -785,6 +1130,14 @@ export function VaultWorkspaceClient({
   }
 
   function handleSelectResource(resourceId: string) {
+    const resource = activeSet?.resources.find((item) => item.id === resourceId)
+    if (!resource || isResourceResolving(resource.metadataStatus)) return
+
+    const canEditResource =
+      isVaultOwner ||
+      Boolean(isVaultEditor && resource.createdBy && resource.createdBy === currentUserId)
+    if (!canEditResource) return
+
     setSelectedResourceId(resourceId)
     setResourceDetailsOpen(true)
   }
@@ -832,9 +1185,12 @@ export function VaultWorkspaceClient({
       })
       await loadVaults(activeSet.id)
       setSelectedResourceId(resourceId)
+      setResourceDetailsOpen(false)
     } catch (error) {
       setSets(previousSets)
-      setApiError(error instanceof Error ? error.message : "Failed to update resource.")
+      const message = error instanceof Error ? error.message : "Failed to update resource."
+      setApiError(message)
+      toast.error(message)
     } finally {
       setIsLoading(false)
     }
@@ -867,17 +1223,16 @@ export function VaultWorkspaceClient({
     )
 
     try {
-      await Promise.all(
-        resourcesToPersist.map((resource) =>
-          apiRequest(`/resources/${resource.id}`, {
-            method: "PATCH",
-            body: JSON.stringify({
-              spaceId: resource.spaceId,
-              position: resource.position,
-            }),
-          })
-        )
-      )
+      await apiRequest(`/vaults/${activeSet.id}/resources/reorder`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          items: resourcesToPersist.map((resource) => ({
+            id: resource.id,
+            spaceId: resource.spaceId,
+            position: resource.position,
+          })),
+        }),
+      })
       setSelectedResourceId(input.resourceId)
     } catch (error) {
       setSets(previousSets)
@@ -903,16 +1258,15 @@ export function VaultWorkspaceClient({
     )
 
     try {
-      await Promise.all(
-        nextSpaces.map((space) =>
-          apiRequest(`/vaults/${activeSet.id}/spaces/${space.id}`, {
-            method: "PATCH",
-            body: JSON.stringify({
-              position: space.position,
-            }),
-          })
-        )
-      )
+      await apiRequest(`/vaults/${activeSet.id}/spaces/reorder`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          items: nextSpaces.map((space) => ({
+            id: space.id,
+            position: space.position,
+          })),
+        }),
+      })
     } catch (error) {
       setSets(previousSets)
       setApiError(error instanceof Error ? error.message : "Failed to reorder space.")
@@ -998,71 +1352,145 @@ export function VaultWorkspaceClient({
     }
   }
 
+  function handleHomeNavigation() {
+    setActivePage("workspace")
+    router.push("/")
+  }
+
+  function handleOpenConsole() {
+    setActivePage("workspace")
+    router.push("/")
+  }
+
+  function handleTopbarPageChange(page: "workspace" | "star") {
+    if (isShareMode) {
+      router.push(page === "star" ? "/?page=star" : "/")
+      return
+    }
+
+    setActivePage(page)
+    const nextUrl = page === "star" ? "/?page=star" : "/"
+    window.history.replaceState(null, "", nextUrl)
+  }
+
   return (
-    <main className="fixed inset-0 grid h-dvh grid-cols-1 grid-rows-[52px_1fr] overflow-hidden bg-background text-foreground lg:grid-cols-[236px_1fr]">
+    <main className={`fixed inset-0 grid h-dvh grid-cols-1 grid-rows-[52px_1fr] overflow-hidden bg-background text-foreground ${isShareMode ? "" : "lg:grid-cols-[236px_1fr]"}`}>
       <VaultTopbar
+        activePage={activePage}
         currentUserName={currentUserName}
         isSignedIn={Boolean(currentUser)}
         isSessionPending={session.isPending}
         notifications={notifications}
-        onAuthOpen={() => router.refresh()}
+        onAuthOpen={() => void (async () => {
+          const policy = await loadAuthPolicy()
+          setAuthMode("sign-in")
+          setAuthError("")
+          setAuthPolicy(policy)
+          setAuthDialogOpen(true)
+        })()}
+        onHome={handleHomeNavigation}
         onNotificationsOpen={() => void handleOpenNotifications()}
+        onOpenConsole={handleOpenConsole}
+        onPageChange={handleTopbarPageChange}
         onQueryChange={setQuery}
+        onSearchSelect={(item) => void handleSearchSelect(item)}
         onSignOut={handleSignOut}
         query={query}
+        searchEnabled={!isShareMode}
+        showAuthEntry={authPolicy.reason !== "first-user"}
         unreadNotificationCount={unreadNotificationCount}
+        vaultSearchItems={getVaultSearchItems(sets, starredVaults)}
       />
-      <VaultSidebar
-        activeSetId={activeSet?.id ?? ""}
-        disabled={!currentUser}
-        onCreateVault={() => setSetDialogOpen(true)}
-        onSelectVault={(id) => void loadVaults(id)}
-        sets={sets}
-        starredVaults={starredVaults}
-        totalResources={totalResources}
-      />
-      <div className="h-full min-h-0 overflow-hidden">
-        <VaultDocument
-          activeSet={visibleActiveSet}
-          collaboratorsCount={collaborators.length}
-          commentBody={commentBody}
-          comments={comments}
-          isSignedIn={Boolean(currentUser)}
-          isVaultOwner={isVaultOwner}
-          onAddResource={openResourceDialog}
-          onAddResourceToSpace={openResourceDialogForSpace}
-          onAddSpace={openCreateSpaceDialog}
-          onCommentBodyChange={setCommentBody}
-          onDeleteResource={handleDeleteResource}
-          onDeleteSpace={handleDeleteSpace}
-          onFocusResourceComments={setSelectedResourceId}
-          onForkVault={handleForkVault}
-          onMoveResource={handleMoveResource}
-          onOpenSettings={openSettings}
-          onRequireSignIn={handleRequireSignIn}
-          onReorderSpace={handleReorderSpace}
-          onSelectResource={handleSelectResource}
-          onSubmitComment={handleCreateComment}
-          onToggleStar={handleToggleStar}
-          onEditSpace={openEditSpaceDialog}
-          onUpdateSpaceIcon={handleUpdateSpaceIcon}
-          pendingSubmissionCount={submissions.length}
-          selectedResourceId={selectedResource?.id}
-          shareSubmissionSlot={
-            initialData.shareSlug && activeSet?.collectionEnabled ? (
-              <ShareSubmissionDialog
-                slug={initialData.shareSlug}
-                spaces={activeSet.spaces}
-                turnstileSiteKey={initialData.turnstileSiteKey}
-              />
-            ) : null
+      {!isShareMode && (
+        <VaultSidebar
+          activeSetId={activeSet?.id ?? ""}
+          disabled={!currentUser}
+          mediaVisible={mediaVisible}
+          onMediaVisibleChange={handleMediaVisibleChange}
+          onCreateVault={openCreateVaultDialog}
+          onSelectStarredVault={(id) => void handleOpenStarredVault(id)}
+          onSelectVault={(id) => {
+            setActivePage("workspace")
+            void loadVaults(id)
+          }}
+          onSignOut={() => void handleSignOut()}
+          sets={sets}
+          starredVaults={starredVaults}
+          user={
+            currentUser
+              ? {
+                  email: currentUser.email,
+                  image: currentUserImage,
+                  name: currentUserName || "Nexus user",
+                }
+              : undefined
           }
         />
+      )}
+      <div className="h-full min-h-0 overflow-hidden">
+        {activePage === "star" && !isShareMode ? (
+          <StarPage
+            commentBody={commentBody}
+            commentsByResourceId={commentsByResourceId}
+            isSignedIn={Boolean(currentUser)}
+            mediaVisible={mediaVisible}
+            onCommentBodyChange={setCommentBody}
+            onResourceUnstar={(sourceResourceId) =>
+              void handleUnstarResourceFromStarPage(sourceResourceId)
+            }
+            resourceItems={starredResources}
+          />
+        ) : (
+          <VaultDocument
+            activeSet={visibleActiveSet}
+            collaboratorsCount={collaborators.length + (activeSet ? 1 : 0)}
+            commentBody={commentBody}
+            commentsByResourceId={commentsByResourceId}
+            canAddResource={canAddResource}
+            currentUserId={currentUserId}
+            isSignedIn={Boolean(currentUser)}
+            isVaultEditor={isVaultEditor}
+            isVaultOwner={isVaultOwner}
+            isShareMode={isShareMode}
+            mediaVisible={mediaVisible}
+            onAddResource={openResourceDialog}
+            onAddResourceToSpace={openResourceDialogForSpace}
+            onAddSpace={openCreateSpaceDialog}
+            onCommentBodyChange={setCommentBody}
+            onDeleteResource={handleDeleteResource}
+            onDeleteSpace={handleDeleteSpace}
+            onDeleteVault={handleDeleteVault}
+            onEditVault={openEditVaultDialog}
+            onFocusResourceComments={setSelectedResourceId}
+            onForkVault={handleForkVault}
+            onMoveResource={handleMoveResource}
+            onOpenSettings={openSettings}
+            onReorderSpace={handleReorderSpace}
+            onSelectResource={handleSelectResource}
+            onSubmitComment={handleCreateComment}
+            onToggleResourceStar={handleToggleResourceStar}
+            onToggleStar={handleToggleStar}
+            onToggleMediaVisibility={handleMediaVisibleChange}
+            onEditSpace={openEditSpaceDialog}
+            onUpdateSpaceIcon={handleUpdateSpaceIcon}
+            pendingSubmissionCount={submissions.length}
+            selectedResourceId={selectedResource?.id}
+            shareSubmissionSlot={
+              initialData.shareSlug && activeSet?.collectionEnabled ? (
+                <ShareSubmissionDialog
+                  slug={initialData.shareSlug}
+                  spaces={activeSet.spaces}
+                  turnstileSiteKey={initialData.turnstileSiteKey}
+                />
+              ) : null
+            }
+          />
+        )}
       </div>
 
       {isLoading && (
         <div className="pointer-events-none fixed bottom-4 left-1/2 z-40 w-[min(520px,calc(100vw-2rem))] -translate-x-1/2 rounded-card border border-line bg-ink-850 px-4 py-3 text-sm shadow-pop">
-          <p className="text-fg-muted">正在加载本地 D1 数据...</p>
+          <p className="text-fg-muted">正在加载...</p>
         </div>
       )}
 
@@ -1070,13 +1498,13 @@ export function VaultWorkspaceClient({
         activeTab={settingsTab}
         canDeleteVault={isVaultOwner}
         collectionEnabled={activeSet?.collectionEnabled ?? false}
-        collaboratorForm={collaboratorForm}
         collaborators={collaborators}
         isBusy={isLoading}
-        onCollaboratorFormChange={setCollaboratorForm}
+        nsfwEnabled={activeSet?.nsfwEnabled ?? true}
         onCollectionEnabledChange={(enabled) => void handleToggleCollection(enabled)}
+        onNsfwEnabledChange={(enabled) => void handleToggleVaultNsfw(enabled)}
         onOpenChange={setSettingsOpen}
-        onSubmitCollaborator={handleSaveCollaborator}
+        onRemoveCollaborator={(collaboratorId) => void handleRemoveCollaborator(collaboratorId)}
         onSubmitShare={handleSaveShare}
         onApproveSubmission={handleApproveSubmission}
         onDeleteVault={handleDeleteVault}
@@ -1084,6 +1512,7 @@ export function VaultWorkspaceClient({
         onTabChange={setSettingsTab}
         onVisibilityChange={(visibility) => setShare((value) => ({ ...value, visibility }))}
         open={settingsOpen}
+        ownerName={activeSet?.ownerName ?? "Owner"}
         password={sharePassword}
         setPassword={setSharePassword}
         share={share}
@@ -1092,7 +1521,7 @@ export function VaultWorkspaceClient({
       />
 
       <ResourceDetailsSheet
-        canEdit={Boolean(currentUser) && isVaultOwner}
+        canEdit={Boolean(currentUser) && canEditSelectedResource}
         isBusy={isLoading}
         onOpenChange={setResourceDetailsOpen}
         onSave={handleUpdateResource}
@@ -1103,8 +1532,15 @@ export function VaultWorkspaceClient({
 
       <CreateSetDialog
         form={setForm}
+        mode={setDialogMode}
         onFormChange={setSetForm}
-        onOpenChange={setSetDialogOpen}
+        onOpenChange={(open) => {
+          setSetDialogOpen(open)
+          if (!open) {
+            setSetDialogMode("create")
+            setSetForm(emptySetForm)
+          }
+        }}
         onSubmit={handleCreateSet}
         open={setDialogOpen}
       />
@@ -1130,19 +1566,39 @@ export function VaultWorkspaceClient({
         open={resourceDialogOpen}
         spaces={activeSet?.spaces ?? []}
       />
+      <AuthDialog
+        allowSignUp={authPolicy.allowSignUp}
+        error={authError}
+        form={authForm}
+        mode={authMode}
+        onErrorReset={() => setAuthError("")}
+        onFormChange={setAuthForm}
+        onModeChange={setAuthMode}
+        onOpenChange={setAuthDialogOpen}
+        onSubmit={handleAuthSubmit}
+        open={authDialogOpen}
+        registrationReason={authPolicy.reason}
+      />
     </main>
   )
+}
+
+function isResourceResolving(status: Resource["metadataStatus"]) {
+  return status === "pending" || status === "processing"
 }
 
 function mergeVaultListWithExisting(
   listItems: ResourceSet[],
   currentSets: ResourceSet[],
-  hydratedSet: ResourceSet
+  hydratedSet?: ResourceSet
 ) {
   const currentById = new Map(currentSets.map((set) => [set.id, set]))
+  const hasHydratedSet = hydratedSet
+    ? listItems.some((item) => item.id === hydratedSet.id)
+    : false
 
-  return listItems.map((item) => {
-    if (item.id === hydratedSet.id) return hydratedSet
+  const mergedItems = listItems.map((item) => {
+    if (hydratedSet && item.id === hydratedSet.id) return hydratedSet
 
     const existing = currentById.get(item.id)
     if (!existing) return item
@@ -1153,6 +1609,9 @@ function mergeVaultListWithExisting(
       resources: existing.resources,
     }
   })
+
+  if (!hydratedSet) return mergedItems
+  return hasHydratedSet ? mergedItems : [hydratedSet, ...mergedItems]
 }
 
 function markStarredSets(sets: ResourceSet[], starredVaults: StarredVaultItem[]) {
@@ -1162,6 +1621,79 @@ function markStarredSets(sets: ResourceSet[], starredVaults: StarredVaultItem[])
     ...set,
     isStarred: starredIds.has(set.id),
   }))
+}
+
+function getCommentsByResourceId(sets: ResourceSet[]) {
+  const entries = sets.flatMap((set) =>
+    set.resources.map((resource) => [resource.id, resource.comments ?? []] as const)
+  )
+
+  return Object.fromEntries(entries)
+}
+
+function getVaultSearchItems(
+  sets: ResourceSet[],
+  starredVaults: StarredVaultItem[]
+): VaultSearchItem[] {
+  const owned = sets.map((set) => ({
+    id: set.id,
+    vaultId: set.id,
+    title: set.name,
+    description: set.description,
+    kind: "vault" as const,
+  }))
+  const spaces = sets.flatMap((set) =>
+    set.spaces.map((space) => ({
+      id: space.id,
+      vaultId: set.id,
+      spaceId: space.id,
+      spaceName: space.name,
+      title: space.name,
+      description: space.description || set.name,
+      kind: "space" as const,
+      vaultName: set.name,
+    }))
+  )
+  const resources = sets.flatMap((set) =>
+    set.resources.map((resource) => {
+      const space = set.spaces.find((item) => item.id === resource.spaceId)
+
+      return {
+        id: resource.id,
+        vaultId: set.id,
+        spaceId: resource.spaceId,
+        spaceName: space?.name,
+        resourceId: resource.id,
+        title: resource.title,
+        description: resource.description || resource.url,
+        kind: "resource" as const,
+        vaultName: set.name,
+      }
+    })
+  )
+  const ownedIds = new Set(owned.map((item) => item.id))
+  const starred = starredVaults
+    .filter((vault) => !ownedIds.has(vault.id))
+    .map((vault) => ({
+      id: vault.id,
+      vaultId: vault.id,
+      title: vault.title,
+      description: vault.description,
+      kind: "starred" as const,
+      vaultName: vault.title,
+    }))
+
+  return [...resources, ...spaces, ...owned, ...starred]
+}
+
+function scrollToWorkspaceTarget(id: string) {
+  window.setTimeout(() => {
+    const target = document.getElementById(id)
+    target?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    })
+  }, 80)
 }
 
 function moveResourceInList(

@@ -10,12 +10,21 @@ import {
 } from "@/server/services/notification-service"
 import type { MetadataQueueMessage } from "@/server/services/resource-service"
 
+const METADATA_QUEUE_NAMES = new Set([
+  "nexus-vault-metadata-local",
+  "nexus-vault-metadata",
+])
+const NOTIFICATION_QUEUE_NAMES = new Set([
+  "nexus-vault-notifications-local",
+  "nexus-vault-notifications",
+])
+
 export default {
   ...nextWorker,
   async queue(batch: MessageBatch<unknown>, env: CloudflareEnv) {
     if (
-      batch.queue !== "nexus-vault-metadata-local" &&
-      batch.queue !== "nexus-vault-notifications-local"
+      !METADATA_QUEUE_NAMES.has(batch.queue) &&
+      !NOTIFICATION_QUEUE_NAMES.has(batch.queue)
     ) {
       await nextWorker.queue?.(batch, env)
       return
@@ -26,7 +35,7 @@ export default {
     await Promise.all(
       batch.messages.map(async (message) => {
         const body =
-          batch.queue === "nexus-vault-metadata-local"
+          METADATA_QUEUE_NAMES.has(batch.queue)
             ? parseMetadataQueueMessage(message.body)
             : parseNotificationQueueMessage(message.body)
         if (!body) {
@@ -106,7 +115,12 @@ function isResourceType(value: unknown): value is ResourceType {
     value === "magnet" ||
     value === "twitter" ||
     value === "baidu_pan" ||
+    value === "pan_115" ||
+    value === "pan_123" ||
     value === "quark_pan" ||
+    value === "uc_pan" ||
+    value === "xunlei_pan" ||
+    value === "pikpak" ||
     value === "onedrive" ||
     value === "google_drive" ||
     value === "dropbox" ||

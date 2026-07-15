@@ -1,8 +1,10 @@
 import { betterAuth } from "better-auth/minimal"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
+import { APIError, createAuthMiddleware } from "better-auth/api"
 
 import { betterAuthSchema } from "@nexus-vault/db/better-auth-schema"
 import { getDb } from "@nexus-vault/db"
+import { getRegistrationPolicy } from "./registration-policy"
 
 export function createAuth(
   env: CloudflareEnv,
@@ -40,9 +42,30 @@ export function createAuth(
       enabled: true,
       minPasswordLength: 8,
       autoSignIn: true,
+      sendResetPassword:
+        env.NEXTJS_ENV === "production"
+          ? undefined
+          : async ({ user, url }) => {
+              console.info(
+                `[NexusVault] Password reset link for ${user.email}: ${url}`
+              )
+            },
     },
     verification: {
       storeInDatabase: true,
+    },
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== "/sign-up/email") return
+
+        const policy = await getRegistrationPolicy(db, env)
+        if (policy.allowSignUp) return
+
+        throw APIError.from("FORBIDDEN", {
+          code: "REGISTRATION_DISABLED",
+          message: "User registration is disabled.",
+        })
+      }),
     },
     advanced: {
       useSecureCookies: env.NEXTJS_ENV === "production",

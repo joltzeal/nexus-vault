@@ -105,6 +105,43 @@ export async function archiveSpace(
   return { id: spaceId, archived: true }
 }
 
+export async function reorderSpaces(
+  db: Db,
+  vaultId: string,
+  input: {
+    items: Array<{
+      id: string
+      position: number
+    }>
+    actor?: Actor
+    userEmail?: string
+  }
+) {
+  await getVaultOrThrow(db, vaultId)
+  await requireVaultPermission(db, {
+    vaultId,
+    actor: input.actor,
+    userEmail: input.userEmail,
+    action: "space:update",
+  })
+
+  const now = new Date().toISOString()
+  if (input.items.length === 0) return { updated: 0 }
+
+  const statements = input.items.map((item) =>
+    db
+      .update(spaces)
+      .set({
+        position: item.position,
+        updatedAt: now,
+      })
+      .where(and(eq(spaces.id, item.id), eq(spaces.vaultId, vaultId), isNull(spaces.deletedAt)))
+  )
+  await db.batch(statements as [typeof statements[number], ...typeof statements])
+
+  return { updated: input.items.length }
+}
+
 export async function getSpaceInVaultOrThrow(db: Db, vaultId: string, spaceId: string) {
   const [space] = await db
     .select({ id: spaces.id })

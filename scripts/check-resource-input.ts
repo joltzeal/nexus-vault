@@ -8,8 +8,8 @@ const parsed = parseResourceInput({ url: input })
 assertEqual(parsed.type, "magnet", "type")
 assertEqual(
   parsed.url,
-  "A70D99267B66B600B6469DFC8884034EF8CAD98C",
-  "stored magnet hash"
+  "magnet:?xt=urn:btih:A70D99267B66B600B6469DFC8884034EF8CAD98C",
+  "stored clean magnet URL"
 )
 assertEqual(parsed.title, "激情骚麦", "display name title")
 assertEqual(parsed.metadata?.infoHash, "A70D99267B66B600B6469DFC8884034EF8CAD98C", "info hash")

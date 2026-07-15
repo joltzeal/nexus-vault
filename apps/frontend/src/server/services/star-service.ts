@@ -1,10 +1,17 @@
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm"
 
-import { stars, users, vaults } from "@nexus-vault/db/schema"
+import {
+  resourceMetadata,
+  starredResources,
+  stars,
+  users,
+  vaults,
+} from "@nexus-vault/db/schema"
 import type { Actor, Db } from "@/server/api/types"
 import { requireVaultRead } from "@/server/services/permission-service"
 import { ensureActorUser } from "@/server/services/user-service"
 import { getVaultOrThrow } from "@/server/services/vault-service"
+import { getResourceOrThrow } from "@/server/services/resource-service"
 import { newId } from "@/server/utils/id"
 
 export async function listStarredVaults(
@@ -104,6 +111,114 @@ export async function unstarVault(
   }
 
   return { starred: false }
+}
+
+export async function starResource(
+  db: Db,
+  resourceId: string,
+  input: {
+    actor: Actor
+  }
+) {
+  const resource = await getResourceOrThrow(db, resourceId)
+  await requireVaultRead(db, {
+    vaultId: resource.vaultId,
+    actor: input.actor,
+  })
+
+  const userId = await ensureActorUser(db, input.actor)
+  const [existing] = await db
+    .select({ id: starredResources.id })
+    .from(starredResources)
+    .where(
+      and(
+        eq(starredResources.userId, userId),
+        eq(starredResources.sourceResourceId, resourceId)
+      )
+    )
+    .limit(1)
+
+  if (!existing) {
+    const [metadata] = await db
+      .select({
+        provider: resourceMetadata.provider,
+        dataJson: resourceMetadata.dataJson,
+        errorMessage: resourceMetadata.errorMessage,
+      })
+      .from(resourceMetadata)
+      .where(eq(resourceMetadata.resourceId, resourceId))
+      .limit(1)
+
+    await db.insert(starredResources).values({
+      id: newId("resource_star"),
+      userId,
+      sourceResourceId: resource.id,
+      sourceVaultId: resource.vaultId,
+      sourceSpaceId: resource.spaceId,
+      type: resource.type,
+      title: resource.title,
+      description: resource.description,
+      url: resource.url,
+      metadataStatus: resource.metadataStatus,
+      metadataProvider: metadata?.provider,
+      metadataDataJson: metadata?.dataJson ?? "{}",
+      metadataErrorMessage: metadata?.errorMessage,
+      sourceCreatedAt: resource.createdAt,
+    })
+  }
+
+  return { starred: true }
+}
+
+export async function unstarResource(
+  db: Db,
+  resourceId: string,
+  input: {
+    actor: Actor
+  }
+) {
+  const userId = await ensureActorUser(db, input.actor)
+  await db
+    .delete(starredResources)
+    .where(
+      and(
+        eq(starredResources.userId, userId),
+        eq(starredResources.sourceResourceId, resourceId)
+      )
+    )
+
+  return { starred: false }
+}
+
+export async function listStarredResources(
+  db: Db,
+  input: {
+    actor: Actor
+  }
+) {
+  const userId = await ensureActorUser(db, input.actor)
+
+  return db
+    .select({
+      id: starredResources.id,
+      sourceResourceId: starredResources.sourceResourceId,
+      sourceVaultId: starredResources.sourceVaultId,
+      sourceSpaceId: starredResources.sourceSpaceId,
+      type: starredResources.type,
+      title: starredResources.title,
+      description: starredResources.description,
+      url: starredResources.url,
+      metadataStatus: starredResources.metadataStatus,
+      metadataProvider: starredResources.metadataProvider,
+      metadataDataJson: starredResources.metadataDataJson,
+      metadataErrorMessage: starredResources.metadataErrorMessage,
+      sourceCreatedAt: starredResources.sourceCreatedAt,
+      createdAt: starredResources.createdAt,
+    })
+    .from(starredResources)
+    .where(eq(starredResources.userId, userId))
+    .orderBy(desc(starredResources.createdAt))
+    .limit(100)
 }
 
 function orActor(actor: Actor) {

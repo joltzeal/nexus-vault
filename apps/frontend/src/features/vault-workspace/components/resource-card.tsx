@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react"
 import { useState } from "react"
+import { toast } from "sonner"
 
 import {
   AlertDialog,
@@ -37,11 +38,11 @@ import {
 import { MarkdownContent } from "@/features/vault-workspace/components/markdown-content"
 import { ResourceCommentsPreview } from "@/features/vault-workspace/components/resource-comments-preview"
 import { ResourceMediaGallery } from "@/features/vault-workspace/components/resource-media-gallery"
-import type { CommentItem } from "@/features/vault-workspace/components/vault-settings-sheet"
-import type { Resource } from "@/features/vault-workspace/types"
+import type { CommentItem, Resource } from "@/features/vault-workspace/types"
 import { cn } from "@/lib/utils"
 import {
   getMetadataState,
+  getResourceFaviconUrl,
   getResourceDescription,
   getResourceDisplayUrl,
   getResourceMedia,
@@ -70,15 +71,17 @@ export function ResourceCard({
   commentBody,
   disabled,
   index,
+  canEditResource,
   isActive,
   isSignedIn,
   isVaultOwner,
+  mediaVisible,
   onCommentBodyChange,
   onDelete,
   onFocusComments,
-  onRequireSignIn,
   onSelect,
   onSubmitComment,
+  onToggleStar,
   resource,
   spaceId,
 }: {
@@ -86,15 +89,17 @@ export function ResourceCard({
   commentBody: string
   disabled: boolean
   index: number
+  canEditResource: boolean
   isActive: boolean
   isSignedIn: boolean
   isVaultOwner: boolean
+  mediaVisible: boolean
   onCommentBodyChange: (value: string) => void
   onDelete: () => void
   onFocusComments: () => void
-  onRequireSignIn: () => void
   onSelect: () => void
   onSubmitComment: () => void
+  onToggleStar: () => void
   resource: Resource
   spaceId: string
 }) {
@@ -119,15 +124,20 @@ export function ResourceCard({
   const [externalOpen, setExternalOpen] = useState(false)
   const title = getResourceTitle(resource)
   const description = getResourceDescription(resource)
+  const descriptionStartsWithImage = startsWithMarkdownImage(description)
+  const collapsedDescriptionText = getCollapsedDescriptionText(description)
   const displayUrl = getResourceDisplayUrl(resource)
   const media = getResourceMedia(resource)
   const pills = getResourcePillItems(resource)
   const metadataState = getMetadataState(resource.metadataStatus)
   const iconName = getResourceIconName(resource)
+  const iconSrc = getResourceFaviconUrl(resource)
+  const iconLabel = resource.type === "http" ? "WEB" : "LINK"
   const showComments = comments.length > 0 || (isActive && commentsOpen)
   const showComposer = isActive && commentsOpen
-  const copyDisplayUrl = () => {
-    void navigator.clipboard?.writeText(displayUrl)
+  const copyDisplayUrl = async () => {
+    await navigator.clipboard?.writeText(displayUrl)
+    toast.success("链接已复制")
   }
   const copyPillValue = (value: string) => {
     void navigator.clipboard?.writeText(value)
@@ -139,6 +149,7 @@ export function ResourceCard({
         "group/resource-card flex min-w-0 flex-col gap-1 rounded-card border border-line bg-ink-800 px-3.5 py-3 transition hover:border-ink-700 hover:bg-ink-750",
         isActive && "border-jade-dim bg-ink-750 shadow-[0_0_0_1px_var(--jade-dim)]"
       )}
+      id={`resource-${resource.id}`}
       ref={ref}
     >
       <div className="flex min-w-0 items-center gap-2">
@@ -152,25 +163,33 @@ export function ResourceCard({
             <ResourceIcon
               className="transition group-hover/resource-card:opacity-0"
               iconName={iconName}
+              iconSrc={iconSrc}
+              label={iconLabel}
             />
             <GripVertical className="absolute size-4 text-fg-faint opacity-0 transition group-hover/resource-card:opacity-100" />
             <span className="sr-only">拖动排序资源</span>
           </button>
         ) : (
           <span className="relative grid size-[30px] shrink-0 place-items-center overflow-hidden rounded-input border border-line bg-ink-700">
-            <ResourceIcon iconName={iconName} />
+            <ResourceIcon iconName={iconName} iconSrc={iconSrc} label={iconLabel} />
           </span>
         )}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                className="min-w-0 flex-1 truncate text-left text-[14.5px] font-semibold text-fg hover:text-jade-bright"
-                onClick={onSelect}
-                type="button"
-              >
-                {title}
-              </button>
+              {canEditResource ? (
+                <button
+                  className="min-w-0 flex-1 truncate text-left text-[14.5px] font-semibold text-fg hover:text-jade-bright"
+                  onClick={onSelect}
+                  type="button"
+                >
+                  {title}
+                </button>
+              ) : (
+                <span className="min-w-0 flex-1 truncate text-left text-[14.5px] font-semibold text-fg">
+                  {title}
+                </span>
+              )}
             </TooltipTrigger>
             <TooltipContent className="max-w-[360px] break-words" side="top" sideOffset={6}>
               {title}
@@ -185,22 +204,29 @@ export function ResourceCard({
           <span className="sr-only">{metadataState.label}</span>
         </span>
         <div className="mono flex shrink-0 items-center gap-1.5 text-[10px] text-fg-dim">
-          <span className="inline-flex items-center gap-0.5 [&_svg]:size-3">
-            <Star />
-            0
-          </span>
+          <Button
+            className={cn(
+              "h-5 gap-0.5 rounded-sm px-1 text-[10px] text-fg-dim [&_svg]:size-3",
+              resource.isStarred && "text-jade"
+            )}
+            disabled={!isSignedIn}
+            size="xs"
+            variant="ghost"
+            onClick={onToggleStar}
+            type="button"
+          >
+            <Star className={cn(resource.isStarred && "fill-current")} />
+            <span className="sr-only">{resource.isStarred ? "取消收藏资源" : "收藏资源"}</span>
+          </Button>
           <Button
             className={cn(
               "h-5 gap-0.5 rounded-sm px-1 text-[10px] text-fg-dim [&_svg]:size-3",
               showComposer && "bg-ink-700 text-jade"
             )}
+            disabled={!isSignedIn}
             size="xs"
             variant="ghost"
             onClick={() => {
-              if (!isSignedIn) {
-                onRequireSignIn()
-                return
-              }
               onFocusComments()
               setCommentsOpen((value) => (isActive ? !value : true))
             }}
@@ -210,7 +236,7 @@ export function ResourceCard({
             <span>{comments.length}</span>
             <span className="sr-only">展开评论</span>
           </Button>
-          {isVaultOwner && (
+          {canEditResource && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
@@ -252,54 +278,53 @@ export function ResourceCard({
               pill={pill}
             />
           ))}
-          <span className="mono min-w-0 max-w-full truncate rounded-input border border-line bg-ink-900 px-2 py-1 text-[10.5px] text-fg-muted md:max-w-[520px]">
+          <button
+            className="mono min-w-0 max-w-full truncate rounded-input border border-line bg-ink-900 px-2 py-1 text-left text-[10.5px] text-fg-muted transition hover:text-jade hover:underline md:max-w-[520px]"
+            onClick={() => void copyDisplayUrl()}
+            title="点击复制链接"
+            type="button"
+          >
             {displayUrl}
-          </span>
-          <button className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-fg-dim transition hover:bg-ink-700 hover:text-jade [&_svg]:size-3" onClick={copyDisplayUrl} type="button">
-            <Copy />
-            <span className="sr-only">复制链接</span>
           </button>
-          {isHttpResource(resource) && (
-            <AlertDialog open={externalOpen} onOpenChange={setExternalOpen}>
-              <AlertDialogTrigger asChild>
-                <button
-                  className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-fg-dim transition hover:bg-ink-700 hover:text-jade [&_svg]:size-3"
-                  type="button"
+          <AlertDialog open={externalOpen} onOpenChange={setExternalOpen}>
+            <AlertDialogTrigger asChild>
+              <button
+                className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-fg-dim transition hover:bg-ink-700 hover:text-jade [&_svg]:size-3"
+                type="button"
+              >
+                <ExternalLink />
+                <span className="sr-only">打开源链接</span>
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>即将打开外部链接</AlertDialogTitle>
+                <AlertDialogDescription>
+                  你将离开 NexusVault 并访问第三方站点。请确认链接来源可信后再继续。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="mono max-w-full truncate rounded-input border border-line bg-ink-900 px-2.5 py-2 text-[11px] text-fg-dim">
+                {displayUrl}
+              </div>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    window.open(displayUrl, "_blank", "noopener,noreferrer")
+                  }}
                 >
-                  <ExternalLink />
-                  <span className="sr-only">打开源链接</span>
-                </button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>即将打开外部链接</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    你将离开 NexusVault 并访问第三方站点。请确认链接来源可信后再继续。
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <div className="mono max-w-full truncate rounded-input border border-line bg-ink-900 px-2.5 py-2 text-[11px] text-fg-dim">
-                  {displayUrl}
-                </div>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>取消</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => {
-                      window.open(displayUrl, "_blank", "noopener,noreferrer")
-                    }}
-                  >
-                    继续打开
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
+                  继续打开
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 
       {description && (
         <div
           className={cn(
-            "mt-1 min-w-0 cursor-pointer rounded-input border border-transparent px-2 py-1 text-left outline-none transition hover:border-line hover:bg-ink-850 focus-visible:border-jade-dim focus-visible:shadow-[0_0_0_3px_var(--jade-glow)]",
+            "mt-1 min-w-0 cursor-pointer rounded-input border border-line-soft bg-ink-850/45 px-2 py-1 text-left outline-none transition hover:border-line hover:bg-ink-850 focus-visible:border-jade-dim focus-visible:shadow-[0_0_0_3px_var(--jade-glow)]",
             descriptionOpen && "border-line bg-ink-850"
           )}
           onClick={(event) => {
@@ -314,23 +339,27 @@ export function ResourceCard({
           role="button"
           tabIndex={0}
         >
-          <MarkdownContent
-            className={cn(
-              "min-w-0 text-fg-muted",
-              descriptionOpen && "gap-1.5"
-            )}
-            singleLine={!descriptionOpen}
-            value={description}
-          />
+          {!descriptionOpen ? (
+            <span className="block truncate text-xs leading-5 text-fg-dim">
+              {descriptionStartsWithImage || !collapsedDescriptionText
+                ? "展开描述"
+                : collapsedDescriptionText}
+            </span>
+          ) : (
+            <MarkdownContent
+              className="min-w-0 gap-1.5 text-fg-muted"
+              value={description}
+            />
+          )}
         </div>
       )}
 
-      <ResourceMediaGallery media={media} title={title} />
+      {mediaVisible && <ResourceMediaGallery media={media} title={title} />}
 
       {showComments && (
         <ResourceCommentsPreview
           body={commentBody}
-          comments={isActive ? comments : []}
+          comments={comments}
           disabled={disabled || !isSignedIn}
           onBodyChange={onCommentBodyChange}
           onSubmit={onSubmitComment}
@@ -339,6 +368,40 @@ export function ResourceCard({
       )}
     </article>
   )
+}
+
+function startsWithMarkdownImage(value: string) {
+  const firstLine = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean)
+
+  if (!firstLine) return false
+
+  return /^!\[[^\]]*]\([^)]+\)/.test(firstLine) || /^<img\b/i.test(firstLine)
+}
+
+function getCollapsedDescriptionText(value: string) {
+  const firstLine = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean)
+
+  if (!firstLine) return ""
+
+  return firstLine
+    .replace(/<img\b[^>]*>/gi, "")
+    .replace(/!\[[^\]]*]\([^)]+\)/g, "")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^#{1,6}\s+/, "")
+    .replace(/^>\s?/, "")
+    .replace(/^[-*+]\s+/, "")
+    .replace(/^\d+[.)]\s+/, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/[*_~]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
 }
 
 function ResourceMetadataPill({
@@ -396,12 +459,31 @@ function getPillIndicatorVariant(status: Extract<ResourcePillItem, { kind: "stat
 function ResourceIcon({
   className,
   iconName,
+  iconSrc,
+  label = "LINK",
 }: {
   className?: string
   iconName?: ResourceIconName
+  iconSrc?: string
+  label?: string
 }) {
+  const [failed, setFailed] = useState(false)
+
+  if (iconSrc && !failed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        alt=""
+        aria-hidden="true"
+        className={cn("size-[18px] rounded-[3px] object-contain", className)}
+        onError={() => setFailed(true)}
+        src={iconSrc}
+      />
+    )
+  }
+
   if (!iconName) {
-    return <span className={cn("mono text-[10px] font-semibold text-fg-dim", className)}>LINK</span>
+    return <span className={cn("mono text-[10px] font-semibold text-fg-dim", className)}>{label}</span>
   }
 
   return (
@@ -428,11 +510,6 @@ function getResourceIconName(resource: Resource): ResourceIconName | undefined {
   if (protocol === "thunder") return RESOURCE_ICON_MAP.thunder
 
   return undefined
-}
-
-function isHttpResource(resource: Resource) {
-  return resource.url.trim().toLowerCase().startsWith("http://") ||
-    resource.url.trim().toLowerCase().startsWith("https://")
 }
 
 function getResourceProtocol(url: string) {

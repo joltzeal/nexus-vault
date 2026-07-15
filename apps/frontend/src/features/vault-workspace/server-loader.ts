@@ -8,6 +8,10 @@ import { mapVaultDetail, mapVaultListItem } from "@/features/vault-workspace/map
 import type { VaultWorkspaceInitialData } from "@/features/vault-workspace/types"
 
 export async function loadVaultWorkspace(): Promise<VaultWorkspaceInitialData> {
+  let actorId: string | undefined
+  let actorEmail: string | undefined
+  let actorName: string | null | undefined
+
   try {
     const cloudflare = await getCloudflareContext({ async: true })
     const db = getDb(cloudflare.env.DB)
@@ -23,8 +27,16 @@ export async function loadVaultWorkspace(): Promise<VaultWorkspaceInitialData> {
             name: session.user.name,
           }
         : undefined
-    const actorEmail = actor?.email
-    const actorName = actor?.name
+    actorEmail = actor?.email
+    actorName = actor?.name
+    actorId = actor?.id
+    if (!actor) {
+      return {
+        sets: [],
+        activeSetId: "",
+      }
+    }
+
     const vaultRows = await listVaults(db, { actor })
     const activeVaultId = vaultRows[0]?.id
 
@@ -32,6 +44,7 @@ export async function loadVaultWorkspace(): Promise<VaultWorkspaceInitialData> {
       return {
         sets: [],
         activeSetId: "",
+        actorId,
         actorEmail,
         actorName,
       }
@@ -45,6 +58,7 @@ export async function loadVaultWorkspace(): Promise<VaultWorkspaceInitialData> {
         vault.id === hydratedSet.id ? hydratedSet : mapVaultListItem(vault)
       ),
       activeSetId: hydratedSet.id,
+      actorId,
       actorEmail,
       actorName,
     }
@@ -52,6 +66,9 @@ export async function loadVaultWorkspace(): Promise<VaultWorkspaceInitialData> {
     return {
       sets: [],
       activeSetId: "",
+      actorId,
+      actorEmail,
+      actorName,
       error: error instanceof Error ? error.message : "Failed to load workspace.",
     }
   }

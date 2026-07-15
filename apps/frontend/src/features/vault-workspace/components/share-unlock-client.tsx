@@ -37,6 +37,7 @@ export function ShareUnlockClient({
           description: string
           visibility: Visibility
           collectionEnabled: boolean
+          nsfwEnabled?: boolean
           createdAt: string
         }
         spaces: Space[]
@@ -60,6 +61,7 @@ export function ShareUnlockClient({
         initialData={{
           sets: [set],
           activeSetId: set.id,
+          mode: "share",
           shareSlug: slug,
           turnstileSiteKey,
         }}

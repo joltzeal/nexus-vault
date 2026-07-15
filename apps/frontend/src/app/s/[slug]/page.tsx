@@ -59,6 +59,7 @@ export default async function SharePage({
       initialData={{
         sets: [hydratedSet],
         activeSetId: hydratedSet.id,
+        mode: "share",
         shareSlug: slug,
         turnstileSiteKey,
       }}

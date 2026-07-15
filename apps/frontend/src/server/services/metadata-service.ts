@@ -5,10 +5,12 @@ import { resourceMetadata, resources } from "@nexus-vault/db/schema"
 import { createBaseResourceMetadata } from "@nexus-vault/shared/resource-metadata"
 import { getMetadataProvider } from "@nexus-vault/providers"
 import type { Actor, ApiEnv, Db } from "@/server/api/types"
-import { requireVaultPermission } from "@/server/services/permission-service"
 import { processNotificationMessage } from "@/server/services/notification-service"
 import type { MetadataQueueMessage } from "@/server/services/resource-service"
-import { getResourceOrThrow } from "@/server/services/resource-service"
+import {
+  getResourceOrThrow,
+  requireResourceMutationPermission,
+} from "@/server/services/resource-service"
 
 export function enqueueMetadataTask(
   c: Context<ApiEnv>,
@@ -35,11 +37,7 @@ export async function resolveResourceMetadata(
 ) {
   const resource = await getResourceOrThrow(db, resourceId)
   if (options.actor) {
-    await requireVaultPermission(db, {
-      vaultId: resource.vaultId,
-      actor: options.actor,
-      action: "resource:update",
-    })
+    await requireResourceMutationPermission(db, resource, options.actor)
   }
 
   await db
@@ -52,6 +50,9 @@ export async function resolveResourceMetadata(
     .resolve(resource, {
       twitterRequestProxyUrl: getTwitterRequestProxyUrl(options.env),
       twitterCookieString: getTwitterCookieString(options.env),
+      captureHttpScreenshot: options.env
+        ? (input) => captureHttpScreenshot(options.env, input)
+        : undefined,
     })
     .catch((error: unknown) => ({
     provider: provider.name,
@@ -143,6 +144,71 @@ function getTwitterRequestProxyUrl(env?: CloudflareEnv) {
 
 function getTwitterCookieString(env?: CloudflareEnv) {
   return getRuntimeBinding(env, "TWITTER_COOKIE_STRING")
+}
+
+async function captureHttpScreenshot(
+  env: CloudflareEnv | undefined,
+  input: {
+    resourceId: string
+    title: string
+    url: string
+  }
+) {
+  if (!env?.MEDIA) {
+    throw new Error("R2 MEDIA binding is not configured.")
+  }
+
+  const token = getRuntimeBinding(env, "BROWSERLESS_TOKEN")
+  if (!token) {
+    throw new Error("BROWSERLESS_TOKEN is not configured.")
+  }
+
+  const endpoint =
+    getRuntimeBinding(env, "BROWSERLESS_SCREENSHOT_ENDPOINT") ??
+    "https://production-sfo.browserless.io/screenshot"
+  const screenshotUrl = new URL(endpoint)
+  screenshotUrl.searchParams.set("token", token)
+
+  const response = await fetch(screenshotUrl.toString(), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      url: input.url,
+      options: {
+        fullPage: true,
+        type: "png",
+      },
+      waitForTimeout: 5000,
+      // blockAds: true,
+    }),
+    signal: AbortSignal.timeout(20000),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Browserless screenshot failed with HTTP ${response.status}.`)
+  }
+
+  const image = await response.arrayBuffer()
+  if (image.byteLength === 0) {
+    throw new Error("Browserless screenshot returned an empty image.")
+  }
+
+  const key = `screenshots/${input.resourceId}/${Date.now()}.png`
+  await env.MEDIA.put(key, image, {
+    httpMetadata: {
+      contentType: "image/png",
+      cacheControl: "public, max-age=31536000, immutable",
+    },
+    customMetadata: {
+      resourceId: input.resourceId,
+      sourceUrl: input.url,
+      title: input.title.slice(0, 256),
+    },
+  })
+
+  return `/api/v1/media/${key}`
 }
 
 function getRuntimeBinding(env: CloudflareEnv | undefined, name: string) {

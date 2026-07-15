@@ -14,6 +14,7 @@ export const vaults = sqliteTable("vaults", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description").notNull().default(""),
+  cover: text("cover").notNull().default(""),
   visibility: text("visibility", {
     enum: ["public", "private", "password"],
   })
@@ -23,6 +24,9 @@ export const vaults = sqliteTable("vaults", {
   collectionEnabled: integer("collection_enabled", { mode: "boolean" })
     .notNull()
     .default(false),
+  nsfwEnabled: integer("nsfw_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
   ownerId: text("owner_id").references(() => users.id, { onDelete: "set null" }),
   starCount: integer("star_count").notNull().default(0),
   forkCount: integer("fork_count").notNull().default(0),
@@ -57,7 +61,12 @@ export const resources = sqliteTable("resources", {
       "magnet",
       "twitter",
       "baidu_pan",
+      "pan_115",
+      "pan_123",
       "quark_pan",
+      "uc_pan",
+      "xunlei_pan",
+      "pikpak",
       "onedrive",
       "google_drive",
       "dropbox",
@@ -103,7 +112,12 @@ export const resourceSubmissions = sqliteTable(
         "magnet",
         "twitter",
         "baidu_pan",
+        "pan_115",
+        "pan_123",
         "quark_pan",
+        "uc_pan",
+        "xunlei_pan",
+        "pikpak",
         "onedrive",
         "google_drive",
         "dropbox",
@@ -163,7 +177,7 @@ export const collaborators = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    role: text("role", { enum: ["owner", "admin", "editor", "viewer"] }).notNull(),
+    role: text("role", { enum: ["editor"] }).notNull().default("editor"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
     updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
@@ -226,6 +240,60 @@ export const stars = sqliteTable(
     vaultUserUnique: uniqueIndex("stars_vault_user_unique").on(
       table.vaultId,
       table.userId
+    ),
+  })
+)
+
+export const starredResources = sqliteTable(
+  "starred_resources",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    sourceResourceId: text("source_resource_id").notNull(),
+    sourceVaultId: text("source_vault_id").notNull(),
+    sourceSpaceId: text("source_space_id"),
+    type: text("type", {
+      enum: [
+        "magnet",
+        "twitter",
+        "baidu_pan",
+        "pan_115",
+        "pan_123",
+        "quark_pan",
+        "uc_pan",
+        "xunlei_pan",
+        "pikpak",
+        "onedrive",
+        "google_drive",
+        "dropbox",
+        "alist",
+        "http",
+        "youtube",
+        "other",
+      ],
+    }).notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    url: text("url").notNull(),
+    metadataStatus: text("metadata_status", {
+      enum: ["pending", "processing", "completed", "failed"],
+    })
+      .notNull()
+      .default("pending"),
+    metadataProvider: text("metadata_provider"),
+    metadataDataJson: text("metadata_data_json").notNull().default("{}"),
+    metadataErrorMessage: text("metadata_error_message"),
+    sourceCreatedAt: text("source_created_at"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    userSourceUnique: uniqueIndex("starred_resources_user_source_unique").on(
+      table.userId,
+      table.sourceResourceId
+    ),
+    userCreatedIdx: index("starred_resources_user_created_idx").on(
+      table.userId,
+      table.createdAt
     ),
   })
 )

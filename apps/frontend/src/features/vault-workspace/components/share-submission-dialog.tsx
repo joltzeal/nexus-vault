@@ -3,6 +3,11 @@
 import { LinkIcon, Send } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
+import {
+  createCloudDriveUrlWithPassword,
+  getCloudDriveProviderLabel,
+  parseCloudDriveLink,
+} from "@nexus-vault/shared/resource-input"
 
 import { TurnstileField } from "@/components/turnstile-field"
 import { Button } from "@/components/ui/button"
@@ -47,12 +52,15 @@ export function ShareSubmissionDialog({
   const [form, setForm] = useState({
     spaceId: spaces[0]?.id ?? "",
     url: "",
+    extractionCode: "",
     title: "",
     description: "",
   })
+  const cloudDrive = parseCloudDriveLink(form.url, form.extractionCode)
 
   async function handleSubmit() {
     if (!form.url.trim() || !turnstileToken) return
+    const url = createCloudDriveUrlWithPassword(form.url, form.extractionCode)
 
     try {
       setIsBusy(true)
@@ -61,7 +69,7 @@ export function ShareSubmissionDialog({
         body: JSON.stringify({
           ...(form.spaceId ? { spaceId: form.spaceId } : {}),
           ...(form.title.trim() ? { title: form.title.trim() } : {}),
-          url: form.url.trim(),
+          url,
           description: form.description.trim(),
           turnstileToken,
         }),
@@ -70,6 +78,7 @@ export function ShareSubmissionDialog({
       setForm((value) => ({
         ...value,
         url: "",
+        extractionCode: "",
         title: "",
         description: "",
       }))
@@ -86,6 +95,20 @@ export function ShareSubmissionDialog({
   function resetTurnstile() {
     setTurnstileToken("")
     setTurnstileResetSignal((value) => value + 1)
+  }
+
+  function handleUrlChange(url: string) {
+    const currentCloudDrive = parseCloudDriveLink(form.url)
+    const parsedCloudDrive = parseCloudDriveLink(url)
+    const shouldResetExtractionCode =
+      !parsedCloudDrive || parsedCloudDrive.provider !== currentCloudDrive?.provider
+
+    setForm((value) => ({
+      ...value,
+      url,
+      extractionCode:
+        parsedCloudDrive?.password ?? (shouldResetExtractionCode ? "" : value.extractionCode),
+    }))
   }
 
   return (
@@ -143,10 +166,26 @@ export function ShareSubmissionDialog({
               <Input
                 id="submission-url"
                 value={form.url}
-                onChange={(event) => setForm((value) => ({ ...value, url: event.target.value }))}
+                onChange={(event) => handleUrlChange(event.target.value)}
                 placeholder="https://..."
               />
             </Field>
+            {cloudDrive && (
+              <Field>
+                <FieldLabel htmlFor="submission-extraction-code">
+                  {getCloudDriveProviderLabel(cloudDrive.provider)}提取码
+                </FieldLabel>
+                <Input
+                  className="mono"
+                  id="submission-extraction-code"
+                  value={form.extractionCode}
+                  onChange={(event) =>
+                    setForm((value) => ({ ...value, extractionCode: event.target.value }))
+                  }
+                  placeholder="没有提取码可留空"
+                />
+              </Field>
+            )}
             <Field>
               <FieldLabel htmlFor="submission-title">标题</FieldLabel>
               <Input

@@ -2,7 +2,12 @@ export type ResourceType =
   | "magnet"
   | "twitter"
   | "baidu_pan"
+  | "pan_115"
+  | "pan_123"
   | "quark_pan"
+  | "uc_pan"
+  | "xunlei_pan"
+  | "pikpak"
   | "onedrive"
   | "google_drive"
   | "dropbox"
@@ -55,15 +60,25 @@ export type ParsedHttpLink = {
 }
 
 export type ParsedCloudDriveLink = ParsedHttpLink & {
-  provider: "baidu_pan" | "quark_pan"
+  provider: CloudDriveProvider
   password?: string
   shareId?: string
 }
+
+export type CloudDriveProvider =
+  | "baidu_pan"
+  | "pan_115"
+  | "pan_123"
+  | "quark_pan"
+  | "uc_pan"
+  | "xunlei_pan"
+  | "pikpak"
 
 export type ResourceInputParserInput = {
   type?: ResourceType
   title?: string
   url: string
+  extractionCode?: string
 }
 
 export interface ResourceInputParser {
@@ -188,31 +203,50 @@ export function parseTwitterLink(url: string): ParsedTwitterLink | null {
   }
 }
 
-export function parseCloudDriveLink(url: string): ParsedCloudDriveLink | null {
+export function parseCloudDriveLink(
+  url: string,
+  extractionCode?: string
+): ParsedCloudDriveLink | null {
   const parsedUrl = parseHttpUrl(url)
   if (!parsedUrl) return null
 
   const host = normalizeHostname(parsedUrl.hostname)
-  if (host === "pan.baidu.com") {
-    return {
-      provider: "baidu_pan",
-      host,
-      url: parsedUrl.toString(),
-      password: getCloudDrivePassword(parsedUrl),
-      shareId: getCloudDriveShareId(parsedUrl),
-    }
-  }
-  if (host === "pan.quark.cn") {
-    return {
-      provider: "quark_pan",
-      host,
-      url: parsedUrl.toString(),
-      password: getCloudDrivePassword(parsedUrl),
-      shareId: getCloudDriveShareId(parsedUrl),
-    }
-  }
+  const config = cloudDriveConfigs.find((item) => item.matchesHost(host))
+  if (!config) return null
 
-  return null
+  const shareId = getCloudDriveShareId(parsedUrl)
+  if (!shareId) return null
+
+  const password = getCloudDrivePassword(parsedUrl, extractionCode)
+
+  return {
+    provider: config.provider,
+    host,
+    url: createCloudDriveUrl(parsedUrl, config, password),
+    password,
+    shareId,
+  }
+}
+
+export function isCloudDriveResourceType(type: ResourceType): type is CloudDriveProvider {
+  return cloudDriveConfigs.some((item) => item.provider === type)
+}
+
+export function isCloudDriveLink(url: string) {
+  return parseCloudDriveLink(url) !== null
+}
+
+export function getCloudDriveProviderLabel(provider: CloudDriveProvider) {
+  return cloudDriveConfigs.find((item) => item.provider === provider)?.label ?? "网盘"
+}
+
+export function getCloudDrivePasswordParam(provider: CloudDriveProvider) {
+  return cloudDriveConfigs.find((item) => item.provider === provider)?.passwordParam ?? "passcode"
+}
+
+export function createCloudDriveUrlWithPassword(url: string, password: string) {
+  const parsed = parseCloudDriveLink(url, password)
+  return parsed?.url ?? url.trim()
 }
 
 export function parseHttpLink(url: string): ParsedHttpLink | null {
@@ -228,10 +262,23 @@ export function parseHttpLink(url: string): ParsedHttpLink | null {
 function defaultResourceTitle(type: ResourceType) {
   if (type === "magnet") return "名称未知"
   if (type === "twitter") return "Untitled tweet"
-  if (type === "baidu_pan") return "百度网盘"
-  if (type === "quark_pan") return "夸克网盘"
+  if (isCloudDriveResourceType(type)) return getCloudDriveProviderLabel(type)
   if (type === "http") return "Untitled link"
   return "Untitled resource"
+}
+
+function normalizeInputTitle(value?: string) {
+  const title = value?.trim()
+  if (!title) return ""
+
+  const fallbackTitles = new Set([
+    "名称未知",
+    "untitled resource",
+    "untitled link",
+    "untitled tweet",
+  ])
+
+  return fallbackTitles.has(title.toLowerCase()) ? "" : title
 }
 
 function createParsedResourceInput(
@@ -242,7 +289,7 @@ function createParsedResourceInput(
   return {
     type,
     url: input.url.trim(),
-    title: input.title?.trim() || defaultResourceTitle(type),
+    title: normalizeInputTitle(input.title) || defaultResourceTitle(type),
     metadata,
   }
 }
@@ -250,7 +297,11 @@ function createParsedResourceInput(
 export const magnetInputParser: ResourceInputParser = {
   name: "magnet",
   supports(input) {
-    return input.type === "magnet" || input.url.trim().toLowerCase().startsWith("magnet:?")
+    return (
+      input.type === "magnet" ||
+      input.url.trim().toLowerCase().startsWith("magnet:?") ||
+      normalizeInfoHash(input.url) !== null
+    )
   },
   parse(input) {
     const parsed = parseMagnetLink(input.url)
@@ -261,8 +312,8 @@ export const magnetInputParser: ResourceInputParser = {
 
     return {
       type: "magnet",
-      url: parsed.infoHash,
-      title: input.title?.trim() || parsed.displayName || defaultResourceTitle("magnet"),
+      url: createCanonicalMagnetUrl(parsed.infoHash),
+      title: normalizeInputTitle(input.title) || parsed.displayName || defaultResourceTitle("magnet"),
       metadata: {
         infoHash: parsed?.infoHash,
         displayName: parsed?.displayName,
@@ -282,7 +333,10 @@ export const ed2kInputParser: ResourceInputParser = {
     return {
       type: input.type ?? "other",
       url: input.url.trim(),
-      title: input.title?.trim() || parsed?.fileName || defaultResourceTitle(input.type ?? "other"),
+      title:
+        normalizeInputTitle(input.title) ||
+        parsed?.fileName ||
+        defaultResourceTitle(input.type ?? "other"),
       metadata: {
         protocol: "ed2k",
         ...(parsed
@@ -306,8 +360,7 @@ export const httpInputParser: ResourceInputParser = {
     return (
       input.type === "http" ||
       input.type === "twitter" ||
-      input.type === "baidu_pan" ||
-      input.type === "quark_pan" ||
+      Boolean(input.type && isCloudDriveResourceType(input.type)) ||
       parseHttpLink(input.url) !== null
     )
   },
@@ -317,7 +370,7 @@ export const httpInputParser: ResourceInputParser = {
       return {
         type: "twitter",
         url: twitter?.url ?? input.url.trim(),
-        title: input.title?.trim() || defaultResourceTitle("twitter"),
+        title: normalizeInputTitle(input.title) || defaultResourceTitle("twitter"),
         metadata: {
           ...(twitter
             ? {
@@ -329,21 +382,21 @@ export const httpInputParser: ResourceInputParser = {
       }
     }
 
-    const cloudDrive = parseCloudDriveLink(input.url)
+    const cloudDrive = parseCloudDriveLink(input.url, input.extractionCode)
     if (
-      input.type === "baidu_pan" ||
-      input.type === "quark_pan" ||
+      Boolean(input.type && isCloudDriveResourceType(input.type)) ||
       cloudDrive
     ) {
-      const type = input.type === "baidu_pan" || input.type === "quark_pan"
-        ? input.type
-        : cloudDrive?.provider ?? "http"
+      const type =
+        input.type && isCloudDriveResourceType(input.type)
+          ? input.type
+          : cloudDrive?.provider ?? "http"
 
-      if (type === "baidu_pan" || type === "quark_pan") {
+      if (isCloudDriveResourceType(type)) {
         return {
           type,
           url: cloudDrive?.url ?? input.url.trim(),
-          title: input.title?.trim() || defaultResourceTitle(type),
+          title: normalizeInputTitle(input.title) || defaultResourceTitle(type),
           metadata: {
             host: cloudDrive?.host,
             provider: cloudDrive?.provider ?? type,
@@ -358,7 +411,7 @@ export const httpInputParser: ResourceInputParser = {
     return {
       type: "http",
       url: http?.url ?? input.url.trim(),
-      title: input.title?.trim() || defaultResourceTitle("http"),
+      title: normalizeInputTitle(input.title) || defaultResourceTitle("http"),
       metadata: {
         ...(http ? { host: http.host } : {}),
       },
@@ -377,7 +430,10 @@ export const thunderInputParser: ResourceInputParser = {
     return {
       type: input.type ?? "other",
       url: input.url.trim(),
-      title: input.title?.trim() || parsed?.fileName || defaultResourceTitle(input.type ?? "other"),
+      title:
+        normalizeInputTitle(input.title) ||
+        parsed?.fileName ||
+        defaultResourceTitle(input.type ?? "other"),
       metadata: {
         protocol: "thunder",
         ...(parsed
@@ -494,8 +550,61 @@ function normalizeHostname(hostname: string) {
   return hostname.toLowerCase().replace(/^www\./, "")
 }
 
-function getCloudDrivePassword(url: URL) {
+type CloudDriveConfig = {
+  provider: CloudDriveProvider
+  label: string
+  passwordParam?: "pwd" | "password" | "passcode"
+  matchesHost: (host: string) => boolean
+}
+
+const cloudDriveConfigs: CloudDriveConfig[] = [
+  {
+    provider: "baidu_pan",
+    label: "百度网盘",
+    passwordParam: "pwd",
+    matchesHost: (host) => host === "pan.baidu.com",
+  },
+  {
+    provider: "pan_115",
+    label: "115 盘",
+    passwordParam: "password",
+    matchesHost: (host) => host === "115cdn.com",
+  },
+  {
+    provider: "pan_123",
+    label: "123 云盘",
+    passwordParam: "pwd",
+    matchesHost: (host) => /^123\d{3}\.com$/.test(host),
+  },
+  {
+    provider: "quark_pan",
+    label: "夸克网盘",
+    passwordParam: "passcode",
+    matchesHost: (host) => host === "pan.quark.cn",
+  },
+  {
+    provider: "uc_pan",
+    label: "UC 网盘",
+    passwordParam: "passcode",
+    matchesHost: (host) => host === "drive.uc.cn",
+  },
+  {
+    provider: "xunlei_pan",
+    label: "迅雷网盘",
+    passwordParam: "pwd",
+    matchesHost: (host) => host === "pan.xunlei.com",
+  },
+  {
+    provider: "pikpak",
+    label: "PikPak",
+    passwordParam: "passcode",
+    matchesHost: (host) => host === "mypikpak.com",
+  },
+]
+
+function getCloudDrivePassword(url: URL, fallback?: string) {
   return (
+    fallback?.trim() ||
     url.searchParams.get("pwd")?.trim() ||
     url.searchParams.get("password")?.trim() ||
     url.searchParams.get("passcode")?.trim() ||
@@ -507,6 +616,17 @@ function getCloudDriveShareId(url: URL) {
   const segments = url.pathname.split("/").filter(Boolean)
   const shareIndex = segments.findIndex((segment) => ["s", "share"].includes(segment))
   return shareIndex >= 0 ? segments[shareIndex + 1] : undefined
+}
+
+function createCloudDriveUrl(url: URL, config: CloudDriveConfig, password?: string) {
+  const normalizedUrl = new URL(url.toString())
+  const param = config.passwordParam
+
+  if (param && password?.trim()) {
+    normalizedUrl.searchParams.set(param, password.trim())
+  }
+
+  return normalizedUrl.toString()
 }
 
 function inferFileType(extension?: string): ParsedResourceFileType {

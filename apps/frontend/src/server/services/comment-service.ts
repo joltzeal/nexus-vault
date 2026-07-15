@@ -61,7 +61,7 @@ export async function createComment(
     userEmail?: string
   }
 ) {
-  await getVaultOrThrow(db, vaultId)
+  const vault = await getVaultOrThrow(db, vaultId)
   await getResourceInVaultOrThrow(db, vaultId, input.resourceId)
   await requireVaultPermission(db, {
     vaultId,
@@ -87,11 +87,16 @@ export async function createComment(
     .from(collaborators)
     .where(eq(collaborators.vaultId, vaultId))
 
-  const notificationTasks: NotificationQueueMessage[] = recipients
-    .filter((recipient) => recipient.userId !== authorId)
-    .map((recipient) => ({
+  const recipientIds = new Set(
+    [vault.ownerId, ...recipients.map((recipient) => recipient.userId)].filter(
+      (userId): userId is string => Boolean(userId && userId !== authorId)
+    )
+  )
+
+  const notificationTasks: NotificationQueueMessage[] = Array.from(recipientIds)
+    .map((userId) => ({
       kind: "notification.create",
-      userId: recipient.userId,
+      userId,
       vaultId,
       type: "comment.created",
       title: "资源有新评论",

@@ -4,10 +4,12 @@ import { ApiError } from "@/server/api/errors"
 import { actorMiddleware, dbMiddleware } from "@/server/api/middleware"
 import { fail, failUnknown } from "@/server/api/response"
 import type { ApiEnv } from "@/server/api/types"
+import { authPolicyRoutes } from "@/server/routes/auth-policy-routes"
 import { collaboratorRoutes } from "@/server/routes/collaborator-routes"
 import { commentRoutes } from "@/server/routes/comment-routes"
 import { forkRoutes } from "@/server/routes/fork-routes"
 import { healthRoutes } from "@/server/routes/health-routes"
+import { mediaRoutes } from "@/server/routes/media-routes"
 import { metadataRoutes } from "@/server/routes/metadata-routes"
 import { notificationRoutes } from "@/server/routes/notification-routes"
 import { resourceRoutes } from "@/server/routes/resource-routes"
@@ -31,6 +33,7 @@ export function createApiApp() {
   })
 
   app.route("/", healthRoutes)
+  app.route("/", authPolicyRoutes)
   app.route("/", vaultRoutes)
   app.route("/", spaceRoutes)
   app.route("/", resourceRoutes)
@@ -41,6 +44,7 @@ export function createApiApp() {
   app.route("/", forkRoutes)
   app.route("/", submissionRoutes)
   app.route("/", metadataRoutes)
+  app.route("/", mediaRoutes)
   app.route("/", notificationRoutes)
 
   return app

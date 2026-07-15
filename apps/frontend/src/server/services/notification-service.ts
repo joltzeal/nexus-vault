@@ -30,6 +30,7 @@ export async function listNotifications(
   input: {
     actor?: Actor
     userEmail?: string
+    vaultId?: string
   }
 ) {
   const userId = input.actor
@@ -52,6 +53,7 @@ export async function listNotifications(
     .where(
       and(
         userId ? eq(notifications.userId, userId) : undefined,
+        input.vaultId ? eq(notifications.vaultId, input.vaultId) : undefined,
         inArray(notifications.type, visibleNotificationTypes)
       )
     )
@@ -64,6 +66,7 @@ export async function getNotificationSummary(
   input: {
     actor?: Actor
     userEmail?: string
+    vaultId?: string
   }
 ) {
   const userId = input.actor
@@ -80,12 +83,42 @@ export async function getNotificationSummary(
     .where(
       and(
         eq(notifications.userId, userId),
+        input.vaultId ? eq(notifications.vaultId, input.vaultId) : undefined,
         isNull(notifications.readAt),
         inArray(notifications.type, visibleNotificationTypes)
       )
     )
 
   return { unreadCount: row?.unreadCount ?? 0 }
+}
+
+export async function markNotificationsRead(
+  db: Db,
+  input: {
+    actor: Actor
+    notificationIds: string[]
+    vaultId?: string
+  }
+) {
+  const userId = await findUserIdForActor(db, input.actor)
+  if (!userId || input.notificationIds.length === 0) {
+    return { read: 0 }
+  }
+
+  const readAt = new Date().toISOString()
+  await db
+    .update(notifications)
+    .set({ readAt })
+    .where(
+      and(
+        eq(notifications.userId, userId),
+        inArray(notifications.id, input.notificationIds),
+        input.vaultId ? eq(notifications.vaultId, input.vaultId) : undefined,
+        inArray(notifications.type, visibleNotificationTypes)
+      )
+    )
+
+  return { read: input.notificationIds.length, readAt }
 }
 
 export async function markNotificationRead(

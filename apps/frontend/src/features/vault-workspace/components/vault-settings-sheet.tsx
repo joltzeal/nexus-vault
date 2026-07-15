@@ -1,6 +1,6 @@
 "use client"
 
-import { Check, Copy, Inbox, Mail, Shield, Trash2, Users, X } from "lucide-react"
+import { Check, Copy, Inbox, Shield, Trash2, Users, X } from "lucide-react"
 import { useMemo, useState } from "react"
 import { parseResourceMetadataJson } from "@nexus-vault/shared/resource-metadata"
 
@@ -16,16 +16,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Sheet,
   SheetContent,
@@ -58,18 +50,8 @@ export type CollaboratorItem = {
   userId: string
   email: string
   name?: string | null
-  role: "owner" | "admin" | "editor" | "viewer"
+  role: "editor"
   createdAt: string
-}
-
-export type CommentItem = {
-  id: string
-  resourceId: string
-  parentId?: string | null
-  authorName: string
-  body: string
-  createdAt: string
-  deletedAt?: string | null
 }
 
 export type NotificationItem = {
@@ -92,23 +74,17 @@ export type StarredVaultItem = {
   createdAt: string
 }
 
-export type CollaboratorForm = {
-  email: string
-  name: string
-  role: "admin" | "editor" | "viewer"
-}
-
 export function VaultSettingsSheet({
   activeTab,
   canDeleteVault,
   collectionEnabled,
-  collaboratorForm,
   collaborators,
   isBusy,
-  onCollaboratorFormChange,
+  nsfwEnabled,
   onCollectionEnabledChange,
+  onNsfwEnabledChange,
   onOpenChange,
-  onSubmitCollaborator,
+  onRemoveCollaborator,
   onSubmitShare,
   onApproveSubmission,
   onRejectSubmission,
@@ -116,6 +92,7 @@ export function VaultSettingsSheet({
   onDeleteVault,
   onVisibilityChange,
   open,
+  ownerName,
   password,
   setPassword,
   share,
@@ -125,13 +102,13 @@ export function VaultSettingsSheet({
   activeTab: SettingsTab
   canDeleteVault: boolean
   collectionEnabled: boolean
-  collaboratorForm: CollaboratorForm
   collaborators: CollaboratorItem[]
   isBusy: boolean
-  onCollaboratorFormChange: (form: CollaboratorForm) => void
+  nsfwEnabled: boolean
   onCollectionEnabledChange: (enabled: boolean) => void
+  onNsfwEnabledChange: (enabled: boolean) => void
   onOpenChange: (open: boolean) => void
-  onSubmitCollaborator: () => void
+  onRemoveCollaborator: (collaboratorId: string) => void
   onSubmitShare: () => void
   onApproveSubmission: (submissionId: string, spaceId?: string) => void
   onRejectSubmission: (submissionId: string) => void
@@ -139,6 +116,7 @@ export function VaultSettingsSheet({
   onDeleteVault: () => void
   onVisibilityChange: (visibility: Visibility) => void
   open: boolean
+  ownerName: string
   password: string
   setPassword: (value: string) => void
   share: ShareSettings
@@ -153,11 +131,11 @@ export function VaultSettingsSheet({
             {activeTab === "share"
               ? "分享 Vault"
               : activeTab === "members"
-                ? "协作者"
+                ? "协作"
                 : "收集"}
           </SheetTitle>
           <SheetDescription className="sr-only">
-            管理当前 vault 的分享、协作者与资源收集。
+            管理当前 vault 的分享、协作与资源收集。
           </SheetDescription>
         </SheetHeader>
         <Tabs
@@ -172,7 +150,7 @@ export function VaultSettingsSheet({
             </TabsTrigger>
             <TabsTrigger value="members">
               <Users data-icon="inline-start" />
-              协作者
+              协作
             </TabsTrigger>
             <TabsTrigger value="submissions">
               <Inbox data-icon="inline-start" />
@@ -188,7 +166,9 @@ export function VaultSettingsSheet({
             <SharePanel
               canDeleteVault={canDeleteVault}
               isBusy={isBusy}
+              nsfwEnabled={nsfwEnabled}
               onDeleteVault={onDeleteVault}
+              onNsfwEnabledChange={onNsfwEnabledChange}
               onSubmit={onSubmitShare}
               onVisibilityChange={onVisibilityChange}
               password={password}
@@ -198,11 +178,10 @@ export function VaultSettingsSheet({
           </TabsContent>
           <TabsContent value="members" className="min-h-0 overflow-auto px-[18px] py-4">
             <MembersPanel
-              form={collaboratorForm}
               isBusy={isBusy}
               items={collaborators}
-              onFormChange={onCollaboratorFormChange}
-              onSubmit={onSubmitCollaborator}
+              onRemove={onRemoveCollaborator}
+              ownerName={ownerName}
             />
           </TabsContent>
           <TabsContent value="submissions" className="min-h-0 overflow-auto px-[18px] py-4">
@@ -225,7 +204,9 @@ export function VaultSettingsSheet({
 function SharePanel({
   canDeleteVault,
   isBusy,
+  nsfwEnabled,
   onDeleteVault,
+  onNsfwEnabledChange,
   onSubmit,
   onVisibilityChange,
   password,
@@ -234,7 +215,9 @@ function SharePanel({
 }: {
   canDeleteVault: boolean
   isBusy: boolean
+  nsfwEnabled: boolean
   onDeleteVault: () => void
+  onNsfwEnabledChange: (enabled: boolean) => void
   onSubmit: () => void
   onVisibilityChange: (visibility: Visibility) => void
   password: string
@@ -283,7 +266,7 @@ function SharePanel({
                     ? "任何人可通过分享链接查看"
                     : visibility === "password"
                       ? "访问者需要输入密码"
-                      : "仅 owner 与协作者可见"}
+                      : "仅 Owner/Editor 可见"}
                 </span>
               </span>
               <span className={cn("size-4 rounded-chip border border-line", share.visibility === visibility && "border-jade bg-[radial-gradient(circle,var(--jade)_38%,transparent_42%)]")} />
@@ -325,6 +308,22 @@ function SharePanel({
       <Button onClick={onSubmit} disabled={isBusy || (share.visibility === "password" && !password.trim())}>
         保存分享设置
       </Button>
+
+      <div className="rounded-card border border-line bg-ink-800 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold">NSFW 模式</h3>
+            <p className="mt-1 text-xs leading-5 text-fg-muted">
+              开启后，这个 Vault 默认隐藏所有媒体资源；访问者仍可在当前页面手动显示。
+            </p>
+          </div>
+          <Switch
+            checked={nsfwEnabled}
+            disabled={isBusy}
+            onCheckedChange={onNsfwEnabledChange}
+          />
+        </div>
+      </div>
 
       {canDeleteVault && (
         <div className="rounded-card border border-destructive/30 bg-destructive/10 p-3">
@@ -368,86 +367,66 @@ function SharePanel({
 }
 
 function MembersPanel({
-  form,
   isBusy,
   items,
-  onFormChange,
-  onSubmit,
+  onRemove,
+  ownerName,
 }: {
-  form: CollaboratorForm
   isBusy: boolean
   items: CollaboratorItem[]
-  onFormChange: (form: CollaboratorForm) => void
-  onSubmit: () => void
+  onRemove: (collaboratorId: string) => void
+  ownerName: string
 }) {
   return (
     <section className="flex flex-col gap-5">
-      <div className="rounded-card border border-line bg-ink-800 p-3">
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="collaborator-email">邮箱</FieldLabel>
-            <Input
-              id="collaborator-email"
-              placeholder="name@example.com"
-              value={form.email}
-              onChange={(event) => onFormChange({ ...form, email: event.target.value })}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="collaborator-name">名称</FieldLabel>
-            <Input
-              id="collaborator-name"
-              value={form.name}
-              onChange={(event) => onFormChange({ ...form, name: event.target.value })}
-            />
-          </Field>
-          <Field>
-            <FieldLabel>角色</FieldLabel>
-            <Select
-              value={form.role}
-              onValueChange={(role) => onFormChange({ ...form, role: role as CollaboratorForm["role"] })}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="admin">admin</SelectItem>
-                  <SelectItem value="editor">editor</SelectItem>
-                  <SelectItem value="viewer">viewer</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Button onClick={onSubmit} disabled={isBusy || !form.email.trim()}>
-            <Mail data-icon="inline-start" />
-            添加协作者
-          </Button>
-        </FieldGroup>
+      <div>
+        <div className="mono mb-2 text-[10px] uppercase tracking-[.14em] text-fg-dim">
+          Owner
+        </div>
+        <div className="flex items-center gap-3 rounded-card border border-line bg-ink-800 px-3 py-2">
+          <div className="grid size-8 place-items-center rounded-chip border border-jade-dim bg-[var(--jade-glow)] text-xs font-semibold text-jade">
+            {getInitials(ownerName)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <b className="block truncate text-sm">{ownerName || "Owner"}</b>
+          </div>
+          <span className="mono rounded-input border border-jade-dim px-2 py-1 text-[11px] text-jade">
+            Owner
+          </span>
+        </div>
       </div>
 
       <div>
         <div className="mono mb-2 text-[10px] uppercase tracking-[.14em] text-fg-dim">
-          协作者 · {items.length}
+          Editor · {items.length}
         </div>
         <div className="flex flex-col gap-2">
           {items.map((item, index) => (
             <div className="flex items-center gap-3 rounded-card border border-line bg-ink-800 px-3 py-2" key={item.id}>
               <div className={`grid size-8 place-items-center rounded-chip border border-line text-xs font-semibold ${memberAvatarClass(index)}`}>
-                {getInitials(item.name || item.email)}
+                {getInitials(item.name || "Editor")}
               </div>
               <div className="min-w-0 flex-1">
-                <b className="block truncate text-sm">{item.name || item.email}</b>
-                <span className="mono block truncate text-[11px] text-fg-dim">{item.email}</span>
+                <b className="block truncate text-sm">{item.name || "Editor"}</b>
               </div>
-              <span className={cn("mono rounded-input border border-line px-2 py-1 text-[11px] text-fg-muted", item.role === "owner" && "border-jade-dim text-jade")}>
-                {item.role}
+              <span className="mono rounded-input border border-line px-2 py-1 text-[11px] text-fg-muted">
+                Editor
               </span>
+              <Button
+                aria-label="移除 Editor"
+                disabled={isBusy}
+                onClick={() => onRemove(item.id)}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <Trash2 />
+              </Button>
             </div>
           ))}
           {items.length === 0 && (
             <div className="rounded-card border border-line bg-ink-800 p-4 text-sm text-fg-dim">
-              还没有协作者。
+              No editors yet.
             </div>
           )}
         </div>
@@ -547,9 +526,9 @@ function SubmissionsPanel({
               <span className="mono rounded-chip border border-line bg-ink-900 px-1.5 py-0.5">
                 {targetSpace?.name ?? "默认 Space"}
               </span>
-              {(item.submitterName || item.submitterEmail) && (
+              {item.submitterName && (
                 <span className="mono rounded-chip border border-line bg-ink-900 px-1.5 py-0.5">
-                  {item.submitterName || item.submitterEmail}
+                  {item.submitterName} 提交的
                 </span>
               )}
               <span className="mono rounded-chip border border-line bg-ink-900 px-1.5 py-0.5">

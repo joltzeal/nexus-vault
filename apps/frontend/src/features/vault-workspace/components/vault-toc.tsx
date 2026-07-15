@@ -86,12 +86,13 @@ export function VaultToc({
         <PopoverTrigger asChild>
           <Button
             aria-label="打开大纲"
-            className="fixed bottom-4 right-4 z-30 shadow-pop 2xl:hidden"
-            size="icon"
+            className="fixed bottom-4 right-4 z-50 gap-1.5 shadow-pop 2xl:hidden"
+            size="sm"
             variant="outline"
             type="button"
           >
-            <ListTree />
+            <ListTree data-icon="inline-start" />
+            Outline
           </Button>
         </PopoverTrigger>
         <PopoverContent

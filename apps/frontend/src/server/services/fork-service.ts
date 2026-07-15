@@ -1,8 +1,9 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm"
 
-import { collaborators, forks, resourceMetadata, resources, spaces, vaults } from "@nexus-vault/db/schema"
+import { forks, resourceMetadata, resources, spaces, vaults } from "@nexus-vault/db/schema"
+import { conflict } from "@/server/api/errors"
 import type { Actor, Db } from "@/server/api/types"
-import { requireVaultPermission } from "@/server/services/permission-service"
+import { requireVaultRead } from "@/server/services/permission-service"
 import { ensureActorUser } from "@/server/services/user-service"
 import { getVaultOrThrow } from "@/server/services/vault-service"
 import { newId } from "@/server/utils/id"
@@ -16,13 +17,15 @@ export async function forkVault(
   }
 ) {
   const sourceVault = await getVaultOrThrow(db, sourceVaultId)
-  await requireVaultPermission(db, {
+  await requireVaultRead(db, {
     vaultId: sourceVaultId,
     actor: input.actor,
     userEmail: input.userEmail,
-    action: "fork:create",
   })
   const ownerId = await ensureActorUser(db, input.actor)
+  if (sourceVault.ownerId === ownerId) {
+    throw conflict("不能 fork 自己的 vault。")
+  }
 
   const sourceSpaces = await db
     .select({
@@ -121,8 +124,9 @@ export async function forkVault(
   await db.batch([
     db.insert(vaults).values({
       id: targetVaultId,
-      title: `${sourceVault.title} fork`,
+      title: sourceVault.title,
       description: sourceVault.description,
+      cover: sourceVault.cover,
       visibility: "private",
       forkedFromVaultId: sourceVaultId,
       ownerId,
@@ -130,12 +134,6 @@ export async function forkVault(
     ...newSpaces.map((space) => db.insert(spaces).values(space)),
     ...newResources.map((resource) => db.insert(resources).values(resource)),
     ...newMetadata.map((metadata) => db.insert(resourceMetadata).values(metadata)),
-    db.insert(collaborators).values({
-      id: newId("collaborator"),
-      vaultId: targetVaultId,
-      userId: ownerId,
-      role: "owner" as const,
-    }),
     db.insert(forks).values({
       id: forkId,
       sourceVaultId,

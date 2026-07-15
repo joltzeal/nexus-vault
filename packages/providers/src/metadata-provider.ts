@@ -2,6 +2,7 @@ import type { resources } from "@nexus-vault/db/schema"
 import type { NormalizedResourceMetadata } from "@nexus-vault/shared/resource-metadata"
 
 import { cloudDriveMetadataProvider } from "./providers/cloud-drive"
+import { httpPageMetadataProvider } from "./providers/http-page"
 import { localLinkMetadataProvider } from "./providers/local-link"
 import { magnetMetadataProvider } from "./providers/magnet"
 import { placeholderMetadataProvider } from "./providers/placeholder"
@@ -19,6 +20,11 @@ export type MetadataResult = {
 export type MetadataResolveOptions = {
   twitterRequestProxyUrl?: string
   twitterCookieString?: string
+  captureHttpScreenshot?: (input: {
+    resourceId: string
+    title: string
+    url: string
+  }) => Promise<string | undefined>
 }
 
 export interface MetadataProvider {
@@ -31,6 +37,7 @@ const metadataProviders: MetadataProvider[] = [
   magnetMetadataProvider,
   twitterMetadataProvider,
   cloudDriveMetadataProvider,
+  httpPageMetadataProvider,
   localLinkMetadataProvider,
   placeholderMetadataProvider,
 ]
@@ -44,6 +51,7 @@ export function getMetadataProvider(resource: Pick<ResourceInput, "type" | "url"
 
 export {
   cloudDriveMetadataProvider,
+  httpPageMetadataProvider,
   localLinkMetadataProvider,
   magnetMetadataProvider,
   placeholderMetadataProvider,

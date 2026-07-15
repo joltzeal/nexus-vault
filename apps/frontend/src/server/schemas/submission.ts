@@ -8,7 +8,7 @@ export const createResourceSubmissionSchema = z.object({
   spaceId: z.string().trim().min(1).optional(),
   type: resourceTypeSchema.optional(),
   title: z.string().trim().min(1).max(200).optional(),
-  description: z.string().trim().max(2000).optional().default(""),
+  description: z.string().trim().optional().default(""),
   url: z.string().trim().min(1).max(4096),
   turnstileToken: z.string().trim().min(1),
 })

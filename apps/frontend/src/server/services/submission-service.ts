@@ -6,10 +6,12 @@ import { createBaseResourceMetadata } from "@nexus-vault/shared/resource-metadat
 import { getMetadataProvider } from "@nexus-vault/providers"
 import { conflict, forbidden, notFound } from "@/server/api/errors"
 import type { Actor, Db } from "@/server/api/types"
+import { ensureEditorCollaborator } from "@/server/services/collaborator-service"
 import type { NotificationQueueMessage } from "@/server/services/notification-service"
 import { requireVaultPermission } from "@/server/services/permission-service"
 import {
   createMetadataQueueMessage,
+  ensureResourceUrlNotDuplicate,
 } from "@/server/services/resource-service"
 import { getDefaultSpaceId, getSpaceInVaultOrThrow } from "@/server/services/space-service"
 import { ensureActorUser } from "@/server/services/user-service"
@@ -44,6 +46,7 @@ export async function createResourceSubmission(
     type: input.type,
     title: input.title,
   })
+  await ensureResourceUrlNotDuplicate(db, vaultId, parsed.url)
   const submitterId = input.actor ? await ensureActorUser(db, input.actor) : null
   const submissionId = newId("submission")
   const now = new Date().toISOString()
@@ -152,7 +155,7 @@ export async function listResourceSubmissions(
   await requireVaultPermission(db, {
     vaultId,
     actor: input.actor,
-    action: "resource:create",
+    action: "vault:update",
   })
 
   return db
@@ -196,6 +199,7 @@ export async function approveResourceSubmission(
     actor: Actor
   }
 ) {
+  const vault = await getVaultOrThrow(db, vaultId)
   const submission = await getSubmissionInVaultOrThrow(db, vaultId, submissionId)
   if (submission.status !== "pending") {
     throw conflict("Only pending submissions can be approved.")
@@ -204,7 +208,7 @@ export async function approveResourceSubmission(
   await requireVaultPermission(db, {
     vaultId,
     actor: input.actor,
-    action: "resource:create",
+    action: "vault:update",
   })
 
   const reviewerId = await ensureActorUser(db, input.actor)
@@ -249,6 +253,10 @@ export async function approveResourceSubmission(
       .where(eq(resourceSubmissions.id, submissionId)),
   ])
 
+  if (submission.submitterId && submission.submitterId !== vault.ownerId) {
+    await ensureEditorCollaborator(db, vaultId, submission.submitterId)
+  }
+
   return {
     id: submissionId,
     status: "approved" as const,
@@ -279,7 +287,7 @@ export async function rejectResourceSubmission(
   await requireVaultPermission(db, {
     vaultId,
     actor: input.actor,
-    action: "resource:create",
+    action: "vault:update",
   })
 
   const reviewerId = await ensureActorUser(db, input.actor)

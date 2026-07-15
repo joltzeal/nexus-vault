@@ -11,11 +11,13 @@
 		"test": "pnpm --filter @nexus-vault/frontend test",
 		"check:resource-input": "pnpm --filter @nexus-vault/frontend check:resource-input",
 		"deploy": "pnpm --filter @nexus-vault/frontend deploy",
+		"deploy:production": "pnpm --filter @nexus-vault/frontend deploy:production",
 		"upload": "pnpm --filter @nexus-vault/frontend upload",
 		"preview": "pnpm --filter @nexus-vault/frontend preview",
 		"cf-typegen": "pnpm --filter @nexus-vault/frontend cf-typegen",
 		"db:generate": "node scripts/generate-migrations.mjs",
 		"db:migrate:local": "pnpm --filter @nexus-vault/frontend db:migrate:local",
+		"db:migrate:production": "pnpm --filter @nexus-vault/frontend db:migrate:production",
 		"db:seed:local": "pnpm --filter @nexus-vault/frontend db:seed:local"
 	},
 	"devDependencies": {

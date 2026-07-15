@@ -10,32 +10,39 @@ import { Button } from "@/components/ui/button"
 import { VaultHeader } from "@/features/vault-workspace/components/vault-header"
 import { SpaceSection, type BoardDragData } from "@/features/vault-workspace/components/space-section"
 import { VaultToc } from "@/features/vault-workspace/components/vault-toc"
-import type { CommentItem } from "@/features/vault-workspace/components/vault-settings-sheet"
-import type { Resource, ResourceSet } from "@/features/vault-workspace/types"
+import type { CommentItem, Resource, ResourceSet } from "@/features/vault-workspace/types"
 import { getSortedSpaces, groupResourcesBySpace } from "./view-models"
 
 export function VaultDocument({
   activeSet,
+  canAddResource,
   collaboratorsCount,
   commentBody,
-  comments,
+  commentsByResourceId,
+  currentUserId,
   isSignedIn,
+  isVaultEditor,
   isVaultOwner,
+  isShareMode,
+  mediaVisible,
   onAddResource,
   onAddResourceToSpace,
   onAddSpace,
   onCommentBodyChange,
   onDeleteResource,
   onDeleteSpace,
+  onDeleteVault,
+  onEditVault,
   onEditSpace,
   onForkVault,
   onFocusResourceComments,
-  onRequireSignIn,
   onMoveResource,
   onOpenSettings,
   onReorderSpace,
   onSelectResource,
   onSubmitComment,
+  onToggleMediaVisibility,
+  onToggleResourceStar,
   onToggleStar,
   onUpdateSpaceIcon,
   pendingSubmissionCount,
@@ -43,21 +50,27 @@ export function VaultDocument({
   shareSubmissionSlot,
 }: {
   activeSet?: ResourceSet
+  canAddResource: boolean
   collaboratorsCount: number
   commentBody: string
-  comments: CommentItem[]
+  commentsByResourceId: Record<string, CommentItem[]>
+  currentUserId?: string
   isSignedIn: boolean
+  isVaultEditor: boolean
   isVaultOwner: boolean
+  isShareMode: boolean
+  mediaVisible: boolean
   onAddResource: () => void
   onAddResourceToSpace: (spaceId: string) => void
   onAddSpace: () => void
   onCommentBodyChange: (value: string) => void
   onDeleteResource: (resourceId: string) => void
   onDeleteSpace: (spaceId: string) => void
+  onDeleteVault: () => void
+  onEditVault: () => void
   onEditSpace: (space: ResourceSet["spaces"][number]) => void
   onForkVault: () => void
   onFocusResourceComments: (resourceId: string) => void
-  onRequireSignIn: () => void
   onMoveResource: (input: {
     resourceId: string
     sourceSpaceId: string
@@ -68,6 +81,8 @@ export function VaultDocument({
   onReorderSpace: (input: { spaceId: string; position: number }) => void
   onSelectResource: (resourceId: string) => void
   onSubmitComment: () => void
+  onToggleMediaVisibility: (visible: boolean) => void
+  onToggleResourceStar: (resourceId: string) => void
   onToggleStar: () => void
   onUpdateSpaceIcon: (spaceId: string, icon: string) => void
   pendingSubmissionCount: number
@@ -168,11 +183,17 @@ export function VaultDocument({
           <VaultHeader
             collaboratorsCount={collaboratorsCount}
             disabled={!isSignedIn}
+            canAddResource={canAddResource}
             isVaultOwner={isVaultOwner}
+            isShareMode={isShareMode}
+            mediaVisible={mediaVisible}
             onAddResource={onAddResource}
             onCreateSpace={onAddSpace}
+            onDeleteVault={onDeleteVault}
+            onEditVault={onEditVault}
             onForkVault={onForkVault}
             onOpenSettings={onOpenSettings}
+            onToggleMediaVisibility={onToggleMediaVisibility}
             onToggleStar={onToggleStar}
             pendingSubmissionCount={pendingSubmissionCount}
             set={activeSet}
@@ -185,10 +206,14 @@ export function VaultDocument({
                   <SpaceSection
                     collapsed={collapsedSpaceIds.has(space.id)}
                     commentBody={commentBody}
-                    comments={comments}
+              commentsByResourceId={commentsByResourceId}
                     disabled={!isSignedIn}
+                    canAddResource={canAddResource}
+                    currentUserId={currentUserId}
+                    isVaultEditor={isVaultEditor}
                     isVaultOwner={isVaultOwner}
                     isSignedIn={isSignedIn}
+                    mediaVisible={mediaVisible}
                     key={space.id}
                     onAddResource={() => onAddResourceToSpace(space.id)}
                     onCommentBodyChange={onCommentBodyChange}
@@ -196,9 +221,9 @@ export function VaultDocument({
                     onEditSpace={() => onEditSpace(space)}
                     onDeleteResource={onDeleteResource}
                     onFocusResourceComments={onFocusResourceComments}
-                    onRequireSignIn={onRequireSignIn}
                     onSelectResource={onSelectResource}
                     onSubmitComment={onSubmitComment}
+                    onToggleResourceStar={onToggleResourceStar}
                     onToggleCollapsed={() =>
                       setCollapsedSpaceIds((current) => {
                         const next = new Set(current)
@@ -237,7 +262,7 @@ export function VaultDocument({
           ) : (
             <div className="mt-8 rounded-card border border-line bg-ink-800 p-6 text-center">
               <p className="font-display text-lg font-semibold">还没有 Vault</p>
-              <p className="mt-1 text-sm text-fg-muted">登录后创建第一个 vault，资源会写入本地 D1。</p>
+              <p className="mt-1 text-sm text-fg-muted">登录后创建第一个 vault，开始整理资源。</p>
               <Button className="mt-4" onClick={onAddSpace} disabled={!isSignedIn}>
                 <FolderPlus data-icon="inline-start" />
                 新建 Space

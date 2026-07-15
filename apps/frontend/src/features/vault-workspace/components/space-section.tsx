@@ -5,6 +5,7 @@ import { useSortable } from "@dnd-kit/react/sortable"
 import { useState } from "react"
 import {
   ChevronDown,
+  Copy,
   FolderPlus,
   GripVertical,
   Info,
@@ -13,6 +14,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -32,17 +34,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card"
 import { MarkdownContent } from "@/features/vault-workspace/components/markdown-content"
 import { ResourceCard } from "@/features/vault-workspace/components/resource-card"
-import { SpaceIconPicker } from "@/features/vault-workspace/components/space-icon-picker"
-import type { CommentItem } from "@/features/vault-workspace/components/vault-settings-sheet"
-import type { Resource, Space } from "@/features/vault-workspace/types"
+import { SpaceIcon, SpaceIconPicker } from "@/features/vault-workspace/components/space-icon-picker"
+import type { CommentItem, Resource, Space } from "@/features/vault-workspace/types"
 import { cn } from "@/lib/utils"
 import type { ResourceDragData } from "./resource-card"
+import { getResourceDisplayUrl } from "./view-models"
 
 export type SpaceDragData = {
   kind: "space"
@@ -59,20 +61,24 @@ export type BoardDragData = ResourceDragData | SpaceDragData | SpaceDropData
 export function SpaceSection({
   collapsed,
   commentBody,
-  comments,
+  commentsByResourceId,
   disabled,
+  canAddResource,
+  currentUserId,
+  isVaultEditor,
   isVaultOwner,
   isSignedIn,
+  mediaVisible,
   onAddResource,
   onCommentBodyChange,
   onDeleteSpace,
   onEditSpace,
   onDeleteResource,
   onFocusResourceComments,
-  onRequireSignIn,
   onSelectResource,
   onSubmitComment,
   onToggleCollapsed,
+  onToggleResourceStar,
   onUpdateIcon,
   resources,
   selectedResourceId,
@@ -81,20 +87,24 @@ export function SpaceSection({
 }: {
   collapsed: boolean
   commentBody: string
-  comments: CommentItem[]
+  commentsByResourceId: Record<string, CommentItem[]>
   disabled: boolean
+  canAddResource: boolean
+  currentUserId?: string
+  isVaultEditor: boolean
   isVaultOwner: boolean
   isSignedIn: boolean
+  mediaVisible: boolean
   onAddResource: () => void
   onCommentBodyChange: (value: string) => void
   onDeleteSpace: () => void
   onEditSpace: () => void
   onDeleteResource: (resourceId: string) => void
   onFocusResourceComments: (resourceId: string) => void
-  onRequireSignIn: () => void
   onSelectResource: (resourceId: string) => void
   onSubmitComment: () => void
   onToggleCollapsed: () => void
+  onToggleResourceStar: (resourceId: string) => void
   onUpdateIcon: (icon: string) => void
   resources: Resource[]
   selectedResourceId?: string
@@ -127,27 +137,43 @@ export function SpaceSection({
     disabled: disabled || !isVaultOwner,
   })
 
+  async function handleCopySpaceLinks() {
+    const links = resources.map((resource) => getResourceDisplayUrl(resource)).filter(Boolean)
+    if (!links.length) return
+
+    await navigator.clipboard.writeText(links.join("\n"))
+    toast.success(`已复制 ${links.length} 个链接`)
+  }
+
   return (
     <section
       className={cn(
-        "group mb-3 scroll-mt-4 rounded-card border border-line bg-ink-900/35 px-2 pb-2",
+        "group mb-3 scroll-mt-4 rounded-card border border-line bg-ink-900/35 px-2 py-2",
         collapsed && "opacity-95"
       )}
       id={space.id}
       ref={ref}
       data-space-section
     >
-      <div className="sticky top-0 z-10 mt-2 flex items-center gap-2 rounded-input bg-[linear-gradient(var(--ink-900),var(--ink-900)_70%,transparent)] px-2 py-2">
-        {isVaultOwner && (
+      <div className="group/space-header sticky top-0 z-30 -mx-1 flex items-center gap-1 rounded-input border border-line-soft bg-ink-900/95 px-2 py-2 shadow-[0_10px_24px_-22px_rgba(0,0,0,.9)] backdrop-blur">
+        {isVaultOwner ? (
           <button
-            className="grid w-4 cursor-grab place-items-center text-fg-faint opacity-0 transition hover:text-fg-muted group-hover:opacity-100 active:cursor-grabbing disabled:cursor-not-allowed"
+            className="relative grid size-6 shrink-0 cursor-grab place-items-center overflow-hidden rounded-sm text-jade transition hover:bg-ink-750 hover:text-fg-muted active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-60 [&_svg]:size-4"
             disabled={disabled}
             ref={handleRef}
             type="button"
           >
-            <GripVertical />
+            <SpaceIcon
+              className="transition group-hover/space-header:opacity-0"
+              name={space.icon}
+            />
+            <GripVertical className="absolute text-fg-faint opacity-0 transition group-hover/space-header:opacity-100" />
             <span className="sr-only">拖动排序 Space</span>
           </button>
+        ) : (
+          <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-jade [&_svg]:size-4">
+            <SpaceIcon name={space.icon} />
+          </span>
         )}
         <button
           className="inline-flex size-[20px] shrink-0 items-center justify-center rounded-sm text-fg-dim transition hover:bg-ink-750 hover:text-fg [&_svg]:size-3.5"
@@ -158,47 +184,58 @@ export function SpaceSection({
           <span className="sr-only">折叠 Space</span>
         </button>
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <SpaceIconPicker
-            disabled={disabled || !isVaultOwner}
-            onSelect={onUpdateIcon}
-            value={space.icon}
-          />
           <h2 className="truncate font-display text-[15.5px] font-semibold">{space.name}</h2>
           <span className="mono text-[11px] text-fg-dim">{resources.length}</span>
           {space.description && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  className="inline-flex size-5 items-center justify-center rounded-sm text-fg-dim transition hover:bg-ink-750 hover:text-jade"
-                  type="button"
+            <HoverCard openDelay={120} closeDelay={80}>
+              <HoverCardTrigger asChild>
+                <span
+                  className="inline-flex size-5 items-center justify-center text-fg-dim transition hover:text-jade [&_svg]:size-3.5"
+                  tabIndex={0}
                 >
                   <Info />
                   <span className="sr-only">Space 描述</span>
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-80 border-line bg-ink-850 p-3 text-fg">
+                </span>
+              </HoverCardTrigger>
+              <HoverCardContent align="start" className="w-80 border-line bg-ink-850 p-3 text-fg">
                 <MarkdownContent value={space.description} />
-              </PopoverContent>
-            </Popover>
+              </HoverCardContent>
+            </HoverCard>
           )}
         </div>
         <div className="flex gap-1 opacity-0 transition hover:opacity-100 group-hover:opacity-100 md:group-hover:opacity-100">
-          {isVaultOwner && (
+          {resources.length > 0 && (
+            <Button size="icon-sm" variant="ghost" onClick={handleCopySpaceLinks} type="button">
+              <Copy />
+              <span className="sr-only">复制此 Space 下所有链接</span>
+            </Button>
+          )}
+          {canAddResource && (
             <Button size="icon-sm" variant="ghost" onClick={onAddResource} disabled={disabled}>
               <Plus />
               <span className="sr-only">此 Space 添加资源</span>
             </Button>
           )}
-          <SpaceActionsMenu
-            disabled={disabled || !isVaultOwner}
-            onDelete={onDeleteSpace}
-            onEdit={onEditSpace}
-            resourceCount={resources.length}
-            spaceName={space.name}
-          />
+          {isVaultOwner && (
+            <>
+              <SpaceIconPicker
+                disabled={disabled}
+                onSelect={onUpdateIcon}
+                trigger="action"
+                value={space.icon}
+              />
+              <SpaceActionsMenu
+                disabled={disabled}
+                onDelete={onDeleteSpace}
+                onEdit={onEditSpace}
+                resourceCount={resources.length}
+                spaceName={space.name}
+              />
+            </>
+          )}
         </div>
       </div>
-      <div className="mx-2 h-px bg-line-soft" />
+      <div className={cn(!collapsed && "h-px bg-line-soft mx-2 ")} />
       {!collapsed && (
         <div
           className={cn(
@@ -210,25 +247,31 @@ export function SpaceSection({
           {resources.map((resource, index) => (
             <ResourceCard
               commentBody={selectedResourceId === resource.id ? commentBody : ""}
-              comments={selectedResourceId === resource.id ? comments : []}
+              comments={commentsByResourceId[resource.id] ?? resource.comments ?? []}
               disabled={disabled}
               index={index}
               isActive={selectedResourceId === resource.id}
               isSignedIn={isSignedIn}
+              canEditResource={
+                !isResourceResolving(resource.metadataStatus) &&
+                (isVaultOwner ||
+                  Boolean(isVaultEditor && resource.createdBy && resource.createdBy === currentUserId))
+              }
               isVaultOwner={isVaultOwner}
+              mediaVisible={mediaVisible}
               key={resource.id}
               onCommentBodyChange={onCommentBodyChange}
               onDelete={() => onDeleteResource(resource.id)}
               onFocusComments={() => onFocusResourceComments(resource.id)}
-              onRequireSignIn={onRequireSignIn}
               onSelect={() => onSelectResource(resource.id)}
               onSubmitComment={onSubmitComment}
+              onToggleStar={() => onToggleResourceStar(resource.id)}
               resource={resource}
               spaceId={space.id}
             />
           ))}
           {resources.length === 0 && (
-            isVaultOwner ? (
+            canAddResource ? (
               <button
                 className="flex min-h-24 flex-col items-center justify-center gap-2 rounded-card border border-dashed border-line bg-ink-800/35 p-4 text-center text-fg-dim transition hover:border-jade-dim hover:text-fg disabled:opacity-50"
                 disabled={disabled}
@@ -249,6 +292,10 @@ export function SpaceSection({
       )}
     </section>
   )
+}
+
+function isResourceResolving(status: string) {
+  return status === "pending" || status === "processing"
 }
 
 function SpaceActionsMenu({
