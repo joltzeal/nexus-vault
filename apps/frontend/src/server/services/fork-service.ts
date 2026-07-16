@@ -45,6 +45,7 @@ export async function forkVault(
       title: resources.title,
       description: resources.description,
       url: resources.url,
+      dedupeKey: resources.dedupeKey,
       metadataStatus: resources.metadataStatus,
       position: resources.position,
     })
@@ -100,6 +101,7 @@ export async function forkVault(
       title: resource.title,
       description: resource.description,
       url: resource.url,
+      dedupeKey: resource.dedupeKey,
       metadataStatus: resource.metadataStatus,
       position: resource.position,
       createdBy: ownerId,

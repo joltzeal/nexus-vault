@@ -2,6 +2,7 @@ import { and, desc, eq, isNull, or, sql } from "drizzle-orm"
 
 import {
   resourceMetadata,
+  spaces,
   starredResources,
   stars,
   users,
@@ -139,15 +140,32 @@ export async function starResource(
     .limit(1)
 
   if (!existing) {
-    const [metadata] = await db
-      .select({
-        provider: resourceMetadata.provider,
-        dataJson: resourceMetadata.dataJson,
-        errorMessage: resourceMetadata.errorMessage,
-      })
-      .from(resourceMetadata)
-      .where(eq(resourceMetadata.resourceId, resourceId))
-      .limit(1)
+    const [metadata, sourceVault, sourceSpace] = await Promise.all([
+      db
+        .select({
+          provider: resourceMetadata.provider,
+          dataJson: resourceMetadata.dataJson,
+          errorMessage: resourceMetadata.errorMessage,
+        })
+        .from(resourceMetadata)
+        .where(eq(resourceMetadata.resourceId, resourceId))
+        .limit(1)
+        .then((rows) => rows[0]),
+      db
+        .select({ title: vaults.title })
+        .from(vaults)
+        .where(eq(vaults.id, resource.vaultId))
+        .limit(1)
+        .then((rows) => rows[0]),
+      resource.spaceId
+        ? db
+            .select({ name: spaces.name })
+            .from(spaces)
+            .where(eq(spaces.id, resource.spaceId))
+            .limit(1)
+            .then((rows) => rows[0])
+        : Promise.resolve(undefined),
+    ])
 
     await db.insert(starredResources).values({
       id: newId("resource_star"),
@@ -155,6 +173,8 @@ export async function starResource(
       sourceResourceId: resource.id,
       sourceVaultId: resource.vaultId,
       sourceSpaceId: resource.spaceId,
+      sourceVaultTitle: sourceVault?.title ?? "",
+      sourceSpaceName: sourceSpace?.name ?? "",
       type: resource.type,
       title: resource.title,
       description: resource.description,
@@ -204,6 +224,8 @@ export async function listStarredResources(
       sourceResourceId: starredResources.sourceResourceId,
       sourceVaultId: starredResources.sourceVaultId,
       sourceSpaceId: starredResources.sourceSpaceId,
+      sourceVaultTitle: starredResources.sourceVaultTitle,
+      sourceSpaceName: starredResources.sourceSpaceName,
       type: starredResources.type,
       title: starredResources.title,
       description: starredResources.description,

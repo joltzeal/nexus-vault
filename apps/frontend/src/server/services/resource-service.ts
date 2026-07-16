@@ -57,7 +57,8 @@ export async function createResource(
 
   const resourceId = newId("resource")
   const parsedInput = parseResourceInput(input)
-  await ensureResourceUrlNotDuplicate(db, vaultId, parsedInput.url)
+  const dedupeKey = getDuplicateResourceKey(parsedInput.url)
+  await ensureResourceUrlNotDuplicate(db, vaultId, dedupeKey)
 
   await db.batch([
     db.insert(resources).values({
@@ -68,6 +69,7 @@ export async function createResource(
       title: parsedInput.title,
       description: input.description,
       url: parsedInput.url,
+      dedupeKey,
       metadataStatus: "pending",
       createdBy,
     }),
@@ -138,12 +140,13 @@ export async function updateResource(
   const nextType = parsedInput?.type ?? input.type
   const nextTitle = parsedInput?.title ?? input.title
   const nextUrl = parsedInput?.url ?? input.url
+  const nextDedupeKey = nextUrl !== undefined ? getDuplicateResourceKey(nextUrl) : undefined
   const shouldResetMetadata =
     (nextType !== undefined && nextType !== resource.type) ||
     (nextUrl !== undefined && nextUrl !== resource.url)
 
   if (nextUrl !== undefined && nextUrl !== resource.url) {
-    await ensureResourceUrlNotDuplicate(db, resource.vaultId, nextUrl, resourceId)
+    await ensureResourceUrlNotDuplicate(db, resource.vaultId, nextDedupeKey!, resourceId)
   }
 
   const updates = {
@@ -152,6 +155,7 @@ export async function updateResource(
     ...(nextTitle !== undefined ? { title: nextTitle } : {}),
     ...(input.description !== undefined ? { description: input.description } : {}),
     ...(nextUrl !== undefined ? { url: nextUrl } : {}),
+    ...(nextDedupeKey !== undefined ? { dedupeKey: nextDedupeKey } : {}),
     ...(input.position !== undefined ? { position: input.position } : {}),
     ...(shouldResetMetadata ? { metadataStatus: "pending" as const } : {}),
     updatedAt: new Date().toISOString(),
@@ -197,30 +201,31 @@ export async function updateResource(
 export async function ensureResourceUrlNotDuplicate(
   db: Db,
   vaultId: string,
-  url: string,
+  dedupeKey: string,
   excludeResourceId?: string
 ) {
-  const key = getDuplicateResourceKey(url)
   const rows = await db
     .select({
       id: resources.id,
-      type: resources.type,
-      url: resources.url,
     })
     .from(resources)
-    .where(and(eq(resources.vaultId, vaultId), isNull(resources.deletedAt)))
+    .where(
+      and(
+        eq(resources.vaultId, vaultId),
+        eq(resources.dedupeKey, dedupeKey),
+        isNull(resources.deletedAt)
+      )
+    )
+    .limit(1)
 
-  const duplicate = rows.find((resource) => {
-    if (excludeResourceId && resource.id === excludeResourceId) return false
-    return getDuplicateResourceKey(resource.url) === key
-  })
+  const duplicate = rows.find((resource) => resource.id !== excludeResourceId)
 
   if (duplicate) {
     throw conflict("当前 vault 中已经有该链接，请不要重复添加。")
   }
 }
 
-function getDuplicateResourceKey(url: string) {
+export function getDuplicateResourceKey(url: string) {
   const magnet = parseMagnetLink(url)
   if (magnet) return `magnet:${magnet.infoHash}`
   return `url:${url.trim()}`
@@ -240,7 +245,11 @@ export async function archiveResource(
   const now = new Date().toISOString()
   await db
     .update(resources)
-    .set({ deletedAt: now, updatedAt: now })
+    .set({
+      dedupeKey: `archived:${resource.id}:${resource.dedupeKey}`,
+      deletedAt: now,
+      updatedAt: now,
+    })
     .where(and(eq(resources.id, resourceId), isNull(resources.deletedAt)))
 
   return { id: resourceId, archived: true }
@@ -295,6 +304,7 @@ export async function getResourceOrThrow(db: Db, resourceId: string) {
       title: resources.title,
       description: resources.description,
       url: resources.url,
+      dedupeKey: resources.dedupeKey,
       metadataStatus: resources.metadataStatus,
       position: resources.position,
       createdBy: resources.createdBy,

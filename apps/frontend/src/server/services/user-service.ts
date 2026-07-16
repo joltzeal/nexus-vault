@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm"
 
 import { users } from "@nexus-vault/db/schema"
+import { notFound } from "@/server/api/errors"
 import type { Actor, Db } from "@/server/api/types"
-import { newId } from "@/server/utils/id"
 
 export async function ensureUser(
   db: Db,
@@ -19,14 +19,7 @@ export async function ensureUser(
 
   if (existing) return existing.id
 
-  const userId = newId("user")
-  await db.insert(users).values({
-    id: userId,
-    email: input.email,
-    name: input.name,
-  })
-
-  return userId
+  throw notFound("该用户尚未注册，无法添加为协作者。")
 }
 
 export async function ensureActorUser(db: Db, actor: Actor) {
@@ -41,8 +34,8 @@ export async function ensureActorUser(db: Db, actor: Actor) {
       .update(users)
       .set({
         email: actor.email,
-        name: actor.name,
-        updatedAt: new Date().toISOString(),
+        name: actor.name || actor.email,
+        updatedAt: new Date(),
       })
       .where(eq(users.id, actor.id))
     return existingById.id
@@ -58,18 +51,12 @@ export async function ensureActorUser(db: Db, actor: Actor) {
     await db
       .update(users)
       .set({
-        name: actor.name,
-        updatedAt: new Date().toISOString(),
+        name: actor.name || actor.email,
+        updatedAt: new Date(),
       })
       .where(eq(users.id, existingByEmail.id))
     return existingByEmail.id
   }
 
-  await db.insert(users).values({
-    id: actor.id,
-    email: actor.email,
-    name: actor.name,
-  })
-
-  return actor.id
+  throw notFound("当前登录用户不存在，请重新登录。")
 }

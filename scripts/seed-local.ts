@@ -4,8 +4,15 @@ import { writeFile } from "node:fs/promises"
 import { join } from "node:path"
 
 const sql = `
-INSERT OR IGNORE INTO users (id, email, name)
-VALUES ('seed_user', 'seed@nexusvault.local', 'Seed User');
+INSERT OR IGNORE INTO user (id, name, email, emailVerified, createdAt, updatedAt)
+VALUES (
+  'seed_user',
+  'Seed User',
+  'seed@nexusvault.local',
+  1,
+  strftime('%s','now') * 1000,
+  strftime('%s','now') * 1000
+);
 
 INSERT OR IGNORE INTO vaults (
   id, title, description, visibility, owner_id, star_count, fork_count
@@ -19,16 +26,13 @@ INSERT OR IGNORE INTO vaults (
   0
 );
 
-INSERT OR IGNORE INTO collaborators (id, vault_id, user_id, role)
-VALUES ('seed_collaborator_owner', 'seed_vault', 'seed_user', 'owner');
-
 INSERT OR IGNORE INTO spaces (id, vault_id, name, description, position)
 VALUES
   ('seed_space_movies', 'seed_vault', '电影', 'Movie resources', 0),
   ('seed_space_courses', 'seed_vault', '教程', 'Course resources', 1);
 
 INSERT OR IGNORE INTO resources (
-  id, vault_id, space_id, type, title, description, url, metadata_status, position, created_by
+  id, vault_id, space_id, type, title, description, url, dedupe_key, metadata_status, position, created_by
 ) VALUES
   (
     'seed_resource_magnet',
@@ -38,6 +42,7 @@ INSERT OR IGNORE INTO resources (
     '名称未知',
     'Seed magnet resource.',
     'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=NexusVault%20Seed',
+    'magnet:0123456789ABCDEF0123456789ABCDEF01234567',
     'completed',
     0,
     'seed_user'
@@ -50,6 +55,7 @@ INSERT OR IGNORE INTO resources (
     'Cloudflare Workers Docs',
     'Seed HTTP resource.',
     'https://developers.cloudflare.com/workers/',
+    'url:https://developers.cloudflare.com/workers/',
     'completed',
     0,
     'seed_user'

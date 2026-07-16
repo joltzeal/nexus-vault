@@ -1,95 +1,130 @@
 import { relations, sql } from "drizzle-orm"
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 
-export const users = sqliteTable("users", {
-  id: text("id").primaryKey(),
-  email: text("email").notNull().unique(),
-  name: text("name"),
-  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  deletedAt: text("deleted_at"),
-})
+import { userTable as users } from "./better-auth-schema"
 
-export const vaults = sqliteTable("vaults", {
-  id: text("id").primaryKey(),
-  title: text("title").notNull(),
-  description: text("description").notNull().default(""),
-  cover: text("cover").notNull().default(""),
-  visibility: text("visibility", {
-    enum: ["public", "private", "password"],
+export { users }
+
+export const vaults = sqliteTable(
+  "vaults",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    cover: text("cover").notNull().default(""),
+    visibility: text("visibility", {
+      enum: ["public", "private", "password"],
+    })
+      .notNull()
+      .default("private"),
+    passwordHash: text("password_hash"),
+    collectionEnabled: integer("collection_enabled", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    nsfwEnabled: integer("nsfw_enabled", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    ownerId: text("owner_id").references(() => users.id, { onDelete: "set null" }),
+    starCount: integer("star_count").notNull().default(0),
+    forkCount: integer("fork_count").notNull().default(0),
+    forkedFromVaultId: text("forked_from_vault_id"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    deletedAt: text("deleted_at"),
+  },
+  (table) => ({
+    ownerDeletedCreatedIdx: index("vaults_owner_deleted_created_idx").on(
+      table.ownerId,
+      table.deletedAt,
+      table.createdAt
+    ),
+    deletedCreatedIdx: index("vaults_deleted_created_idx").on(
+      table.deletedAt,
+      table.createdAt
+    ),
   })
-    .notNull()
-    .default("private"),
-  passwordHash: text("password_hash"),
-  collectionEnabled: integer("collection_enabled", { mode: "boolean" })
-    .notNull()
-    .default(false),
-  nsfwEnabled: integer("nsfw_enabled", { mode: "boolean" })
-    .notNull()
-    .default(true),
-  ownerId: text("owner_id").references(() => users.id, { onDelete: "set null" }),
-  starCount: integer("star_count").notNull().default(0),
-  forkCount: integer("fork_count").notNull().default(0),
-  forkedFromVaultId: text("forked_from_vault_id"),
-  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  deletedAt: text("deleted_at"),
-})
+)
 
-export const spaces = sqliteTable("spaces", {
-  id: text("id").primaryKey(),
-  vaultId: text("vault_id")
-    .notNull()
-    .references(() => vaults.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  description: text("description").notNull().default(""),
-  icon: text("icon").notNull().default("tv"),
-  position: integer("position").notNull().default(0),
-  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  deletedAt: text("deleted_at"),
-})
-
-export const resources = sqliteTable("resources", {
-  id: text("id").primaryKey(),
-  vaultId: text("vault_id")
-    .notNull()
-    .references(() => vaults.id, { onDelete: "cascade" }),
-  spaceId: text("space_id").references(() => spaces.id, { onDelete: "set null" }),
-  type: text("type", {
-    enum: [
-      "magnet",
-      "twitter",
-      "baidu_pan",
-      "pan_115",
-      "pan_123",
-      "quark_pan",
-      "uc_pan",
-      "xunlei_pan",
-      "pikpak",
-      "onedrive",
-      "google_drive",
-      "dropbox",
-      "alist",
-      "http",
-      "youtube",
-      "other",
-    ],
-  }).notNull(),
-  title: text("title").notNull(),
-  description: text("description").notNull().default(""),
-  url: text("url").notNull(),
-  metadataStatus: text("metadata_status", {
-    enum: ["pending", "processing", "completed", "failed"],
+export const spaces = sqliteTable(
+  "spaces",
+  {
+    id: text("id").primaryKey(),
+    vaultId: text("vault_id")
+      .notNull()
+      .references(() => vaults.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    icon: text("icon").notNull().default("tv"),
+    position: integer("position").notNull().default(0),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    deletedAt: text("deleted_at"),
+  },
+  (table) => ({
+    vaultDeletedPositionIdx: index("spaces_vault_deleted_position_idx").on(
+      table.vaultId,
+      table.deletedAt,
+      table.position
+    ),
   })
-    .notNull()
-    .default("pending"),
-  position: integer("position").notNull().default(0),
-  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
-  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  deletedAt: text("deleted_at"),
-})
+)
+
+export const resources = sqliteTable(
+  "resources",
+  {
+    id: text("id").primaryKey(),
+    vaultId: text("vault_id")
+      .notNull()
+      .references(() => vaults.id, { onDelete: "cascade" }),
+    spaceId: text("space_id").references(() => spaces.id, { onDelete: "set null" }),
+    type: text("type", {
+      enum: [
+        "magnet",
+        "twitter",
+        "baidu_pan",
+        "pan_115",
+        "pan_123",
+        "quark_pan",
+        "uc_pan",
+        "xunlei_pan",
+        "pikpak",
+        "onedrive",
+        "google_drive",
+        "dropbox",
+        "alist",
+        "http",
+        "youtube",
+        "other",
+      ],
+    }).notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    url: text("url").notNull(),
+    dedupeKey: text("dedupe_key").notNull(),
+    metadataStatus: text("metadata_status", {
+      enum: ["pending", "processing", "completed", "failed"],
+    })
+      .notNull()
+      .default("pending"),
+    position: integer("position").notNull().default(0),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    deletedAt: text("deleted_at"),
+  },
+  (table) => ({
+    vaultDeletedSpacePositionIdx: index("resources_vault_deleted_space_position_idx").on(
+      table.vaultId,
+      table.deletedAt,
+      table.spaceId,
+      table.position
+    ),
+    vaultDedupeUnique: uniqueIndex("resources_vault_dedupe_unique").on(
+      table.vaultId,
+      table.dedupeKey
+    ),
+  })
+)
 
 export const resourceSubmissions = sqliteTable(
   "resource_submissions",
@@ -186,43 +221,69 @@ export const collaborators = sqliteTable(
       table.vaultId,
       table.userId
     ),
+    userVaultIdx: index("collaborators_user_vault_idx").on(
+      table.userId,
+      table.vaultId
+    ),
   })
 )
 
-export const shares = sqliteTable("shares", {
-  id: text("id").primaryKey(),
-  vaultId: text("vault_id")
-    .notNull()
-    .references(() => vaults.id, { onDelete: "cascade" }),
-  visibility: text("visibility", {
-    enum: ["public", "private", "password"],
+export const shares = sqliteTable(
+  "shares",
+  {
+    id: text("id").primaryKey(),
+    vaultId: text("vault_id")
+      .notNull()
+      .references(() => vaults.id, { onDelete: "cascade" }),
+    visibility: text("visibility", {
+      enum: ["public", "private", "password"],
+    })
+      .notNull()
+      .default("private"),
+    passwordHash: text("password_hash"),
+    token: text("token").notNull().unique(),
+    slug: text("slug").unique(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    deletedAt: text("deleted_at"),
+  },
+  (table) => ({
+    vaultDeletedIdx: index("shares_vault_deleted_idx").on(table.vaultId, table.deletedAt),
+    slugDeletedIdx: index("shares_slug_deleted_idx").on(table.slug, table.deletedAt),
   })
-    .notNull()
-    .default("private"),
-  passwordHash: text("password_hash"),
-  token: text("token").notNull().unique(),
-  slug: text("slug").unique(),
-  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  deletedAt: text("deleted_at"),
-})
+)
 
-export const comments = sqliteTable("comments", {
-  id: text("id").primaryKey(),
-  vaultId: text("vault_id")
-    .notNull()
-    .references(() => vaults.id, { onDelete: "cascade" }),
-  resourceId: text("resource_id")
-    .notNull()
-    .references(() => resources.id, { onDelete: "cascade" }),
-  parentId: text("parent_id"),
-  authorId: text("author_id").references(() => users.id, { onDelete: "set null" }),
-  authorName: text("author_name").notNull().default("Anonymous"),
-  body: text("body").notNull(),
-  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  deletedAt: text("deleted_at"),
-})
+export const comments = sqliteTable(
+  "comments",
+  {
+    id: text("id").primaryKey(),
+    vaultId: text("vault_id")
+      .notNull()
+      .references(() => vaults.id, { onDelete: "cascade" }),
+    resourceId: text("resource_id")
+      .notNull()
+      .references(() => resources.id, { onDelete: "cascade" }),
+    parentId: text("parent_id"),
+    authorId: text("author_id").references(() => users.id, { onDelete: "set null" }),
+    authorName: text("author_name").notNull().default("Anonymous"),
+    body: text("body").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    deletedAt: text("deleted_at"),
+  },
+  (table) => ({
+    vaultDeletedCreatedIdx: index("comments_vault_deleted_created_idx").on(
+      table.vaultId,
+      table.deletedAt,
+      table.createdAt
+    ),
+    resourceDeletedCreatedIdx: index("comments_resource_deleted_created_idx").on(
+      table.resourceId,
+      table.deletedAt,
+      table.createdAt
+    ),
+  })
+)
 
 export const stars = sqliteTable(
   "stars",
@@ -241,6 +302,10 @@ export const stars = sqliteTable(
       table.vaultId,
       table.userId
     ),
+    userCreatedIdx: index("stars_user_created_idx").on(
+      table.userId,
+      table.createdAt
+    ),
   })
 )
 
@@ -252,6 +317,8 @@ export const starredResources = sqliteTable(
     sourceResourceId: text("source_resource_id").notNull(),
     sourceVaultId: text("source_vault_id").notNull(),
     sourceSpaceId: text("source_space_id"),
+    sourceVaultTitle: text("source_vault_title").notNull().default(""),
+    sourceSpaceName: text("source_space_name").notNull().default(""),
     type: text("type", {
       enum: [
         "magnet",
@@ -298,28 +365,55 @@ export const starredResources = sqliteTable(
   })
 )
 
-export const forks = sqliteTable("forks", {
-  id: text("id").primaryKey(),
-  sourceVaultId: text("source_vault_id")
-    .notNull()
-    .references(() => vaults.id, { onDelete: "cascade" }),
-  targetVaultId: text("target_vault_id")
-    .notNull()
-    .references(() => vaults.id, { onDelete: "cascade" }),
-  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
-  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-})
+export const forks = sqliteTable(
+  "forks",
+  {
+    id: text("id").primaryKey(),
+    sourceVaultId: text("source_vault_id")
+      .notNull()
+      .references(() => vaults.id, { onDelete: "cascade" }),
+    targetVaultId: text("target_vault_id")
+      .notNull()
+      .references(() => vaults.id, { onDelete: "cascade" }),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    sourceTargetIdx: index("forks_source_target_idx").on(
+      table.sourceVaultId,
+      table.targetVaultId
+    ),
+    createdByCreatedIdx: index("forks_created_by_created_idx").on(
+      table.createdBy,
+      table.createdAt
+    ),
+  })
+)
 
-export const notifications = sqliteTable("notifications", {
-  id: text("id").primaryKey(),
-  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
-  vaultId: text("vault_id").references(() => vaults.id, { onDelete: "cascade" }),
-  type: text("type").notNull(),
-  title: text("title").notNull(),
-  body: text("body").notNull().default(""),
-  readAt: text("read_at"),
-  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-})
+export const notifications = sqliteTable(
+  "notifications",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    vaultId: text("vault_id").references(() => vaults.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    readAt: text("read_at"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    userReadCreatedIdx: index("notifications_user_read_created_idx").on(
+      table.userId,
+      table.readAt,
+      table.createdAt
+    ),
+    userCreatedIdx: index("notifications_user_created_idx").on(
+      table.userId,
+      table.createdAt
+    ),
+  })
+)
 
 export const vaultRelations = relations(vaults, ({ many }) => ({
   spaces: many(spaces),
@@ -348,7 +442,10 @@ export const resourceRelations = relations(resources, ({ one, many }) => ({
     fields: [resources.spaceId],
     references: [spaces.id],
   }),
-  metadata: many(resourceMetadata),
+  metadata: one(resourceMetadata, {
+    fields: [resources.id],
+    references: [resourceMetadata.resourceId],
+  }),
   comments: many(comments),
 }))
 

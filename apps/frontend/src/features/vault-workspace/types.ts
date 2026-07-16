@@ -150,6 +150,8 @@ export type StarredResourceItem = {
   sourceResourceId: string
   sourceVaultId: string
   sourceSpaceId?: string | null
+  sourceVaultTitle?: string
+  sourceSpaceName?: string
   type: ResourceType
   title: string
   description: string

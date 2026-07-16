@@ -5,7 +5,9 @@ import { fileURLToPath } from "node:url"
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const migrationsDir = join(root, "migrations")
 
-const betterAuthSql = `CREATE TABLE \`user\` (
+const initialSchemaSql = `PRAGMA foreign_keys = ON;
+
+CREATE TABLE \`user\` (
   \`id\` text PRIMARY KEY NOT NULL,
   \`name\` text NOT NULL,
   \`email\` text NOT NULL,
@@ -60,27 +62,16 @@ CREATE TABLE \`verification\` (
 );
 --> statement-breakpoint
 CREATE INDEX \`verification_identifier_idx\` ON \`verification\` (\`identifier\`);
-`
-
-const businessSql = `PRAGMA foreign_keys = ON;
-
-CREATE TABLE \`users\` (
-  \`id\` text PRIMARY KEY NOT NULL,
-  \`email\` text NOT NULL,
-  \`name\` text,
-  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  \`updated_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  \`deleted_at\` text
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX \`users_email_unique\` ON \`users\` (\`email\`);
 --> statement-breakpoint
 CREATE TABLE \`vaults\` (
   \`id\` text PRIMARY KEY NOT NULL,
   \`title\` text NOT NULL,
   \`description\` text DEFAULT '' NOT NULL,
+  \`cover\` text DEFAULT '' NOT NULL,
   \`visibility\` text DEFAULT 'private' NOT NULL,
   \`password_hash\` text,
+  \`collection_enabled\` integer DEFAULT false NOT NULL,
+  \`nsfw_enabled\` integer DEFAULT true NOT NULL,
   \`owner_id\` text,
   \`star_count\` integer DEFAULT 0 NOT NULL,
   \`fork_count\` integer DEFAULT 0 NOT NULL,
@@ -88,8 +79,12 @@ CREATE TABLE \`vaults\` (
   \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
   \`updated_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
   \`deleted_at\` text,
-  FOREIGN KEY (\`owner_id\`) REFERENCES \`users\`(\`id\`) ON UPDATE no action ON DELETE set null
+  FOREIGN KEY (\`owner_id\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE set null
 );
+--> statement-breakpoint
+CREATE INDEX \`vaults_owner_deleted_created_idx\` ON \`vaults\` (\`owner_id\`, \`deleted_at\`, \`created_at\`);
+--> statement-breakpoint
+CREATE INDEX \`vaults_deleted_created_idx\` ON \`vaults\` (\`deleted_at\`, \`created_at\`);
 --> statement-breakpoint
 CREATE TABLE \`spaces\` (
   \`id\` text PRIMARY KEY NOT NULL,
@@ -104,6 +99,8 @@ CREATE TABLE \`spaces\` (
   FOREIGN KEY (\`vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE INDEX \`spaces_vault_deleted_position_idx\` ON \`spaces\` (\`vault_id\`, \`deleted_at\`, \`position\`);
+--> statement-breakpoint
 CREATE TABLE \`resources\` (
   \`id\` text PRIMARY KEY NOT NULL,
   \`vault_id\` text NOT NULL,
@@ -112,6 +109,7 @@ CREATE TABLE \`resources\` (
   \`title\` text NOT NULL,
   \`description\` text DEFAULT '' NOT NULL,
   \`url\` text NOT NULL,
+  \`dedupe_key\` text NOT NULL,
   \`metadata_status\` text DEFAULT 'pending' NOT NULL,
   \`position\` integer DEFAULT 0 NOT NULL,
   \`created_by\` text,
@@ -120,103 +118,14 @@ CREATE TABLE \`resources\` (
   \`deleted_at\` text,
   FOREIGN KEY (\`vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade,
   FOREIGN KEY (\`space_id\`) REFERENCES \`spaces\`(\`id\`) ON UPDATE no action ON DELETE set null,
-  FOREIGN KEY (\`created_by\`) REFERENCES \`users\`(\`id\`) ON UPDATE no action ON DELETE set null
+  FOREIGN KEY (\`created_by\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE set null
 );
 --> statement-breakpoint
-CREATE TABLE \`resource_metadata\` (
-  \`resource_id\` text PRIMARY KEY NOT NULL,
-  \`provider\` text NOT NULL,
-  \`status\` text DEFAULT 'pending' NOT NULL,
-  \`data_json\` text DEFAULT '{}' NOT NULL,
-  \`error_message\` text,
-  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  \`updated_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  FOREIGN KEY (\`resource_id\`) REFERENCES \`resources\`(\`id\`) ON UPDATE no action ON DELETE cascade
-);
+CREATE INDEX \`resources_vault_deleted_space_position_idx\` ON \`resources\` (\`vault_id\`, \`deleted_at\`, \`space_id\`, \`position\`);
 --> statement-breakpoint
-CREATE TABLE \`collaborators\` (
-  \`id\` text PRIMARY KEY NOT NULL,
-  \`vault_id\` text NOT NULL,
-  \`user_id\` text NOT NULL,
-  \`role\` text NOT NULL,
-  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  \`updated_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  FOREIGN KEY (\`vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade,
-  FOREIGN KEY (\`user_id\`) REFERENCES \`users\`(\`id\`) ON UPDATE no action ON DELETE cascade
-);
+CREATE UNIQUE INDEX \`resources_vault_dedupe_unique\` ON \`resources\` (\`vault_id\`, \`dedupe_key\`);
 --> statement-breakpoint
-CREATE UNIQUE INDEX \`collaborators_vault_user_unique\` ON \`collaborators\` (\`vault_id\`, \`user_id\`);
---> statement-breakpoint
-CREATE TABLE \`shares\` (
-  \`id\` text PRIMARY KEY NOT NULL,
-  \`vault_id\` text NOT NULL,
-  \`visibility\` text DEFAULT 'private' NOT NULL,
-  \`password_hash\` text,
-  \`token\` text NOT NULL,
-  \`slug\` text,
-  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  \`updated_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  \`deleted_at\` text,
-  FOREIGN KEY (\`vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX \`shares_token_unique\` ON \`shares\` (\`token\`);
---> statement-breakpoint
-CREATE UNIQUE INDEX \`shares_slug_unique\` ON \`shares\` (\`slug\`);
---> statement-breakpoint
-CREATE TABLE \`comments\` (
-  \`id\` text PRIMARY KEY NOT NULL,
-  \`vault_id\` text NOT NULL,
-  \`resource_id\` text NOT NULL,
-  \`parent_id\` text,
-  \`author_id\` text,
-  \`author_name\` text DEFAULT 'Anonymous' NOT NULL,
-  \`body\` text NOT NULL,
-  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  \`updated_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  \`deleted_at\` text,
-  FOREIGN KEY (\`vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade,
-  FOREIGN KEY (\`resource_id\`) REFERENCES \`resources\`(\`id\`) ON UPDATE no action ON DELETE cascade,
-  FOREIGN KEY (\`author_id\`) REFERENCES \`users\`(\`id\`) ON UPDATE no action ON DELETE set null
-);
---> statement-breakpoint
-CREATE TABLE \`stars\` (
-  \`id\` text PRIMARY KEY NOT NULL,
-  \`vault_id\` text NOT NULL,
-  \`user_id\` text NOT NULL,
-  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  FOREIGN KEY (\`vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade,
-  FOREIGN KEY (\`user_id\`) REFERENCES \`users\`(\`id\`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX \`stars_vault_user_unique\` ON \`stars\` (\`vault_id\`, \`user_id\`);
---> statement-breakpoint
-CREATE TABLE \`forks\` (
-  \`id\` text PRIMARY KEY NOT NULL,
-  \`source_vault_id\` text NOT NULL,
-  \`target_vault_id\` text NOT NULL,
-  \`created_by\` text,
-  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  FOREIGN KEY (\`source_vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade,
-  FOREIGN KEY (\`target_vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade,
-  FOREIGN KEY (\`created_by\`) REFERENCES \`users\`(\`id\`) ON UPDATE no action ON DELETE set null
-);
---> statement-breakpoint
-CREATE TABLE \`notifications\` (
-  \`id\` text PRIMARY KEY NOT NULL,
-  \`user_id\` text,
-  \`vault_id\` text,
-  \`type\` text NOT NULL,
-  \`title\` text NOT NULL,
-  \`body\` text DEFAULT '' NOT NULL,
-  \`read_at\` text,
-  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  FOREIGN KEY (\`user_id\`) REFERENCES \`users\`(\`id\`) ON UPDATE no action ON DELETE cascade,
-  FOREIGN KEY (\`vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade
-);
-`
-
-const submissionsSql = `CREATE TABLE \`resource_submissions\` (
+CREATE TABLE \`resource_submissions\` (
   \`id\` text PRIMARY KEY NOT NULL,
   \`vault_id\` text NOT NULL,
   \`space_id\` text,
@@ -238,22 +147,153 @@ const submissionsSql = `CREATE TABLE \`resource_submissions\` (
   \`deleted_at\` text,
   FOREIGN KEY (\`vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade,
   FOREIGN KEY (\`space_id\`) REFERENCES \`spaces\`(\`id\`) ON UPDATE no action ON DELETE set null,
-  FOREIGN KEY (\`submitter_id\`) REFERENCES \`users\`(\`id\`) ON UPDATE no action ON DELETE set null,
-  FOREIGN KEY (\`reviewed_by\`) REFERENCES \`users\`(\`id\`) ON UPDATE no action ON DELETE set null,
+  FOREIGN KEY (\`submitter_id\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE set null,
+  FOREIGN KEY (\`reviewed_by\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE set null,
   FOREIGN KEY (\`approved_resource_id\`) REFERENCES \`resources\`(\`id\`) ON UPDATE no action ON DELETE set null
 );
 --> statement-breakpoint
 CREATE INDEX \`resource_submissions_vault_status_created_idx\` ON \`resource_submissions\` (\`vault_id\`, \`status\`, \`created_at\`);
+--> statement-breakpoint
+CREATE TABLE \`resource_metadata\` (
+  \`resource_id\` text PRIMARY KEY NOT NULL,
+  \`provider\` text NOT NULL,
+  \`status\` text DEFAULT 'pending' NOT NULL,
+  \`data_json\` text DEFAULT '{}' NOT NULL,
+  \`error_message\` text,
+  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  \`updated_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  FOREIGN KEY (\`resource_id\`) REFERENCES \`resources\`(\`id\`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE \`collaborators\` (
+  \`id\` text PRIMARY KEY NOT NULL,
+  \`vault_id\` text NOT NULL,
+  \`user_id\` text NOT NULL,
+  \`role\` text DEFAULT 'editor' NOT NULL,
+  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  \`updated_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  FOREIGN KEY (\`vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade,
+  FOREIGN KEY (\`user_id\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX \`collaborators_vault_user_unique\` ON \`collaborators\` (\`vault_id\`, \`user_id\`);
+--> statement-breakpoint
+CREATE INDEX \`collaborators_user_vault_idx\` ON \`collaborators\` (\`user_id\`, \`vault_id\`);
+--> statement-breakpoint
+CREATE TABLE \`shares\` (
+  \`id\` text PRIMARY KEY NOT NULL,
+  \`vault_id\` text NOT NULL,
+  \`visibility\` text DEFAULT 'private' NOT NULL,
+  \`password_hash\` text,
+  \`token\` text NOT NULL,
+  \`slug\` text,
+  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  \`updated_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  \`deleted_at\` text,
+  FOREIGN KEY (\`vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX \`shares_token_unique\` ON \`shares\` (\`token\`);
+--> statement-breakpoint
+CREATE UNIQUE INDEX \`shares_slug_unique\` ON \`shares\` (\`slug\`);
+--> statement-breakpoint
+CREATE INDEX \`shares_vault_deleted_idx\` ON \`shares\` (\`vault_id\`, \`deleted_at\`);
+--> statement-breakpoint
+CREATE INDEX \`shares_slug_deleted_idx\` ON \`shares\` (\`slug\`, \`deleted_at\`);
+--> statement-breakpoint
+CREATE TABLE \`comments\` (
+  \`id\` text PRIMARY KEY NOT NULL,
+  \`vault_id\` text NOT NULL,
+  \`resource_id\` text NOT NULL,
+  \`parent_id\` text,
+  \`author_id\` text,
+  \`author_name\` text DEFAULT 'Anonymous' NOT NULL,
+  \`body\` text NOT NULL,
+  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  \`updated_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  \`deleted_at\` text,
+  FOREIGN KEY (\`vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade,
+  FOREIGN KEY (\`resource_id\`) REFERENCES \`resources\`(\`id\`) ON UPDATE no action ON DELETE cascade,
+  FOREIGN KEY (\`author_id\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE set null
+);
+--> statement-breakpoint
+CREATE INDEX \`comments_vault_deleted_created_idx\` ON \`comments\` (\`vault_id\`, \`deleted_at\`, \`created_at\`);
+--> statement-breakpoint
+CREATE INDEX \`comments_resource_deleted_created_idx\` ON \`comments\` (\`resource_id\`, \`deleted_at\`, \`created_at\`);
+--> statement-breakpoint
+CREATE TABLE \`stars\` (
+  \`id\` text PRIMARY KEY NOT NULL,
+  \`vault_id\` text NOT NULL,
+  \`user_id\` text NOT NULL,
+  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  FOREIGN KEY (\`vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade,
+  FOREIGN KEY (\`user_id\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX \`stars_vault_user_unique\` ON \`stars\` (\`vault_id\`, \`user_id\`);
+--> statement-breakpoint
+CREATE INDEX \`stars_user_created_idx\` ON \`stars\` (\`user_id\`, \`created_at\`);
+--> statement-breakpoint
+CREATE TABLE \`starred_resources\` (
+  \`id\` text PRIMARY KEY NOT NULL,
+  \`user_id\` text NOT NULL,
+  \`source_resource_id\` text NOT NULL,
+  \`source_vault_id\` text NOT NULL,
+  \`source_space_id\` text,
+  \`source_vault_title\` text DEFAULT '' NOT NULL,
+  \`source_space_name\` text DEFAULT '' NOT NULL,
+  \`type\` text NOT NULL,
+  \`title\` text NOT NULL,
+  \`description\` text DEFAULT '' NOT NULL,
+  \`url\` text NOT NULL,
+  \`metadata_status\` text DEFAULT 'pending' NOT NULL,
+  \`metadata_provider\` text,
+  \`metadata_data_json\` text DEFAULT '{}' NOT NULL,
+  \`metadata_error_message\` text,
+  \`source_created_at\` text,
+  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX \`starred_resources_user_source_unique\` ON \`starred_resources\` (\`user_id\`, \`source_resource_id\`);
+--> statement-breakpoint
+CREATE INDEX \`starred_resources_user_created_idx\` ON \`starred_resources\` (\`user_id\`, \`created_at\`);
+--> statement-breakpoint
+CREATE TABLE \`forks\` (
+  \`id\` text PRIMARY KEY NOT NULL,
+  \`source_vault_id\` text NOT NULL,
+  \`target_vault_id\` text NOT NULL,
+  \`created_by\` text,
+  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  FOREIGN KEY (\`source_vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade,
+  FOREIGN KEY (\`target_vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade,
+  FOREIGN KEY (\`created_by\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE set null
+);
+--> statement-breakpoint
+CREATE INDEX \`forks_source_target_idx\` ON \`forks\` (\`source_vault_id\`, \`target_vault_id\`);
+--> statement-breakpoint
+CREATE INDEX \`forks_created_by_created_idx\` ON \`forks\` (\`created_by\`, \`created_at\`);
+--> statement-breakpoint
+CREATE TABLE \`notifications\` (
+  \`id\` text PRIMARY KEY NOT NULL,
+  \`user_id\` text,
+  \`vault_id\` text,
+  \`type\` text NOT NULL,
+  \`title\` text NOT NULL,
+  \`body\` text DEFAULT '' NOT NULL,
+  \`read_at\` text,
+  \`created_at\` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  FOREIGN KEY (\`user_id\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE cascade,
+  FOREIGN KEY (\`vault_id\`) REFERENCES \`vaults\`(\`id\`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX \`notifications_user_read_created_idx\` ON \`notifications\` (\`user_id\`, \`read_at\`, \`created_at\`);
+--> statement-breakpoint
+CREATE INDEX \`notifications_user_created_idx\` ON \`notifications\` (\`user_id\`, \`created_at\`);
 `
 
 rmSync(migrationsDir, { force: true, recursive: true })
 mkdirSync(migrationsDir, { recursive: true })
-writeFileSync(join(migrationsDir, "0000_better_auth.sql"), betterAuthSql)
-writeFileSync(join(migrationsDir, "0001_business_tables.sql"), businessSql)
-writeFileSync(join(migrationsDir, "0002_resource_submissions.sql"), submissionsSql)
+writeFileSync(join(migrationsDir, "0000_initial_schema.sql"), initialSchemaSql)
 
 console.log("Generated D1 migrations:")
-console.log(" - migrations/0000_better_auth.sql")
-console.log(" - migrations/0001_business_tables.sql")
-console.log(" - migrations/0002_resource_submissions.sql")
-console.log("No drizzle meta files were generated.")
+console.log(" - migrations/0000_initial_schema.sql")

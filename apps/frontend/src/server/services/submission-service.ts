@@ -12,6 +12,7 @@ import { requireVaultPermission } from "@/server/services/permission-service"
 import {
   createMetadataQueueMessage,
   ensureResourceUrlNotDuplicate,
+  getDuplicateResourceKey,
 } from "@/server/services/resource-service"
 import { getDefaultSpaceId, getSpaceInVaultOrThrow } from "@/server/services/space-service"
 import { ensureActorUser } from "@/server/services/user-service"
@@ -46,7 +47,8 @@ export async function createResourceSubmission(
     type: input.type,
     title: input.title,
   })
-  await ensureResourceUrlNotDuplicate(db, vaultId, parsed.url)
+  const dedupeKey = getDuplicateResourceKey(parsed.url)
+  await ensureResourceUrlNotDuplicate(db, vaultId, dedupeKey)
   const submitterId = input.actor ? await ensureActorUser(db, input.actor) : null
   const submissionId = newId("submission")
   const now = new Date().toISOString()
@@ -113,6 +115,7 @@ async function resolveSubmissionMetadata(input: {
     title: input.title,
     description: input.description,
     url: input.url,
+    dedupeKey: getDuplicateResourceKey(input.url),
     metadataStatus: "pending" as const,
     position: 0,
     createdBy: input.submitterId,
@@ -221,6 +224,8 @@ export async function approveResourceSubmission(
 
   const resourceId = newId("resource")
   const now = new Date().toISOString()
+  const dedupeKey = getDuplicateResourceKey(submission.url)
+  await ensureResourceUrlNotDuplicate(db, vaultId, dedupeKey)
 
   await db.batch([
     db.insert(resources).values({
@@ -231,6 +236,7 @@ export async function approveResourceSubmission(
       title: submission.title,
       description: submission.description,
       url: submission.url,
+      dedupeKey,
       metadataStatus: "pending",
       createdBy: submission.submitterId,
     }),
