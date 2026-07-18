@@ -1,7 +1,7 @@
 "use client"
 
 import type { FormEvent } from "react"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { authClient } from "@nexus-vault/auth/client"
 import {
   BadgeCheck,
@@ -11,6 +11,7 @@ import {
   Plus,
   Shield,
   Star,
+  Upload,
 } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -50,6 +51,7 @@ export function VaultSidebar({
   disabled,
   mediaVisible,
   onMediaVisibleChange,
+  onImportVault,
   onSignOut,
   onCreateVault,
   onSelectStarredVault,
@@ -62,6 +64,7 @@ export function VaultSidebar({
   disabled: boolean
   mediaVisible: boolean
   onMediaVisibleChange: (visible: boolean) => void
+  onImportVault: (file: File) => void
   onSignOut: () => void
   onCreateVault: () => void
   onSelectStarredVault: (id: string) => void
@@ -77,6 +80,7 @@ export function VaultSidebar({
   const [accountOpen, setAccountOpen] = useState(false)
   const [passwordBusy, setPasswordBusy] = useState(false)
   const [passwordError, setPasswordError] = useState("")
+  const importInputRef = useRef<HTMLInputElement>(null)
   const [passwordForm, setPasswordForm] = useState({
     confirmPassword: "",
     currentPassword: "",
@@ -131,16 +135,38 @@ export function VaultSidebar({
       <section className="px-3 pb-1 pt-3.5">
         <div className="mono flex items-center justify-between px-2 pb-2 text-[10px] uppercase tracking-[.16em] text-fg-dim">
           <span>Vaults</span>
-          <button
-            className="grid size-[18px] place-items-center rounded-sm transition hover:bg-ink-750 hover:text-jade disabled:opacity-40"
-            disabled={disabled}
-            onClick={onCreateVault}
-            type="button"
-          >
-            <Plus />
-            <span className="sr-only">创建 Vault</span>
-          </button>
+          <span className="flex items-center gap-1">
+            <button
+              className="grid size-[18px] place-items-center rounded-sm transition hover:bg-ink-750 hover:text-jade disabled:opacity-40"
+              disabled={disabled}
+              onClick={() => importInputRef.current?.click()}
+              type="button"
+            >
+              <Upload />
+              <span className="sr-only">导入 Vault JSON</span>
+            </button>
+            <button
+              className="grid size-[18px] place-items-center rounded-sm transition hover:bg-ink-750 hover:text-jade disabled:opacity-40"
+              disabled={disabled}
+              onClick={onCreateVault}
+              type="button"
+            >
+              <Plus />
+              <span className="sr-only">创建 Vault</span>
+            </button>
+          </span>
         </div>
+        <input
+          ref={importInputRef}
+          accept="application/json,.json"
+          className="hidden"
+          type="file"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            event.target.value = ""
+            if (file) onImportVault(file)
+          }}
+        />
         <div className="flex flex-col gap-1">
           {sets.map((set, index) => (
             <button

@@ -1,6 +1,8 @@
 import { z } from "zod"
+import { resourceTypeSchema } from "@/server/schemas/resource"
 
 export const visibilitySchema = z.enum(["public", "private", "password"])
+const metadataStatusSchema = z.enum(["pending", "processing", "completed", "failed"])
 
 export const createVaultSchema = z.object({
   title: z.string().trim().min(1).max(120),
@@ -35,3 +37,70 @@ export const unlockShareSchema = z.object({
 export const starSchema = z.object({
   userName: z.string().trim().max(120).optional(),
 })
+
+export const vaultExportResourceMetadataSchema = z
+  .object({
+    provider: z.string().trim().min(1).max(80).optional().default("import"),
+    status: metadataStatusSchema.optional().default("completed"),
+    data: z.unknown().optional(),
+    errorMessage: z.string().nullable().optional(),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .nullable()
+  .optional()
+
+export const vaultExportSchema = z.object({
+  format: z.literal("nexus-vault.v1"),
+  exportedAt: z.string().optional(),
+  vault: z.object({
+    title: z.string().trim().min(1).max(120),
+    description: z.string().optional().default(""),
+    cover: z.string().max(500).optional().default(""),
+    visibility: visibilitySchema.optional().default("private"),
+    collectionEnabled: z.boolean().optional().default(false),
+    nsfwEnabled: z.boolean().optional().default(true),
+  }),
+  spaces: z.array(
+    z.object({
+      id: z.string().trim().min(1),
+      name: z.string().trim().min(1).max(80),
+      description: z.string().optional().default(""),
+      icon: z.string().trim().min(1).max(32).optional().default("tv"),
+      position: z.number().int().min(0).optional().default(0),
+      createdAt: z.string().optional(),
+      updatedAt: z.string().optional(),
+    })
+  ),
+  resources: z.array(
+    z.object({
+      id: z.string().trim().min(1),
+      spaceId: z.string().trim().min(1).nullable().optional(),
+      type: resourceTypeSchema,
+      title: z.string().trim().min(1).max(200),
+      description: z.string().optional().default(""),
+      url: z.string().trim().min(1).max(4096),
+      metadataStatus: metadataStatusSchema.optional().default("completed"),
+      position: z.number().int().min(0).optional().default(0),
+      createdAt: z.string().optional(),
+      updatedAt: z.string().optional(),
+      metadata: vaultExportResourceMetadataSchema,
+      comments: z.array(
+        z.object({
+          id: z.string().trim().min(1),
+          parentId: z.string().trim().min(1).nullable().optional(),
+          authorName: z.string().trim().min(1).max(120).optional().default("Anonymous"),
+          body: z.string().min(1),
+          createdAt: z.string().optional(),
+          updatedAt: z.string().optional(),
+        })
+      ).optional().default([]),
+    })
+  ),
+})
+
+export const importVaultSchema = z.object({
+  data: vaultExportSchema,
+})
+
+export type VaultExportPayload = z.infer<typeof vaultExportSchema>

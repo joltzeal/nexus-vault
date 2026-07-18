@@ -5,7 +5,11 @@ import { ok } from "@/server/api/response"
 import type { ApiEnv } from "@/server/api/types"
 import { parseJson } from "@/server/api/validation"
 import { z } from "zod"
-import { createVaultSchema, updateVaultSchema } from "@/server/schemas/vault"
+import {
+  createVaultSchema,
+  importVaultSchema,
+  updateVaultSchema,
+} from "@/server/schemas/vault"
 import {
   getVaultAlerts,
   markVaultAlertsRead,
@@ -13,7 +17,9 @@ import {
 import {
   archiveVault,
   createVault,
+  exportVault,
   getVaultDetail,
+  importVault,
   listVaults,
   updateVault,
 } from "@/server/services/vault-service"
@@ -41,6 +47,15 @@ vaultRoutes.post("/vaults", async (c) => {
   return ok(c, result, 201)
 })
 
+vaultRoutes.post("/vaults/import", async (c) => {
+  const input = await parseJson(c, importVaultSchema)
+  const result = await importVault(c.get("db"), {
+    data: input.data,
+    actor: requireActor(c),
+  })
+  return ok(c, result, 201)
+})
+
 vaultRoutes.get("/vaults/:vaultId/alerts", async (c) => {
   const result = await getVaultAlerts(c.get("db"), c.req.param("vaultId"), {
     actor: requireActor(c),
@@ -53,6 +68,13 @@ vaultRoutes.patch("/vaults/:vaultId/alerts/read", async (c) => {
   const result = await markVaultAlertsRead(c.get("db"), c.req.param("vaultId"), {
     actor: requireActor(c),
     notificationIds: input.notificationIds,
+  })
+  return ok(c, result)
+})
+
+vaultRoutes.get("/vaults/:vaultId/export", async (c) => {
+  const result = await exportVault(c.get("db"), c.req.param("vaultId"), {
+    actor: requireActor(c),
   })
   return ok(c, result)
 })

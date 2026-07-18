@@ -17,8 +17,7 @@
 		"cf-typegen": "pnpm --filter @nexus-vault/frontend cf-typegen",
 		"db:generate": "node scripts/generate-migrations.mjs",
 		"db:migrate:local": "pnpm --filter @nexus-vault/frontend db:migrate:local",
-		"db:migrate:production": "pnpm --filter @nexus-vault/frontend db:migrate:production",
-		"db:seed:local": "pnpm --filter @nexus-vault/frontend db:seed:local"
+		"db:migrate:production": "pnpm --filter @nexus-vault/frontend db:migrate:production"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20260603.1",

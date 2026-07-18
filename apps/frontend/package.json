@@ -17,8 +17,7 @@
 		"cf-typegen": "wrangler types --env-interface CloudflareEnv ../../cloudflare-env.d.ts",
 		"db:generate": "node ../../scripts/generate-migrations.mjs",
 		"db:migrate:local": "wrangler d1 migrations apply nexus-vault-local --local",
-		"db:migrate:production": "wrangler d1 migrations apply nexus-vault --env production --remote",
-		"db:seed:local": "tsx ../../scripts/seed-local.ts"
+		"db:migrate:production": "wrangler d1 migrations apply nexus-vault --env production --remote"
 	},
 	"dependencies": {
 		"@base-ui/react": "^1.5.0",

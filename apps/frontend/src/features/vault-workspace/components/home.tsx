@@ -71,20 +71,28 @@ type AuthPolicy = {
   reason: "public-registration" | "first-user" | "disabled"
 }
 
+type AuthPolicyStatus = "checking" | "ready" | "error"
+
 export function Home() {
   const router = useRouter()
   const [authPolicy, setAuthPolicy] = useState<AuthPolicy>({
     allowSignUp: false,
     reason: "disabled",
   })
+  const [authPolicyStatus, setAuthPolicyStatus] =
+    useState<AuthPolicyStatus>("checking")
   const [authDialogOpen, setAuthDialogOpen] = useState(false)
   const [authMode, setAuthMode] = useState<AuthMode>("sign-in")
   const [authForm, setAuthForm] = useState<AuthForm>(emptyAuthForm)
   const [authError, setAuthError] = useState("")
+  const isAuthPolicyReady = authPolicyStatus === "ready"
+  const shouldShowSetupFallback = authPolicyStatus !== "ready"
   const showPublicAuth = authPolicy.reason === "public-registration"
-  const showFirstUserSetup = authPolicy.reason === "first-user"
-  const showLoginEntry = authPolicy.reason !== "first-user"
-  const showRegisterEntry = authPolicy.allowSignUp
+  const showFirstUserSetup =
+    shouldShowSetupFallback || authPolicy.reason === "first-user"
+  const showLoginEntry =
+    shouldShowSetupFallback || authPolicy.reason !== "first-user"
+  const showRegisterEntry = shouldShowSetupFallback || authPolicy.allowSignUp
 
   useEffect(() => {
     void loadAuthPolicy()
@@ -92,12 +100,15 @@ export function Home() {
 
   async function loadAuthPolicy() {
     try {
+      setAuthPolicyStatus("checking")
       const policy = await apiRequest<AuthPolicy>("/auth-policy")
       setAuthPolicy(policy)
+      setAuthPolicyStatus("ready")
       return policy
     } catch (error) {
       console.warn("Failed to load auth policy.", error)
-      return authPolicy
+      setAuthPolicyStatus("error")
+      return null
     }
   }
 
@@ -156,7 +167,29 @@ export function Home() {
   function openAuth(mode: AuthMode) {
     void (async () => {
       const policy = await loadAuthPolicy()
-      if (mode === "sign-up" && !policy.allowSignUp) return
+      if (!policy) {
+        if (mode === "sign-up") {
+          setAuthPolicy({
+            allowSignUp: true,
+            reason: "first-user",
+          })
+          setAuthMode("sign-up")
+          setAuthError("")
+          setAuthDialogOpen(true)
+          return
+        }
+
+        setAuthMode("sign-in")
+        setAuthError("")
+        setAuthDialogOpen(true)
+        return
+      }
+      if (mode === "sign-up" && !policy.allowSignUp) {
+        setAuthMode("sign-in")
+        setAuthError("注册已关闭，请使用已有账号登录。")
+        setAuthDialogOpen(true)
+        return
+      }
       setAuthMode(policy.reason === "first-user" ? "sign-up" : mode)
       setAuthError("")
       setAuthDialogOpen(true)
@@ -185,7 +218,11 @@ export function Home() {
               {showRegisterEntry && (
                 <Button size="sm" onClick={() => openAuth("sign-up")}>
                   <Fingerprint data-icon="inline-start" />
-                  {showFirstUserSetup ? "创建管理员" : "创建账号"}
+                  {isAuthPolicyReady
+                    ? showFirstUserSetup
+                      ? "创建管理员"
+                      : "创建账号"
+                    : "初始化账号"}
                 </Button>
               )}
             </div>
@@ -208,7 +245,11 @@ export function Home() {
               <div className="mt-7 flex flex-wrap items-center gap-3">
                 {showRegisterEntry && (
                   <Button size="lg" onClick={() => openAuth("sign-up")}>
-                    {showFirstUserSetup ? "创建第一个管理员" : "开始创建 Vault"}
+                    {isAuthPolicyReady
+                      ? showFirstUserSetup
+                        ? "创建第一个管理员"
+                        : "开始创建 Vault"
+                      : "初始化第一个账号"}
                     <ArrowRight data-icon="inline-end" />
                   </Button>
                 )}

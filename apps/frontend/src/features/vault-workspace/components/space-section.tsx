@@ -155,7 +155,7 @@ export function SpaceSection({
       ref={ref}
       data-space-section
     >
-      <div className="group/space-header sticky top-0 z-30 -mx-1 flex items-center gap-1 rounded-input border border-line-soft bg-ink-900/95 px-2 py-2 shadow-[0_10px_24px_-22px_rgba(0,0,0,.9)] backdrop-blur">
+      <div className="group/space-header sticky top-0 z-30 -mx-1 flex items-center gap-1 rounded-input  bg-ink-900/95 px-2 py-2 shadow-[0_10px_24px_-22px_rgba(0,0,0,.9)] backdrop-blur">
         {isVaultOwner ? (
           <button
             className="relative grid size-6 shrink-0 cursor-grab place-items-center overflow-hidden rounded-sm text-jade transition hover:bg-ink-750 hover:text-fg-muted active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-60 [&_svg]:size-4"

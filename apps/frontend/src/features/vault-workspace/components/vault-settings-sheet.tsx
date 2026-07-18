@@ -1,7 +1,7 @@
 "use client"
 
-import { Check, Copy, Inbox, Shield, Trash2, Users, X } from "lucide-react"
-import { useMemo, useState } from "react"
+import { Check, Copy, Download, Inbox, Shield, Trash2, Upload, Users, X } from "lucide-react"
+import { useMemo, useRef, useState } from "react"
 import { parseResourceMetadataJson } from "@nexus-vault/shared/resource-metadata"
 
 import {
@@ -90,6 +90,8 @@ export function VaultSettingsSheet({
   onRejectSubmission,
   onTabChange,
   onDeleteVault,
+  onExportVault,
+  onImportVault,
   onVisibilityChange,
   open,
   ownerName,
@@ -114,6 +116,8 @@ export function VaultSettingsSheet({
   onRejectSubmission: (submissionId: string) => void
   onTabChange: (tab: SettingsTab) => void
   onDeleteVault: () => void
+  onExportVault: () => void
+  onImportVault: (file: File) => void
   onVisibilityChange: (visibility: Visibility) => void
   open: boolean
   ownerName: string
@@ -168,6 +172,8 @@ export function VaultSettingsSheet({
               isBusy={isBusy}
               nsfwEnabled={nsfwEnabled}
               onDeleteVault={onDeleteVault}
+              onExportVault={onExportVault}
+              onImportVault={onImportVault}
               onNsfwEnabledChange={onNsfwEnabledChange}
               onSubmit={onSubmitShare}
               onVisibilityChange={onVisibilityChange}
@@ -206,6 +212,8 @@ function SharePanel({
   isBusy,
   nsfwEnabled,
   onDeleteVault,
+  onExportVault,
+  onImportVault,
   onNsfwEnabledChange,
   onSubmit,
   onVisibilityChange,
@@ -217,6 +225,8 @@ function SharePanel({
   isBusy: boolean
   nsfwEnabled: boolean
   onDeleteVault: () => void
+  onExportVault: () => void
+  onImportVault: (file: File) => void
   onNsfwEnabledChange: (enabled: boolean) => void
   onSubmit: () => void
   onVisibilityChange: (visibility: Visibility) => void
@@ -225,6 +235,7 @@ function SharePanel({
   share: ShareSettings
 }) {
   const [copyLabel, setCopyLabel] = useState("复制")
+  const importInputRef = useRef<HTMLInputElement>(null)
   const sharePath = share.slug ? `/s/${share.slug}` : ""
   const shareUrl = useMemo(() => {
     if (!sharePath) return ""
@@ -323,6 +334,46 @@ function SharePanel({
             onCheckedChange={onNsfwEnabledChange}
           />
         </div>
+      </div>
+
+      <div className="rounded-card border border-line bg-ink-800 p-3">
+        <div>
+          <h3 className="text-sm font-semibold">导入 / 导出</h3>
+          <p className="mt-1 text-xs leading-5 text-fg-muted">
+            导出当前 Vault 的 Space、资源、metadata 和评论；导入 JSON 会创建一个新的 Vault。
+          </p>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Button
+            disabled={isBusy}
+            onClick={onExportVault}
+            type="button"
+            variant="outline"
+          >
+            <Download data-icon="inline-start" />
+            导出 JSON
+          </Button>
+          <Button
+            disabled={isBusy}
+            onClick={() => importInputRef.current?.click()}
+            type="button"
+            variant="outline"
+          >
+            <Upload data-icon="inline-start" />
+            导入 JSON
+          </Button>
+        </div>
+        <input
+          ref={importInputRef}
+          accept="application/json,.json"
+          className="hidden"
+          type="file"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            event.target.value = ""
+            if (file) onImportVault(file)
+          }}
+        />
       </div>
 
       {canDeleteVault && (

@@ -12,8 +12,10 @@ import {
   vaults,
 } from "@nexus-vault/db/schema"
 import { parseResourceMetadataJson } from "@nexus-vault/shared/resource-metadata"
+import { parseMagnetLink, type ResourceType } from "@nexus-vault/shared/resource-input"
 import { notFound } from "@/server/api/errors"
 import type { Actor, Db } from "@/server/api/types"
+import type { VaultExportPayload } from "@/server/schemas/vault"
 import { ensureActorUser } from "@/server/services/user-service"
 import {
   getVaultRoleForActor,
@@ -259,6 +261,219 @@ export async function archiveVault(
     .where(and(eq(vaults.id, vaultId), isNull(vaults.deletedAt)))
 
   return { id: vaultId, archived: true }
+}
+
+export async function exportVault(
+  db: Db,
+  vaultId: string,
+  input: {
+    actor: Actor
+  }
+): Promise<VaultExportPayload> {
+  await getVaultOrThrow(db, vaultId)
+  await requireVaultPermission(db, {
+    vaultId,
+    actor: input.actor,
+    action: "vault:update",
+  })
+
+  const detail = await readVaultDetail(db, vaultId, { actor: input.actor })
+
+  return {
+    format: "nexus-vault.v1",
+    exportedAt: new Date().toISOString(),
+    vault: {
+      title: detail.vault.title,
+      description: detail.vault.description,
+      cover: detail.vault.cover,
+      visibility: detail.vault.visibility,
+      collectionEnabled: detail.vault.collectionEnabled,
+      nsfwEnabled: detail.vault.nsfwEnabled,
+    },
+    spaces: detail.spaces.map((space) => ({
+      id: space.id,
+      name: space.name,
+      description: space.description,
+      icon: space.icon,
+      position: space.position,
+      createdAt: space.createdAt,
+      updatedAt: space.updatedAt,
+    })),
+    resources: detail.resources.map((resource) => ({
+      id: resource.id,
+      spaceId: resource.spaceId,
+      type: resource.type,
+      title: resource.title,
+      description: resource.description,
+      url: resource.url,
+      metadataStatus: resource.metadataStatus,
+      position: resource.position,
+      createdAt: resource.createdAt,
+      updatedAt: resource.updatedAt,
+      metadata: resource.metadata
+        ? {
+            provider: resource.metadata.provider,
+            status: resource.metadata.data ? resource.metadataStatus : "pending",
+            data: resource.metadata.data,
+            errorMessage: resource.metadata.errorMessage,
+            updatedAt: resource.metadata.updatedAt ?? undefined,
+          }
+        : null,
+      comments: (resource.comments ?? [])
+        .filter((comment) => !comment.deletedAt)
+        .map((comment) => ({
+          id: comment.id,
+          parentId: comment.parentId,
+          authorName: comment.authorName,
+          body: comment.body,
+          createdAt: comment.createdAt,
+        })),
+    })),
+  }
+}
+
+export async function importVault(
+  db: Db,
+  input: {
+    data: VaultExportPayload
+    actor: Actor
+  }
+) {
+  const ownerId = await ensureActorUser(db, input.actor)
+  const now = new Date().toISOString()
+  const vaultId = newId("vault")
+  const shareId = newId("share")
+  const sortedSpaces = [...input.data.spaces].sort((a, b) => a.position - b.position)
+  const fallbackSourceSpaceId = sortedSpaces[0]?.id ?? "default"
+  const spaceIdBySourceId = new Map<string, string>()
+  const resourceIdBySourceId = new Map<string, string>()
+  const commentIdBySourceId = new Map<string, string>()
+
+  const importedSpaces =
+    sortedSpaces.length > 0
+      ? sortedSpaces
+      : [
+          {
+            id: fallbackSourceSpaceId,
+            name: "默认分区",
+            description: "",
+            icon: "tv",
+            position: 0,
+          },
+        ]
+
+  for (const space of importedSpaces) {
+    spaceIdBySourceId.set(space.id, newId("space"))
+  }
+
+  for (const resource of input.data.resources) {
+    resourceIdBySourceId.set(resource.id, newId("resource"))
+    for (const comment of resource.comments ?? []) {
+      commentIdBySourceId.set(comment.id, newId("comment"))
+    }
+  }
+
+  await db.insert(vaults).values({
+    id: vaultId,
+    title: input.data.vault.title,
+    description: input.data.vault.description,
+    cover: input.data.vault.cover,
+    visibility: input.data.vault.visibility,
+    collectionEnabled: input.data.vault.collectionEnabled,
+    nsfwEnabled: input.data.vault.nsfwEnabled,
+    ownerId,
+    createdAt: now,
+    updatedAt: now,
+  })
+
+  await db.insert(shares).values({
+    id: shareId,
+    vaultId,
+    visibility:
+      input.data.vault.visibility === "password" ? "private" : input.data.vault.visibility,
+    passwordHash: null,
+    token: newToken(),
+    slug: await createUniqueShareSlug(db),
+    createdAt: now,
+    updatedAt: now,
+  })
+
+  for (const space of importedSpaces) {
+    await db.insert(spaces).values({
+      id: spaceIdBySourceId.get(space.id)!,
+      vaultId,
+      name: space.name,
+      description: space.description,
+      icon: space.icon,
+      position: space.position,
+      createdAt: space.createdAt ?? now,
+      updatedAt: space.updatedAt ?? now,
+    })
+  }
+
+  for (const resource of input.data.resources) {
+    const resourceId = resourceIdBySourceId.get(resource.id)!
+    const sourceSpaceId = resource.spaceId ?? fallbackSourceSpaceId
+    const spaceId =
+      spaceIdBySourceId.get(sourceSpaceId) ??
+      spaceIdBySourceId.get(fallbackSourceSpaceId) ??
+      null
+    const metadata = resource.metadata
+
+    await db.insert(resources).values({
+      id: resourceId,
+      vaultId,
+      spaceId,
+      type: resource.type,
+      title: resource.title,
+      description: resource.description,
+      url: resource.url,
+      dedupeKey: getImportResourceDedupeKey(resource.type, resource.url),
+      metadataStatus: resource.metadataStatus,
+      position: resource.position,
+      createdBy: ownerId,
+      createdAt: resource.createdAt ?? now,
+      updatedAt: resource.updatedAt ?? now,
+    })
+
+    await db.insert(resourceMetadata).values({
+      resourceId,
+      provider: metadata?.provider ?? resource.type,
+      status: metadata?.status ?? resource.metadataStatus,
+      dataJson: JSON.stringify(metadata?.data ?? {}),
+      errorMessage: metadata?.errorMessage ?? null,
+      createdAt: metadata?.createdAt ?? resource.createdAt ?? now,
+      updatedAt: metadata?.updatedAt ?? resource.updatedAt ?? now,
+    })
+
+    for (const comment of resource.comments ?? []) {
+      await db.insert(comments).values({
+        id: commentIdBySourceId.get(comment.id)!,
+        vaultId,
+        resourceId,
+        parentId: comment.parentId ? commentIdBySourceId.get(comment.parentId) ?? null : null,
+        authorId: null,
+        authorName: comment.authorName,
+        body: comment.body,
+        createdAt: comment.createdAt ?? now,
+        updatedAt: comment.updatedAt ?? comment.createdAt ?? now,
+      })
+    }
+  }
+
+  return {
+    id: vaultId,
+    importedResources: input.data.resources.length,
+    importedSpaces: importedSpaces.length,
+  }
+}
+
+function getImportResourceDedupeKey(type: ResourceType, url: string) {
+  if (type === "magnet") {
+    const magnet = parseMagnetLink(url)
+    if (magnet) return `magnet:${magnet.infoHash}`
+  }
+  return `url:${url.trim()}`
 }
 
 export async function getVaultDetail(

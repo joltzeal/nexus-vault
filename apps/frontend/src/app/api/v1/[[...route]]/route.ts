@@ -1,14 +1,18 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 
-import { createApiApp } from "@/server/api/app"
-
-export const runtime = "edge"
-
-const app = createApiApp()
-
 async function handle(request: Request) {
-  const cloudflare = await getCloudflareContext({ async: true })
-  return app.fetch(request, cloudflare.env, cloudflare.ctx)
+  try {
+    const cloudflare = await getCloudflareContext({ async: true })
+    const { createApiApp } = await import("@/server/api/app")
+    const app = createApiApp()
+    return app.fetch(request, cloudflare.env, cloudflare.ctx)
+  } catch (error) {
+    console.error("API route failed", error)
+    return new Response(
+      "API route failed",
+      { status: 500 }
+    )
+  }
 }
 
 export const GET = handle

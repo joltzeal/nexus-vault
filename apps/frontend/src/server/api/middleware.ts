@@ -10,6 +10,12 @@ export const dbMiddleware = createMiddleware<ApiEnv>(async (c, next) => {
 })
 
 export const actorMiddleware = createMiddleware<ApiEnv>(async (c, next) => {
+  const pathname = new URL(c.req.url).pathname
+  if (pathname === "/api/v1/auth-policy" || pathname === "/api/v1/health") {
+    await next()
+    return
+  }
+
   const session = await createAuth(c.env, c.executionCtx).api.getSession({
     headers: c.req.raw.headers,
   })

@@ -15,9 +15,21 @@
 		"binding": "ASSETS",
 		"directory": ".open-next/assets"
 	},
-	"vars": {
-		"ALLOW_USER_REGISTRATION": "false"
+	"alias": {
+		"@nexus-vault/auth": "../../packages/auth/src/index.ts",
+		"@nexus-vault/auth/client": "../../packages/auth/src/client.ts",
+		"@nexus-vault/auth/server": "../../packages/auth/src/server.ts",
+		"@nexus-vault/db": "../../packages/db/src/index.ts",
+		"@nexus-vault/db/better-auth-schema": "../../packages/db/src/better-auth-schema.ts",
+		"@nexus-vault/db/schema": "../../packages/db/src/schema.ts",
+		"@nexus-vault/providers": "../../packages/providers/src/index.ts",
+		"@nexus-vault/shared": "../../packages/shared/src/index.ts",
+		"@nexus-vault/shared/permissions": "../../packages/shared/src/permissions.ts",
+		"@nexus-vault/shared/resource-input": "../../packages/shared/src/resource-input.ts",
+		"@nexus-vault/shared/resource-metadata": "../../packages/shared/src/resource-metadata.ts",
+		"@nexus-vault/ui": "../../packages/ui/src/index.ts"
 	},
+	"keep_vars": true,
 	"images": {
 		// Enable image optimization
 		// see https://opennext.js.org/cloudflare/howtos/image
@@ -84,10 +96,6 @@
 	"env": {
 		"production": {
 			"name": "nexus-vault",
-			"vars": {
-				"ALLOW_USER_REGISTRATION": "false",
-				"NEXTJS_ENV": "production"
-			},
 			"images": {
 				"binding": "IMAGES"
 			},
@@ -95,16 +103,14 @@
 				{
 					"binding": "DB",
 					"database_name": "nexus-vault",
-					// Add the generated production D1 ID here if Wrangler asks for it:
-					// "database_id": "<nexus-vault-d1-id>",
+					"database_id": "9623da2f-f1c1-4f02-b5aa-8ef1ab5e10d5",
 					"migrations_dir": "../../migrations"
 				}
 			],
 			"kv_namespaces": [
 				{
-					"binding": "CACHE"
-					// Add the generated production KV ID here if Wrangler asks for it:
-					// "id": "<nexus-vault-cache-id>"
+					"binding": "CACHE",
+					"id": "7221c902e852402a9b1a72aa81156a67"
 				}
 			],
 			"r2_buckets": [

@@ -873,6 +873,68 @@ export function VaultWorkspaceClient({
     }
   }
 
+  async function handleExportVault() {
+    if (!activeSet) return
+
+    try {
+      setIsLoading(true)
+      setApiError("")
+      const data = await apiRequest<unknown>(`/vaults/${activeSet.id}/export`)
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json;charset=utf-8",
+      })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = `${toExportFileName(activeSet.name)}.json`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      toast.success("Vault JSON 已导出")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to export vault."
+      setApiError(message)
+      toast.error(message)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  async function handleImportVault(file: File) {
+    try {
+      setIsLoading(true)
+      setApiError("")
+      const text = await file.text()
+      const data = JSON.parse(text) as unknown
+      const result = await apiRequest<{
+        id: string
+        importedResources: number
+        importedSpaces: number
+      }>("/vaults/import", {
+        method: "POST",
+        body: JSON.stringify({ data }),
+      })
+
+      setSettingsOpen(false)
+      await loadVaults(result.id)
+      toast.success(
+        `已导入 ${result.importedSpaces} 个 Space、${result.importedResources} 个资源`
+      )
+    } catch (error) {
+      const message =
+        error instanceof SyntaxError
+          ? "JSON 文件格式不正确。"
+          : error instanceof Error
+            ? error.message
+            : "Failed to import vault."
+      setApiError(message)
+      toast.error(message)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   async function handleSignOut() {
     await authClient.signOut()
     await session.refetch()
@@ -1408,6 +1470,7 @@ export function VaultWorkspaceClient({
           mediaVisible={mediaVisible}
           onMediaVisibleChange={handleMediaVisibleChange}
           onCreateVault={openCreateVaultDialog}
+          onImportVault={(file) => void handleImportVault(file)}
           onSelectStarredVault={(id) => void handleOpenStarredVault(id)}
           onSelectVault={(id) => {
             setActivePage("workspace")
@@ -1508,6 +1571,8 @@ export function VaultWorkspaceClient({
         onSubmitShare={handleSaveShare}
         onApproveSubmission={handleApproveSubmission}
         onDeleteVault={handleDeleteVault}
+        onExportVault={() => void handleExportVault()}
+        onImportVault={(file) => void handleImportVault(file)}
         onRejectSubmission={handleRejectSubmission}
         onTabChange={setSettingsTab}
         onVisibilityChange={(visibility) => setShare((value) => ({ ...value, visibility }))}
@@ -1750,6 +1815,18 @@ function moveSpaceInList(spaces: Space[], input: { spaceId: string; position: nu
     moving,
     ...withoutMoving.slice(insertAt),
   ].map((space, index) => ({ ...space, position: index }))
+}
+
+function toExportFileName(value: string) {
+  const fallback = "nexus-vault-export"
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80)
+
+  return normalized || fallback
 }
 
 async function sha256Hex(value: string) {
