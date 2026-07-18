@@ -1519,6 +1519,7 @@ export function VaultWorkspaceClient({
             onAddResource={openResourceDialog}
             onAddResourceToSpace={openResourceDialogForSpace}
             onAddSpace={openCreateSpaceDialog}
+            onCreateVault={openCreateVaultDialog}
             onCommentBodyChange={setCommentBody}
             onDeleteResource={handleDeleteResource}
             onDeleteSpace={handleDeleteSpace}

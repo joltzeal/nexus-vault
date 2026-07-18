@@ -148,18 +148,17 @@ export function VaultTopbar({
 
       {searchEnabled && (
         <>
-          <Button
-            className="ml-1 hidden h-[34px] w-full max-w-[420px] justify-start gap-2 border-line bg-ink-800 px-3 text-fg-dim md:flex"
+          <button
+            className="ml-1 hidden h-[34px] w-full max-w-[420px] items-center gap-2 rounded-lg border border-line bg-ink-800 px-3 text-fg-dim transition hover:border-jade-dim hover:bg-ink-800/80 hover:text-fg focus-visible:border-jade-dim focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--jade-glow)] md:flex"
             onClick={() => setSearchOpen(true)}
             type="button"
-            variant="outline"
           >
-            <Search data-icon="inline-start" />
+            <Search className="size-4 shrink-0" />
             <span className="min-w-0 flex-1 text-left text-sm">搜索 vault / space / resource</span>
             <kbd className="mono rounded-sm border border-line bg-ink-850 px-1.5 py-0.5 text-[10.5px] text-fg-dim">
               ⌘K
             </kbd>
-          </Button>
+          </button>
 
           <CommandDialog
             className="border-line bg-ink-850 text-fg sm:max-w-[640px]"

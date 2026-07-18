@@ -2,7 +2,7 @@
 
 import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react"
 import { isSortableOperation } from "@dnd-kit/react/sortable"
-import { FolderPlus } from "lucide-react"
+import { Database, FolderPlus, Plus } from "lucide-react"
 import type { ReactNode } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 
@@ -28,6 +28,7 @@ export function VaultDocument({
   onAddResource,
   onAddResourceToSpace,
   onAddSpace,
+  onCreateVault,
   onCommentBodyChange,
   onDeleteResource,
   onDeleteSpace,
@@ -63,6 +64,7 @@ export function VaultDocument({
   onAddResource: () => void
   onAddResourceToSpace: (spaceId: string) => void
   onAddSpace: () => void
+  onCreateVault: () => void
   onCommentBodyChange: (value: string) => void
   onDeleteResource: (resourceId: string) => void
   onDeleteSpace: (spaceId: string) => void
@@ -261,11 +263,14 @@ export function VaultDocument({
             </DragDropProvider>
           ) : (
             <div className="mt-8 rounded-card border border-line bg-ink-800 p-6 text-center">
-              <p className="font-display text-lg font-semibold">还没有 Vault</p>
-              <p className="mt-1 text-sm text-fg-muted">登录后创建第一个 vault，开始整理资源。</p>
-              <Button className="mt-4" onClick={onAddSpace} disabled={!isSignedIn}>
-                <FolderPlus data-icon="inline-start" />
-                新建 Space
+              <div className="mx-auto grid size-10 place-items-center rounded-card border border-line-soft bg-ink-850 text-jade">
+                <Database className="size-5" />
+              </div>
+              <p className="mt-3 font-display text-lg font-semibold">还没有 Vault</p>
+              <p className="mt-1 text-sm text-fg-muted">创建第一个 Vault，开始整理资源。</p>
+              <Button className="mt-4" onClick={onCreateVault} disabled={!isSignedIn}>
+                <Plus data-icon="inline-start" />
+                创建 Vault
               </Button>
             </div>
           )}

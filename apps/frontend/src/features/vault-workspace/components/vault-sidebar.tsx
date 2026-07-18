@@ -90,6 +90,8 @@ export function VaultSidebar({
   const displayName = user?.name?.trim() || "未登录"
   const displayEmail = user?.email?.trim() || "请先登录"
   const initials = getUserInitials(displayName, displayEmail)
+  const vaultActionClass =
+    "grid size-6 place-items-center rounded-md text-fg-dim transition hover:bg-ink-750 hover:text-jade focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jade/20 disabled:pointer-events-none disabled:opacity-40"
 
   async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -135,23 +137,25 @@ export function VaultSidebar({
       <section className="px-3 pb-1 pt-3.5">
         <div className="mono flex items-center justify-between px-2 pb-2 text-[10px] uppercase tracking-[.16em] text-fg-dim">
           <span>Vaults</span>
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-0.5 rounded-lg border border-line-soft bg-ink-800/60 p-0.5">
             <button
-              className="grid size-[18px] place-items-center rounded-sm transition hover:bg-ink-750 hover:text-jade disabled:opacity-40"
+              className={vaultActionClass}
               disabled={disabled}
               onClick={() => importInputRef.current?.click()}
+              title="导入 Vault JSON"
               type="button"
             >
-              <Upload />
+              <Upload className="size-3.5" />
               <span className="sr-only">导入 Vault JSON</span>
             </button>
             <button
-              className="grid size-[18px] place-items-center rounded-sm transition hover:bg-ink-750 hover:text-jade disabled:opacity-40"
+              className={vaultActionClass}
               disabled={disabled}
               onClick={onCreateVault}
+              title="创建 Vault"
               type="button"
             >
-              <Plus />
+              <Plus className="size-3.5" />
               <span className="sr-only">创建 Vault</span>
             </button>
           </span>
@@ -189,8 +193,17 @@ export function VaultSidebar({
             </button>
           ))}
           {sets.length === 0 && (
-            <div className="rounded-input border border-line-soft bg-ink-800/50 px-3 py-4 text-xs text-fg-dim">
-              登录后创建第一个 vault。
+            <div className="rounded-input border border-dashed border-line-soft bg-ink-800/45 p-3 text-xs text-fg-dim">
+              <p>暂无 Vault</p>
+              <button
+                className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md border border-line-soft bg-ink-850 px-2 text-fg-muted transition hover:border-jade-dim hover:text-jade disabled:pointer-events-none disabled:opacity-40"
+                disabled={disabled}
+                onClick={onCreateVault}
+                type="button"
+              >
+                <Plus className="size-3.5" />
+                创建 Vault
+              </button>
             </div>
           )}
         </div>
