@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm"
 import type { Context } from "hono"
 
+import { createDbSession } from "@nexus-vault/db"
 import { resourceMetadata, resources } from "@nexus-vault/db/schema"
 import { createBaseResourceMetadata } from "@nexus-vault/shared/resource-metadata"
 import { getMetadataProvider } from "@nexus-vault/providers"
@@ -20,9 +21,7 @@ export function enqueueMetadataTask(
 
   if (shouldResolveMetadataInline(c.env)) {
     c.executionCtx.waitUntil(
-      resolveResourceMetadata(c.get("db"), message.resourceId, {
-        env: c.env,
-      })
+      resolveInlineMetadata(c.env, message.resourceId)
     )
   }
 }
@@ -134,8 +133,18 @@ async function sendMetadataQueueMessage(c: Context<ApiEnv>, message: MetadataQue
   }
 }
 
+async function resolveInlineMetadata(env: CloudflareEnv, resourceId: string) {
+  const session = await createDbSession(env)
+
+  try {
+    await resolveResourceMetadata(session.db, resourceId, { env })
+  } finally {
+    await session.close()
+  }
+}
+
 function shouldResolveMetadataInline(env: CloudflareEnv) {
-  return env.NEXTJS_ENV !== "production"
+  return env.NEXTJS_ENV === "development" || env.NEXTJS_ENV === "local"
 }
 
 function getTwitterRequestProxyUrl(env?: CloudflareEnv) {

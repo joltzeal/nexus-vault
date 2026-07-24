@@ -66,7 +66,7 @@ export async function starVault(
   if (!existing) {
     await db.batch([
       db.insert(stars).values({
-        id: newId("star"),
+        id: newId(),
         vaultId,
         userId,
       }),
@@ -106,7 +106,7 @@ export async function unstarVault(
       db.delete(stars).where(eq(stars.id, existing.id)),
       db
         .update(vaults)
-        .set({ starCount: sql`MAX(${vaults.starCount} - 1, 0)` })
+        .set({ starCount: sql`GREATEST(${vaults.starCount} - 1, 0)` })
         .where(eq(vaults.id, vaultId)),
     ])
   }
@@ -168,7 +168,7 @@ export async function starResource(
     ])
 
     await db.insert(starredResources).values({
-      id: newId("resource_star"),
+      id: newId(),
       userId,
       sourceResourceId: resource.id,
       sourceVaultId: resource.vaultId,

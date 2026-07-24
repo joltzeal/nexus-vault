@@ -4,7 +4,10 @@ import type { FormEvent } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { authClient } from "@nexus-vault/auth/client"
-import { createCloudDriveUrlWithPassword } from "@nexus-vault/shared/resource-input"
+import {
+  createCloudDriveUrlWithPassword,
+  parseResourceInput,
+} from "@nexus-vault/shared/resource-input"
 import { toast } from "sonner"
 
 import { apiRequest } from "@/features/vault-workspace/api-client"
@@ -48,6 +51,7 @@ import {
   type ResourceSet,
   type Space,
   type StarredResourceItem,
+  type ResourceTransferTargetVault,
   type VaultWorkspaceInitialData,
   type Visibility,
 } from "@/features/vault-workspace/types"
@@ -95,6 +99,7 @@ export function VaultWorkspaceClient({
   const [spaceDialogOpen, setSpaceDialogOpen] = useState(false)
   const [resourceDialogOpen, setResourceDialogOpen] = useState(false)
   const [resourceDetailsOpen, setResourceDetailsOpen] = useState(false)
+  const [loadingVaultId, setLoadingVaultId] = useState("")
   const [selectedResourceId, setSelectedResourceId] = useState(
     initialData.sets.find((set) => set.id === initialData.activeSetId)?.resources[0]?.id ?? ""
   )
@@ -103,6 +108,7 @@ export function VaultWorkspaceClient({
   const [setForm, setSetForm] = useState(emptySetForm)
   const [setDialogMode, setSetDialogMode] = useState<"create" | "edit">("create")
   const [spaceForm, setSpaceForm] = useState(emptySpaceForm)
+  const [spaceDialogVaultId, setSpaceDialogVaultId] = useState("")
   const [editingSpaceId, setEditingSpaceId] = useState("")
   const [resourceForm, setResourceForm] = useState(emptyResourceForm)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -119,8 +125,12 @@ export function VaultWorkspaceClient({
   const [starredVaults, setStarredVaults] = useState<StarredVaultItem[]>([])
   const [starredResources, setStarredResources] = useState<StarredResourceItem[]>([])
   const [submissions, setSubmissions] = useState<ResourceSubmissionItem[]>([])
+  const [transferTargets, setTransferTargets] = useState<ResourceTransferTargetVault[]>([])
+  const [transferFocusSpaceId, setTransferFocusSpaceId] = useState("")
   const [localNsfwEnabled, setLocalNsfwEnabled] = useState<boolean | null>(null)
   const toastedMetadataFailureIds = useRef<Set<string>>(new Set())
+  const metadataRefreshInFlight = useRef(false)
+  const vaultLoadRequestId = useRef(0)
 
   const currentUser =
     session.data?.user ??
@@ -171,6 +181,10 @@ export function VaultWorkspaceClient({
   )
   const isVaultEditor = activeSet?.actorRole === "editor"
   const canAddResource = isVaultOwner || isVaultEditor
+  const spaceDialogVaultTitle =
+    spaceDialogVaultId === activeSet?.id
+      ? activeSet?.name
+      : transferTargets.find((target) => target.id === spaceDialogVaultId)?.title
   const canEditSelectedResource =
     isVaultOwner ||
     Boolean(isVaultEditor && selectedResource?.createdBy && selectedResource.createdBy === currentUserId)
@@ -240,36 +254,48 @@ export function VaultWorkspaceClient({
       return
     }
 
-    void loadVaultPanels(activeSet.id)
-  }, [activeSet?.id, currentUser?.email])
-
-  useEffect(() => {
-    if (!activeSet?.id || !selectedResource?.id) return
-    void loadComments(activeSet.id, selectedResource.id)
-  }, [activeSet?.id, selectedResource?.id])
+    void loadVaultPanels(activeSet.id, {
+      includeAlerts: isVaultOwner,
+      includeSettings: false,
+      includeStarredResources: activePage === "star",
+    })
+  }, [activePage, activeSet?.id, currentUser?.email, isVaultOwner])
 
   useEffect(() => {
     if (!currentUser || !activeSet?.id || !isVaultOwner) return
 
     const intervalId = window.setInterval(() => {
+      if (document.hidden) return
       void refreshVaultAlerts(activeSet.id)
-    }, 15000)
+    }, 60000)
 
     return () => window.clearInterval(intervalId)
   }, [activeSet?.id, currentUser?.email, isVaultOwner])
 
   useEffect(() => {
-    if (!currentUser || isShareMode || !activeSet?.id || !resolvingResourceIds) return
+    if (!activeSet?.id || !resolvingResourceIds) return
 
-    const intervalId = window.setInterval(() => {
-      void loadVaults(activeSet.id, {
-        includeOpenedVaultInList: Boolean(ownedActiveSet),
-        silent: true,
-      })
-    }, 4000)
+    const refreshResolvingResources = () => {
+      if (document.hidden) return
+      if (metadataRefreshInFlight.current) return
+      metadataRefreshInFlight.current = true
+      void refreshVaultDetail(activeSet.id)
+        .catch((error: unknown) => {
+          console.warn("Failed to refresh resolving resources.", error)
+        })
+        .finally(() => {
+          metadataRefreshInFlight.current = false
+        })
+    }
 
-    return () => window.clearInterval(intervalId)
-  }, [activeSet?.id, currentUser?.email, isShareMode, ownedActiveSet?.id, resolvingResourceIds])
+    const timeoutId = window.setTimeout(refreshResolvingResources, 1200)
+    const intervalId = window.setInterval(refreshResolvingResources, 5000)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      window.clearInterval(intervalId)
+    }
+  }, [activeSet?.id, resolvingResourceIds])
 
   async function loadVaults(
     nextActiveSetId?: string,
@@ -278,8 +304,20 @@ export function VaultWorkspaceClient({
       silent?: boolean
     } = {}
   ) {
+    const requestId = ++vaultLoadRequestId.current
     const includeOpenedVaultInList = options.includeOpenedVaultInList ?? true
-    if (!options.silent) setIsLoading(true)
+    const shouldSwitchImmediately = Boolean(
+      !options.silent && nextActiveSetId && nextActiveSetId !== activeSetId
+    )
+    if (!options.silent) {
+      setIsLoading(true)
+      if (shouldSwitchImmediately && nextActiveSetId) {
+        setActiveSetId(nextActiveSetId)
+        setSelectedResourceId("")
+        setResourceDetailsOpen(false)
+        setLoadingVaultId(nextActiveSetId)
+      }
+    }
     setApiError("")
 
     try {
@@ -301,6 +339,8 @@ export function VaultWorkspaceClient({
           actorRole?: "owner" | "editor" | "anonymous"
         }>
       }>("/vaults")
+      if (requestId !== vaultLoadRequestId.current) return
+
       const listItems = data.items.map(mapVaultListItem)
       const targetId =
         nextActiveSetId
@@ -315,7 +355,15 @@ export function VaultWorkspaceClient({
         setCommentsByResourceId({})
         setActiveSetId("")
         setSelectedResourceId("")
+        setLoadingVaultId("")
         return
+      }
+
+      if (!options.silent && !nextActiveSetId && targetId !== activeSetId) {
+        setActiveSetId(targetId)
+        setSelectedResourceId("")
+        setResourceDetailsOpen(false)
+        setLoadingVaultId(targetId)
       }
 
       const detail = await apiRequest<{
@@ -337,6 +385,8 @@ export function VaultWorkspaceClient({
         spaces: Space[]
         resources: Array<Resource & { spaceId: string | null }>
       }>(`/vaults/${targetId}`)
+      if (requestId !== vaultLoadRequestId.current) return
+
       const hydratedSet = {
         ...mapVaultDetail(detail),
         isStarred: starredVaults.some((vault) => vault.id === detail.vault.id),
@@ -366,46 +416,115 @@ export function VaultWorkspaceClient({
           ? currentResourceId
           : hydratedSet.resources[0]?.id ?? ""
       )
+      setLoadingVaultId("")
     } catch (error) {
+      if (requestId !== vaultLoadRequestId.current) return
       setApiError(error instanceof Error ? error.message : "API request failed.")
     } finally {
-      if (!options.silent) setIsLoading(false)
+      if (requestId === vaultLoadRequestId.current && !options.silent) {
+        setIsLoading(false)
+        setLoadingVaultId("")
+      }
     }
   }
 
-  async function loadVaultPanels(vaultId: string) {
+  async function refreshVaultDetail(vaultId: string) {
+    try {
+      const detail = await apiRequest<{
+        vault: {
+          id: string
+          title: string
+          description: string
+          cover: string
+          ownerName: string | null
+          ownerId: string | null
+          visibility: Visibility
+          collectionEnabled: boolean
+          nsfwEnabled: boolean
+          starCount: number
+          forkCount: number
+          createdAt: string
+        }
+        actorRole?: "owner" | "editor" | "anonymous"
+        spaces: Space[]
+        resources: Array<Resource & { spaceId: string | null }>
+      }>(`/vaults/${vaultId}`)
+      const hydratedSet = {
+        ...mapVaultDetail(detail),
+        isStarred: starredVaults.some((vault) => vault.id === detail.vault.id),
+      }
+
+      setCommentsByResourceId((current) => ({
+        ...current,
+        ...getCommentsByResourceId([hydratedSet]),
+      }))
+      setSets((currentSets) =>
+        currentSets.map((set) => (set.id === hydratedSet.id ? hydratedSet : set))
+      )
+      setExternalActiveSet((current) =>
+        current?.id === hydratedSet.id ? hydratedSet : current
+      )
+      setSelectedResourceId((currentResourceId) =>
+        hydratedSet.resources.some((resource) => resource.id === currentResourceId)
+          ? currentResourceId
+          : hydratedSet.resources[0]?.id ?? ""
+      )
+    } catch (error) {
+      console.warn("Failed to refresh vault detail.", error)
+    }
+  }
+
+  async function loadVaultPanels(
+    vaultId: string,
+    options: {
+      includeAlerts?: boolean
+      includeSettings?: boolean
+      includeStarredResources?: boolean
+    } = {}
+  ) {
     const fallbackVisibility =
       sets.find((set) => set.id === vaultId)?.visibility ?? activeSet?.visibility ?? "private"
-    const shareRequest = apiRequest<{ share: ShareSettings | null }>(
-      `/vaults/${vaultId}/share`
-    ).catch((reason: unknown) => {
-      console.warn("Failed to load vault share settings.", reason)
-      return null
-    })
-    const collaboratorRequest = apiRequest<{ items: CollaboratorItem[] }>(
-      `/vaults/${vaultId}/collaborators`
-    ).catch((reason: unknown) => {
-      console.warn("Failed to load vault collaborators.", reason)
-      return null
-    })
-    const alertsRequest = apiRequest<VaultAlerts>(`/vaults/${vaultId}/alerts`).catch(
-      (reason: unknown) => {
-        console.warn("Failed to load vault alerts.", reason)
-        return null
-      }
-    )
+    const includeAlerts = options.includeAlerts ?? false
+    const includeSettings = options.includeSettings ?? false
+    const includeStarredResources = options.includeStarredResources ?? false
+    const shareRequest = includeSettings
+      ? apiRequest<{ share: ShareSettings | null }>(`/vaults/${vaultId}/share`).catch(
+          (reason: unknown) => {
+            console.warn("Failed to load vault share settings.", reason)
+            return null
+          }
+        )
+      : Promise.resolve(null)
+    const collaboratorRequest = includeSettings
+      ? apiRequest<{ items: CollaboratorItem[] }>(
+          `/vaults/${vaultId}/collaborators`
+        ).catch((reason: unknown) => {
+          console.warn("Failed to load vault collaborators.", reason)
+          return null
+        })
+      : Promise.resolve(null)
+    const alertsRequest = includeAlerts
+      ? apiRequest<VaultAlerts>(`/vaults/${vaultId}/alerts`).catch(
+          (reason: unknown) => {
+            console.warn("Failed to load vault alerts.", reason)
+            return null
+          }
+        )
+      : Promise.resolve(null)
     const starredRequest = apiRequest<{ items: StarredVaultItem[] }>("/stars").catch(
       (reason: unknown) => {
         console.warn("Failed to load starred vaults.", reason)
         return null
       }
     )
-    const starredResourceRequest = apiRequest<{ items: StarredResourceItem[] }>(
-      "/resource-stars"
-    ).catch((reason: unknown) => {
-      console.warn("Failed to load starred resources.", reason)
-      return null
-    })
+    const starredResourceRequest = includeStarredResources
+      ? apiRequest<{ items: StarredResourceItem[] }>("/resource-stars").catch(
+          (reason: unknown) => {
+            console.warn("Failed to load starred resources.", reason)
+            return null
+          }
+        )
+      : Promise.resolve(null)
     const [
       shareData,
       collaboratorData,
@@ -421,8 +540,10 @@ export function VaultWorkspaceClient({
         starredResourceRequest,
       ])
 
-    setShare(shareData?.share ?? { visibility: fallbackVisibility })
-    setCollaborators(collaboratorData?.items ?? [])
+    if (includeSettings) {
+      setShare(shareData?.share ?? { visibility: fallbackVisibility })
+      setCollaborators(collaboratorData?.items ?? [])
+    }
     if (alertsData) {
       setNotifications(alertsData.notifications)
       setUnreadNotificationCount(alertsData.unreadNotificationCount)
@@ -436,7 +557,9 @@ export function VaultWorkspaceClient({
   }
 
   async function refreshVaultAlerts(vaultId: string) {
-    const alerts = await apiRequest<VaultAlerts>(`/vaults/${vaultId}/alerts`).catch(
+    const alerts = await apiRequest<VaultAlerts>(
+      `/vaults/${vaultId}/alerts?includeSubmissions=false`
+    ).catch(
       (reason: unknown) => {
         console.warn("Failed to refresh vault alerts.", reason)
         return null
@@ -447,7 +570,6 @@ export function VaultWorkspaceClient({
 
     setNotifications(alerts.notifications)
     setUnreadNotificationCount(alerts.unreadNotificationCount)
-    setSubmissions(alerts.pendingSubmissions)
   }
 
   async function loadComments(vaultId: string, resourceId: string) {
@@ -489,7 +611,11 @@ export function VaultWorkspaceClient({
         )
       )
       setSharePassword("")
-      await loadVaultPanels(activeSet.id)
+      await loadVaultPanels(activeSet.id, {
+        includeAlerts: isVaultOwner,
+        includeSettings: true,
+        includeStarredResources: activePage === "star",
+      })
       toast.success("分享设置已保存")
     } catch (error) {
       setApiError(error instanceof Error ? error.message : "Failed to save share settings.")
@@ -515,7 +641,11 @@ export function VaultWorkspaceClient({
       await apiRequest(`/vaults/${activeSet.id}/collaborators/${collaboratorId}`, {
         method: "DELETE",
       })
-      await loadVaultPanels(activeSet.id)
+      await loadVaultPanels(activeSet.id, {
+        includeAlerts: isVaultOwner,
+        includeSettings: true,
+        includeStarredResources: activePage === "star",
+      })
       toast.success("Editor 已移除")
     } catch (error) {
       setApiError(error instanceof Error ? error.message : "Failed to remove collaborator.")
@@ -695,7 +825,11 @@ export function VaultWorkspaceClient({
       toast.success("提交已加入 vault。")
       setSubmissions((current) => current.filter((item) => item.id !== submissionId))
       await loadVaults(activeSet.id)
-      await loadVaultPanels(activeSet.id)
+      await loadVaultPanels(activeSet.id, {
+        includeAlerts: isVaultOwner,
+        includeSettings: true,
+        includeStarredResources: activePage === "star",
+      })
     } catch (error) {
       setApiError(error instanceof Error ? error.message : "Failed to approve submission.")
     }
@@ -1081,6 +1215,21 @@ export function VaultWorkspaceClient({
 
     const name = spaceForm.name.trim()
     if (!name) return
+    const targetVaultId = editingSpaceId ? activeSet.id : spaceDialogVaultId || activeSet.id
+    const knownSpaces =
+      targetVaultId === activeSet.id
+        ? activeSet.spaces
+        : (transferTargets.find((target) => target.id === targetVaultId)?.spaces ?? [])
+    const duplicateSpace = knownSpaces.some(
+      (space) =>
+        space.name.trim().toLowerCase() === name.toLowerCase() &&
+        space.id !== editingSpaceId
+    )
+
+    if (duplicateSpace) {
+      toast.error("Space 名称已存在。")
+      return
+    }
 
     try {
       setApiError("")
@@ -1090,25 +1239,38 @@ export function VaultWorkspaceClient({
           body: JSON.stringify({
             name,
             description: spaceForm.description.trim(),
+            icon: spaceForm.icon,
           }),
         })
       } else {
-        const created = await apiRequest<{ id: string }>(`/vaults/${activeSet.id}/spaces`, {
+        const created = await apiRequest<{ id: string }>(`/vaults/${targetVaultId}/spaces`, {
           method: "POST",
           body: JSON.stringify({
             name,
             description: spaceForm.description.trim(),
+            icon: spaceForm.icon,
           }),
         })
-        setResourceForm((form) => ({ ...form, spaceId: created.id }))
+        if (targetVaultId === activeSet.id) {
+          setResourceForm((form) => ({ ...form, spaceId: created.id }))
+        }
+        if (spaceDialogVaultId) {
+          setTransferFocusSpaceId(created.id)
+          await loadResourceTransferTargets()
+        }
       }
 
       setSpaceForm(emptySpaceForm)
+      setSpaceDialogVaultId("")
       setEditingSpaceId("")
       setSpaceDialogOpen(false)
-      await loadVaults(activeSet.id)
+      if (targetVaultId === activeSet.id) {
+        await loadVaults(activeSet.id)
+      }
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : "Failed to create space.")
+      const message = error instanceof Error ? error.message : "Failed to create space."
+      setApiError(message)
+      toast.error(message)
     }
   }
 
@@ -1122,28 +1284,77 @@ export function VaultWorkspaceClient({
       resourceForm.extractionCode
     )
     if (!url) return
+    const description = resourceForm.description.trim()
+    const targetSpaceId = resourceForm.spaceId || activeSet.spaces[0]?.id || ""
 
     try {
       setApiError("")
       const created = await apiRequest<{ id: string }>(`/vaults/${activeSet.id}/resources`, {
         method: "POST",
         body: JSON.stringify({
-          spaceId: resourceForm.spaceId || activeSet.spaces[0]?.id,
+          spaceId: targetSpaceId || undefined,
           ...(title ? { title } : {}),
           url,
-          description: resourceForm.description.trim(),
+          description,
         }),
       })
+      const parsedResource = parseResourceInput({
+        url,
+        ...(title ? { title } : {}),
+      })
+      const now = new Date().toISOString()
+      const maxPosition = Math.max(
+        -1,
+        ...activeSet.resources
+          .filter((resource) => resource.spaceId === targetSpaceId)
+          .map((resource) => resource.position)
+      )
+      const optimisticResource: Resource = {
+        id: created.id,
+        spaceId: targetSpaceId,
+        title: parsedResource.title,
+        type: parsedResource.type,
+        url: parsedResource.url,
+        description,
+        metadataStatus: "pending",
+        metadata: null,
+        comments: [],
+        isStarred: false,
+        position: maxPosition + 1,
+        createdBy: currentUserId ?? null,
+        createdAt: now,
+      }
 
       setResourceForm(emptyResourceForm)
       setSelectedResourceId(created.id)
       setResourceDialogOpen(false)
-      await loadVaults(activeSet.id)
+      setSets((currentSets) =>
+        currentSets.map((set) =>
+          set.id === activeSet.id
+            ? {
+                ...set,
+                resourceCount: set.resourceCount + 1,
+                resources: set.resources.some((resource) => resource.id === created.id)
+                  ? set.resources
+                  : [...set.resources, optimisticResource],
+              }
+            : set
+        )
+      )
+      setExternalActiveSet((current) =>
+        current?.id === activeSet.id
+          ? {
+              ...current,
+              resourceCount: current.resourceCount + 1,
+              resources: current.resources.some((resource) => resource.id === created.id)
+                ? current.resources
+                : [...current.resources, optimisticResource],
+            }
+          : current
+      )
+      await refreshVaultDetail(activeSet.id)
       setSelectedResourceId(created.id)
-      window.setTimeout(() => {
-        void loadVaults(activeSet.id)
-        setSelectedResourceId(created.id)
-      }, 1500)
+      scrollToWorkspaceTarget(`resource-${created.id}`)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to create resource."
       setApiError(message)
@@ -1174,10 +1385,20 @@ export function VaultWorkspaceClient({
   function openSettings(tab: SettingsTab) {
     setSettingsTab(tab)
     setSettingsOpen(true)
+    if (activeSet?.id && currentUser) {
+      void loadVaultPanels(activeSet.id, {
+        includeAlerts: isVaultOwner,
+        includeSettings: true,
+        includeStarredResources: activePage === "star",
+      })
+    }
   }
 
-  function openCreateSpaceDialog() {
+  function openCreateSpaceDialog(vaultId?: string) {
+    const targetVaultId = typeof vaultId === "string" ? vaultId : activeSet?.id ?? ""
+
     setSpaceForm(emptySpaceForm)
+    setSpaceDialogVaultId(targetVaultId)
     setEditingSpaceId("")
     setSpaceDialogOpen(true)
   }
@@ -1186,22 +1407,41 @@ export function VaultWorkspaceClient({
     setSpaceForm({
       name: space.name,
       description: space.description,
+      icon: space.icon,
     })
+    setSpaceDialogVaultId(activeSet?.id ?? "")
     setEditingSpaceId(space.id)
+    setSpaceDialogOpen(true)
+  }
+
+  function openCreateTransferTargetSpace(vaultId: string) {
+    setSpaceForm(emptySpaceForm)
+    setSpaceDialogVaultId(vaultId)
+    setEditingSpaceId("")
     setSpaceDialogOpen(true)
   }
 
   function handleSelectResource(resourceId: string) {
     const resource = activeSet?.resources.find((item) => item.id === resourceId)
-    if (!resource || isResourceResolving(resource.metadataStatus)) return
+    if (!resource) return
+
+    setSelectedResourceId(resourceId)
+    if (isResourceResolving(resource.metadataStatus)) return
 
     const canEditResource =
       isVaultOwner ||
       Boolean(isVaultEditor && resource.createdBy && resource.createdBy === currentUserId)
     if (!canEditResource) return
 
-    setSelectedResourceId(resourceId)
     setResourceDetailsOpen(true)
+  }
+
+  function handleActivateResource(resourceId: string) {
+    const resource = activeSet?.resources.find((item) => item.id === resourceId)
+    if (!resource) return
+
+    setSelectedResourceId(resourceId)
+    setResourceDetailsOpen(false)
   }
 
   async function handleUpdateResource(form: ResourceDetailsForm) {
@@ -1245,7 +1485,7 @@ export function VaultWorkspaceClient({
           spaceId: form.spaceId,
         }),
       })
-      await loadVaults(activeSet.id)
+      await refreshVaultDetail(activeSet.id)
       setSelectedResourceId(resourceId)
       setResourceDetailsOpen(false)
     } catch (error) {
@@ -1299,6 +1539,63 @@ export function VaultWorkspaceClient({
     } catch (error) {
       setSets(previousSets)
       setApiError(error instanceof Error ? error.message : "Failed to move resource.")
+    }
+  }
+
+  async function loadResourceTransferTargets() {
+    const data = await apiRequest<{ items: ResourceTransferTargetVault[] }>(
+      "/resources/transfer-targets"
+    )
+    setTransferTargets(data.items)
+  }
+
+  async function handleTransferResource(input: {
+    action: "move" | "copy"
+    resourceId: string
+    targetVaultId: string
+    targetSpaceId: string
+  }) {
+    if (!activeSet) return
+
+    try {
+      await apiRequest<{
+        id: string
+        action: "move" | "copy"
+        vaultId: string
+        spaceId: string
+      }>(`/resources/${input.resourceId}/transfer`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: input.action,
+          targetVaultId: input.targetVaultId,
+          targetSpaceId: input.targetSpaceId,
+        }),
+      })
+
+      toast.success(input.action === "move" ? "Resource 已移动" : "Resource 已复制")
+      if (input.action === "move" && input.targetVaultId !== activeSet.id) {
+        setSets((currentSets) =>
+          currentSets.map((set) =>
+            set.id === activeSet.id
+              ? {
+                  ...set,
+                  resourceCount: Math.max(0, set.resourceCount - 1),
+                  resources: set.resources.filter((resource) => resource.id !== input.resourceId),
+                }
+              : set
+          )
+        )
+        setSelectedResourceId("")
+        setResourceDetailsOpen(false)
+        return
+      }
+
+      await refreshVaultDetail(activeSet.id)
+      setSelectedResourceId(input.action === "move" ? input.resourceId : selectedResourceId)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to transfer resource."
+      setApiError(message)
+      toast.error(message)
     }
   }
 
@@ -1465,7 +1762,7 @@ export function VaultWorkspaceClient({
       />
       {!isShareMode && (
         <VaultSidebar
-          activeSetId={activeSet?.id ?? ""}
+          activeSetId={activeSetId}
           disabled={!currentUser}
           mediaVisible={mediaVisible}
           onMediaVisibleChange={handleMediaVisibleChange}
@@ -1515,10 +1812,13 @@ export function VaultWorkspaceClient({
             isVaultEditor={isVaultEditor}
             isVaultOwner={isVaultOwner}
             isShareMode={isShareMode}
+            isVaultLoading={Boolean(activeSet?.id && loadingVaultId === activeSet.id)}
             mediaVisible={mediaVisible}
             onAddResource={openResourceDialog}
             onAddResourceToSpace={openResourceDialogForSpace}
-            onAddSpace={openCreateSpaceDialog}
+            onAddSpace={() => openCreateSpaceDialog()}
+            onActivateResource={handleActivateResource}
+            onCreateTransferTargetSpace={openCreateTransferTargetSpace}
             onCreateVault={openCreateVaultDialog}
             onCommentBodyChange={setCommentBody}
             onDeleteResource={handleDeleteResource}
@@ -1527,6 +1827,7 @@ export function VaultWorkspaceClient({
             onEditVault={openEditVaultDialog}
             onFocusResourceComments={setSelectedResourceId}
             onForkVault={handleForkVault}
+            onLoadTransferTargets={loadResourceTransferTargets}
             onMoveResource={handleMoveResource}
             onOpenSettings={openSettings}
             onReorderSpace={handleReorderSpace}
@@ -1534,11 +1835,14 @@ export function VaultWorkspaceClient({
             onSubmitComment={handleCreateComment}
             onToggleResourceStar={handleToggleResourceStar}
             onToggleStar={handleToggleStar}
+            onTransferResource={handleTransferResource}
             onToggleMediaVisibility={handleMediaVisibleChange}
             onEditSpace={openEditSpaceDialog}
             onUpdateSpaceIcon={handleUpdateSpaceIcon}
             pendingSubmissionCount={submissions.length}
             selectedResourceId={selectedResource?.id}
+            transferFocusSpaceId={transferFocusSpaceId}
+            transferTargets={transferTargets}
             shareSubmissionSlot={
               initialData.shareSlug && activeSet?.collectionEnabled ? (
                 <ShareSubmissionDialog
@@ -1551,12 +1855,6 @@ export function VaultWorkspaceClient({
           />
         )}
       </div>
-
-      {isLoading && (
-        <div className="pointer-events-none fixed bottom-4 left-1/2 z-40 w-[min(520px,calc(100vw-2rem))] -translate-x-1/2 rounded-card border border-line bg-ink-850 px-4 py-3 text-sm shadow-pop">
-          <p className="text-fg-muted">正在加载...</p>
-        </div>
-      )}
 
       <VaultSettingsSheet
         activeTab={settingsTab}
@@ -1611,6 +1909,7 @@ export function VaultWorkspaceClient({
         open={setDialogOpen}
       />
       <CreateSpaceDialog
+        contextLabel={spaceDialogVaultTitle}
         form={spaceForm}
         mode={editingSpaceId ? "edit" : "create"}
         onFormChange={setSpaceForm}
@@ -1619,6 +1918,7 @@ export function VaultWorkspaceClient({
           if (!open) {
             setSpaceForm(emptySpaceForm)
             setEditingSpaceId("")
+            setSpaceDialogVaultId("")
           }
         }}
         onSubmit={handleCreateSpace}

@@ -147,9 +147,9 @@ export async function createVault(
     actor: Actor
   }
 ) {
-  const vaultId = newId("vault")
-  const spaceId = newId("space")
-  const shareId = newId("share")
+  const vaultId = newId()
+  const spaceId = newId()
+  const shareId = newId()
   const ownerId = await ensureActorUser(db, input.actor)
 
   await db.batch([
@@ -341,8 +341,8 @@ export async function importVault(
 ) {
   const ownerId = await ensureActorUser(db, input.actor)
   const now = new Date().toISOString()
-  const vaultId = newId("vault")
-  const shareId = newId("share")
+  const vaultId = newId()
+  const shareId = newId()
   const sortedSpaces = [...input.data.spaces].sort((a, b) => a.position - b.position)
   const fallbackSourceSpaceId = sortedSpaces[0]?.id ?? "default"
   const spaceIdBySourceId = new Map<string, string>()
@@ -363,13 +363,13 @@ export async function importVault(
         ]
 
   for (const space of importedSpaces) {
-    spaceIdBySourceId.set(space.id, newId("space"))
+    spaceIdBySourceId.set(space.id, newId())
   }
 
   for (const resource of input.data.resources) {
-    resourceIdBySourceId.set(resource.id, newId("resource"))
+    resourceIdBySourceId.set(resource.id, newId())
     for (const comment of resource.comments ?? []) {
-      commentIdBySourceId.set(comment.id, newId("comment"))
+      commentIdBySourceId.set(comment.id, newId())
     }
   }
 

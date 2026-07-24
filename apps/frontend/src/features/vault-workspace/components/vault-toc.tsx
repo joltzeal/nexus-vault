@@ -1,6 +1,6 @@
 "use client"
 
-import { ListTree, Plus } from "lucide-react"
+import { ChevronsDownUp, ChevronsUpDown, ListTree, Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -17,16 +17,20 @@ export function VaultToc({
   isVaultOwner,
   onAddSpace,
   onJump,
+  onToggleAllSpaces,
   resources,
   spaces,
+  spacesCollapsed,
 }: {
   activeSpaceId: string
   disabled: boolean
   isVaultOwner: boolean
   onAddSpace: () => void
   onJump: (spaceId: string) => void
+  onToggleAllSpaces: () => void
   resources: Resource[]
   spaces: Space[]
+  spacesCollapsed: boolean
 }) {
   function renderOutlineList() {
     return (
@@ -60,10 +64,48 @@ export function VaultToc({
     if (!isVaultOwner) return null
 
     return (
-      <Button className="w-full justify-center" size="sm" variant="outline" onClick={onAddSpace} disabled={disabled}>
+      <Button
+        className="min-w-0 flex-1 justify-center"
+        disabled={disabled}
+        onClick={onAddSpace}
+        size="sm"
+        variant="outline"
+      >
         <Plus data-icon="inline-start" />
-        新建 Space
+        Space
       </Button>
+    )
+  }
+
+  function renderToggleSpacesButton() {
+    if (spaces.length === 0) return null
+
+    return (
+      <Button
+        className="min-w-0 flex-1 justify-center"
+        size="sm"
+        variant="ghost"
+        onClick={onToggleAllSpaces}
+        type="button"
+      >
+        {spacesCollapsed ? (
+          <ChevronsUpDown data-icon="inline-start" />
+        ) : (
+          <ChevronsDownUp data-icon="inline-start" />
+        )}
+        {spacesCollapsed ? "展开全部" : "收起全部"}
+      </Button>
+    )
+  }
+
+  function renderOutlineActions() {
+    if (spaces.length === 0 && !isVaultOwner) return null
+
+    return (
+      <div className="flex min-w-0 items-center gap-1">
+        {renderToggleSpacesButton()}
+        {isVaultOwner && renderAddSpaceButton()}
+      </div>
     )
   }
 
@@ -76,9 +118,9 @@ export function VaultToc({
           </div>
           {renderOutlineList()}
         </nav>
-        {isVaultOwner && (
+        {(spaces.length > 0 || isVaultOwner) && (
           <div className="pointer-events-auto rounded-card border border-line bg-ink-850/95 p-2 shadow-pop backdrop-blur">
-            {renderAddSpaceButton()}
+            {renderOutlineActions()}
           </div>
         )}
       </aside>
@@ -105,7 +147,11 @@ export function VaultToc({
             Outline
           </div>
           {renderOutlineList()}
-          {isVaultOwner && <div className="mt-2 border-t border-line pt-2">{renderAddSpaceButton()}</div>}
+          {(spaces.length > 0 || isVaultOwner) && (
+            <div className="mt-2 border-t border-line pt-2">
+              {renderOutlineActions()}
+            </div>
+          )}
         </PopoverContent>
       </Popover>
     </>

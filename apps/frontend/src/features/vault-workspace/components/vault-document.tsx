@@ -2,7 +2,7 @@
 
 import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react"
 import { isSortableOperation } from "@dnd-kit/react/sortable"
-import { Database, FolderPlus, Plus } from "lucide-react"
+import { Database, FolderPlus, LoaderCircle, Plus } from "lucide-react"
 import type { ReactNode } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 
@@ -10,7 +10,12 @@ import { Button } from "@/components/ui/button"
 import { VaultHeader } from "@/features/vault-workspace/components/vault-header"
 import { SpaceSection, type BoardDragData } from "@/features/vault-workspace/components/space-section"
 import { VaultToc } from "@/features/vault-workspace/components/vault-toc"
-import type { CommentItem, Resource, ResourceSet } from "@/features/vault-workspace/types"
+import type {
+  CommentItem,
+  Resource,
+  ResourceSet,
+  ResourceTransferTargetVault,
+} from "@/features/vault-workspace/types"
 import { getSortedSpaces, groupResourcesBySpace } from "./view-models"
 
 export function VaultDocument({
@@ -22,12 +27,15 @@ export function VaultDocument({
   currentUserId,
   isSignedIn,
   isVaultEditor,
+  isVaultLoading,
   isVaultOwner,
   isShareMode,
   mediaVisible,
   onAddResource,
   onAddResourceToSpace,
   onAddSpace,
+  onActivateResource,
+  onCreateTransferTargetSpace,
   onCreateVault,
   onCommentBodyChange,
   onDeleteResource,
@@ -37,6 +45,7 @@ export function VaultDocument({
   onEditSpace,
   onForkVault,
   onFocusResourceComments,
+  onLoadTransferTargets,
   onMoveResource,
   onOpenSettings,
   onReorderSpace,
@@ -45,10 +54,13 @@ export function VaultDocument({
   onToggleMediaVisibility,
   onToggleResourceStar,
   onToggleStar,
+  onTransferResource,
   onUpdateSpaceIcon,
   pendingSubmissionCount,
   selectedResourceId,
   shareSubmissionSlot,
+  transferFocusSpaceId,
+  transferTargets,
 }: {
   activeSet?: ResourceSet
   canAddResource: boolean
@@ -58,12 +70,15 @@ export function VaultDocument({
   currentUserId?: string
   isSignedIn: boolean
   isVaultEditor: boolean
+  isVaultLoading: boolean
   isVaultOwner: boolean
   isShareMode: boolean
   mediaVisible: boolean
   onAddResource: () => void
   onAddResourceToSpace: (spaceId: string) => void
   onAddSpace: () => void
+  onActivateResource: (resourceId: string) => void
+  onCreateTransferTargetSpace: (vaultId: string) => void
   onCreateVault: () => void
   onCommentBodyChange: (value: string) => void
   onDeleteResource: (resourceId: string) => void
@@ -73,6 +88,7 @@ export function VaultDocument({
   onEditSpace: (space: ResourceSet["spaces"][number]) => void
   onForkVault: () => void
   onFocusResourceComments: (resourceId: string) => void
+  onLoadTransferTargets: () => Promise<void>
   onMoveResource: (input: {
     resourceId: string
     sourceSpaceId: string
@@ -86,15 +102,25 @@ export function VaultDocument({
   onToggleMediaVisibility: (visible: boolean) => void
   onToggleResourceStar: (resourceId: string) => void
   onToggleStar: () => void
+  onTransferResource: (input: {
+    action: "move" | "copy"
+    resourceId: string
+    targetVaultId: string
+    targetSpaceId: string
+  }) => Promise<void>
   onUpdateSpaceIcon: (spaceId: string, icon: string) => void
   pendingSubmissionCount: number
   selectedResourceId?: string
   shareSubmissionSlot?: ReactNode
+  transferFocusSpaceId?: string
+  transferTargets: ResourceTransferTargetVault[]
 }) {
   const mainRef = useRef<HTMLDivElement>(null)
   const [activeSpaceId, setActiveSpaceId] = useState("")
   const [collapsedSpaceIds, setCollapsedSpaceIds] = useState<Set<string>>(new Set())
   const spaces = useMemo(() => getSortedSpaces(activeSet), [activeSet])
+  const allSpacesCollapsed =
+    spaces.length > 0 && spaces.every((space) => collapsedSpaceIds.has(space.id))
   const groupedResources = useMemo(
     () => groupResourcesBySpace(activeSet?.resources ?? [], spaces),
     [activeSet?.resources, spaces]
@@ -170,6 +196,14 @@ export function VaultDocument({
     })
   }
 
+  function toggleAllSpaces() {
+    setCollapsedSpaceIds((current) => {
+      const shouldExpandAll =
+        spaces.length > 0 && spaces.every((space) => current.has(space.id))
+      return shouldExpandAll ? new Set() : new Set(spaces.map((space) => space.id))
+    })
+  }
+
   function jumpToSpace(spaceId: string) {
     const root = mainRef.current
     const element = root?.querySelector<HTMLElement>(`#${CSS.escape(spaceId)}`)
@@ -201,7 +235,12 @@ export function VaultDocument({
             set={activeSet}
           />
           {shareSubmissionSlot}
-          {activeSet ? (
+          {activeSet && isVaultLoading ? (
+            <div className="mt-4 flex min-h-[320px] flex-col items-center justify-center gap-3 rounded-card border border-line bg-ink-800/45 text-fg-dim">
+              <LoaderCircle className="size-5 animate-spin text-jade" />
+              <span className="text-sm">正在加载 Vault...</span>
+            </div>
+          ) : activeSet ? (
             <DragDropProvider onDragEnd={handleDragEnd}>
               <section className="mt-3.5">
                 {spaces.map((space, index) => (
@@ -218,14 +257,18 @@ export function VaultDocument({
                     mediaVisible={mediaVisible}
                     key={space.id}
                     onAddResource={() => onAddResourceToSpace(space.id)}
+                    onActivateResource={onActivateResource}
                     onCommentBodyChange={onCommentBodyChange}
+                    onCreateTransferTargetSpace={onCreateTransferTargetSpace}
                     onDeleteSpace={() => onDeleteSpace(space.id)}
                     onEditSpace={() => onEditSpace(space)}
                     onDeleteResource={onDeleteResource}
                     onFocusResourceComments={onFocusResourceComments}
+                    onLoadTransferTargets={onLoadTransferTargets}
                     onSelectResource={onSelectResource}
                     onSubmitComment={onSubmitComment}
                     onToggleResourceStar={onToggleResourceStar}
+                    onTransferResource={onTransferResource}
                     onToggleCollapsed={() =>
                       setCollapsedSpaceIds((current) => {
                         const next = new Set(current)
@@ -239,6 +282,8 @@ export function VaultDocument({
                     selectedResourceId={selectedResourceId}
                     space={space}
                     spacePosition={index}
+                    transferFocusSpaceId={transferFocusSpaceId}
+                    transferTargets={transferTargets}
                   />
                 ))}
                 {spaces.length === 0 && (
@@ -278,12 +323,14 @@ export function VaultDocument({
       </main>
       <VaultToc
         activeSpaceId={activeSpaceId}
-        disabled={!isSignedIn || !activeSet}
+        disabled={!isSignedIn || !activeSet || isVaultLoading}
         onAddSpace={onAddSpace}
         onJump={jumpToSpace}
-        resources={activeSet?.resources ?? []}
+        onToggleAllSpaces={toggleAllSpaces}
+        resources={isVaultLoading ? [] : activeSet?.resources ?? []}
         isVaultOwner={isVaultOwner}
-        spaces={spaces}
+        spaces={isVaultLoading ? [] : spaces}
+        spacesCollapsed={allSpacesCollapsed}
       />
     </>
   )

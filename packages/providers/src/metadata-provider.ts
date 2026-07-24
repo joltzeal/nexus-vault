@@ -18,6 +18,8 @@ export type MetadataResult = {
 }
 
 export type MetadataResolveOptions = {
+  fetchHttpPage?: boolean
+  probeCloudDriveAvailability?: boolean
   twitterRequestProxyUrl?: string
   twitterCookieString?: string
   captureHttpScreenshot?: (input: {

@@ -38,7 +38,7 @@ export async function getShare(
     .limit(1)
 
   if (!share) {
-    const shareId = newId("share")
+    const shareId = newId()
     const slug = await createUniqueShareSlug(db)
     await db.insert(shares).values({
       id: shareId,
@@ -121,7 +121,7 @@ export async function upsertShare(
     return { id: existing.id, slug }
   }
 
-  const shareId = newId("share")
+  const shareId = newId()
   const slug = await createUniqueShareSlug(db)
   await db.insert(shares).values({
     id: shareId,

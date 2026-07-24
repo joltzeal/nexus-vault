@@ -74,7 +74,7 @@ export async function upsertCollaborator(
     return { id: existing.id, userId }
   }
 
-  const collaboratorId = newId("collaborator")
+  const collaboratorId = newId()
   await db.insert(collaborators).values({
     id: collaboratorId,
     vaultId,
@@ -136,7 +136,7 @@ export async function ensureEditorCollaborator(
     return { id: existing.id, userId }
   }
 
-  const collaboratorId = newId("collaborator")
+  const collaboratorId = newId()
   await db.insert(collaborators).values({
     id: collaboratorId,
     vaultId,

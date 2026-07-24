@@ -1,12 +1,18 @@
 import { createMiddleware } from "hono/factory"
 
-import { getDb } from "@nexus-vault/db"
+import { createDbSession } from "@nexus-vault/db"
 import { createAuth } from "@nexus-vault/auth/server"
 import type { ApiEnv } from "@/server/api/types"
 
 export const dbMiddleware = createMiddleware<ApiEnv>(async (c, next) => {
-  c.set("db", getDb(c.env.DB))
-  await next()
+  const session = await createDbSession(c.env)
+  c.set("db", session.db)
+
+  try {
+    await next()
+  } finally {
+    await session.close()
+  }
 })
 
 export const actorMiddleware = createMiddleware<ApiEnv>(async (c, next) => {
@@ -16,7 +22,7 @@ export const actorMiddleware = createMiddleware<ApiEnv>(async (c, next) => {
     return
   }
 
-  const session = await createAuth(c.env, c.executionCtx).api.getSession({
+  const session = await createAuth(c.env, c.get("db"), c.executionCtx).api.getSession({
     headers: c.req.raw.headers,
   })
 

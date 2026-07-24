@@ -1,6 +1,6 @@
-import { and, eq, isNull } from "drizzle-orm"
+import { and, count, eq, inArray, isNull } from "drizzle-orm"
 
-import { resourceMetadata, resources } from "@nexus-vault/db/schema"
+import { comments, resourceMetadata, resources, spaces, vaults } from "@nexus-vault/db/schema"
 import {
   parseCloudDriveLink,
   parseMagnetLink,
@@ -55,7 +55,7 @@ export async function createResource(
     ? (await getSpaceInVaultOrThrow(db, vaultId, input.spaceId)).id
     : await getDefaultSpaceId(db, vaultId)
 
-  const resourceId = newId("resource")
+  const resourceId = newId()
   const parsedInput = parseResourceInput(input)
   const dedupeKey = getDuplicateResourceKey(parsedInput.url)
   await ensureResourceUrlNotDuplicate(db, vaultId, dedupeKey)
@@ -294,6 +294,155 @@ export async function reorderResources(
   return { updated: input.items.length }
 }
 
+export async function listResourceTransferTargets(
+  db: Db,
+  input: {
+    actor: Actor
+  }
+) {
+  const vaultRows = await db
+    .select({
+      id: vaults.id,
+      title: vaults.title,
+    })
+    .from(vaults)
+    .where(and(eq(vaults.ownerId, input.actor.id), isNull(vaults.deletedAt)))
+
+  if (vaultRows.length === 0) return { items: [] }
+
+  const spaceRows = await db
+    .select({
+      id: spaces.id,
+      vaultId: spaces.vaultId,
+      name: spaces.name,
+      icon: spaces.icon,
+      position: spaces.position,
+    })
+    .from(spaces)
+    .where(and(inArray(spaces.vaultId, vaultRows.map((vault) => vault.id)), isNull(spaces.deletedAt)))
+
+  return {
+    items: vaultRows.map((vault) => ({
+      ...vault,
+      spaces: spaceRows
+        .filter((space) => space.vaultId === vault.id)
+        .sort((a, b) => a.position - b.position)
+        .map((space) => ({
+          id: space.id,
+          name: space.name,
+          icon: space.icon,
+        })),
+    })),
+  }
+}
+
+export async function transferResource(
+  db: Db,
+  resourceId: string,
+  input: {
+    action: "move" | "copy"
+    targetVaultId: string
+    targetSpaceId: string
+    actor: Actor
+  }
+) {
+  const resource = await getResourceOrThrow(db, resourceId)
+  if (input.targetSpaceId === resource.spaceId) {
+    throw conflict("目标就是当前 Space，无需操作。")
+  }
+
+  const sourceRole = await getVaultRoleForActor(db, resource.vaultId, input.actor)
+  if (sourceRole !== "owner") {
+    throw forbidden("Only the vault owner can transfer resources.")
+  }
+  await getVaultOrThrow(db, input.targetVaultId)
+  await getSpaceInVaultOrThrow(db, input.targetVaultId, input.targetSpaceId)
+  await requireVaultPermission(db, {
+    vaultId: input.targetVaultId,
+    actor: input.actor,
+    action: "resource:create",
+  })
+  await ensureResourceUrlNotDuplicate(
+    db,
+    input.targetVaultId,
+    resource.dedupeKey,
+    input.action === "move" ? resource.id : undefined
+  )
+
+  const now = new Date().toISOString()
+  const position = await getNextResourcePosition(db, input.targetSpaceId)
+
+  if (input.action === "move") {
+    await db.batch([
+      db
+        .update(resources)
+        .set({
+          vaultId: input.targetVaultId,
+          spaceId: input.targetSpaceId,
+          position,
+          updatedAt: now,
+        })
+        .where(and(eq(resources.id, resourceId), isNull(resources.deletedAt))),
+      db
+        .update(comments)
+        .set({
+          vaultId: input.targetVaultId,
+          updatedAt: now,
+        })
+        .where(and(eq(comments.resourceId, resourceId), isNull(comments.deletedAt))),
+    ])
+
+    return {
+      id: resourceId,
+      action: "move" as const,
+      vaultId: input.targetVaultId,
+      spaceId: input.targetSpaceId,
+    }
+  }
+
+  const copiedResourceId = newId()
+  const [metadata] = await db
+    .select({
+      provider: resourceMetadata.provider,
+      status: resourceMetadata.status,
+      dataJson: resourceMetadata.dataJson,
+      errorMessage: resourceMetadata.errorMessage,
+    })
+    .from(resourceMetadata)
+    .where(eq(resourceMetadata.resourceId, resourceId))
+    .limit(1)
+
+  await db.batch([
+    db.insert(resources).values({
+      id: copiedResourceId,
+      vaultId: input.targetVaultId,
+      spaceId: input.targetSpaceId,
+      type: resource.type,
+      title: resource.title,
+      description: resource.description,
+      url: resource.url,
+      dedupeKey: resource.dedupeKey,
+      metadataStatus: resource.metadataStatus,
+      position,
+      createdBy: input.actor.id,
+    }),
+    db.insert(resourceMetadata).values({
+      resourceId: copiedResourceId,
+      provider: metadata?.provider ?? resource.type,
+      status: metadata?.status ?? resource.metadataStatus,
+      dataJson: metadata?.dataJson ?? "{}",
+      errorMessage: metadata?.errorMessage,
+    }),
+  ])
+
+  return {
+    id: copiedResourceId,
+    action: "copy" as const,
+    vaultId: input.targetVaultId,
+    spaceId: input.targetSpaceId,
+  }
+}
+
 export async function getResourceOrThrow(db: Db, resourceId: string) {
   const [resource] = await db
     .select({
@@ -318,6 +467,15 @@ export async function getResourceOrThrow(db: Db, resourceId: string) {
 
   if (!resource) throw notFound("Resource not found.")
   return resource
+}
+
+async function getNextResourcePosition(db: Db, spaceId: string) {
+  const [row] = await db
+    .select({ value: count() })
+    .from(resources)
+    .where(and(eq(resources.spaceId, spaceId), isNull(resources.deletedAt)))
+
+  return row?.value ?? 0
 }
 
 export async function requireResourceMutationPermission(

@@ -43,7 +43,12 @@ export type ResourcePillItem =
       ariaLabel: string
     }
 
-type CloudDriveAvailabilityStatus = "available" | "unavailable" | "unknown"
+type CloudDriveAvailabilityStatus =
+  | "available"
+  | "unavailable"
+  | "password_required"
+  | "rate_limited"
+  | "unknown"
 
 export function getSortedSpaces(set?: ResourceSet) {
   return [...(set?.spaces ?? [])].sort((a, b) => a.position - b.position)
@@ -170,11 +175,11 @@ export function getResourceCloudDriveData(resource: Resource) {
 
 export function getMetadataState(status: MetadataStatus) {
   const map = {
-    completed: { className: "ms-completed", label: "就绪" },
-    pending: { className: "ms-pending", label: "待处理" },
-    processing: { className: "ms-processing", label: "解析中" },
-    failed: { className: "ms-failed", label: "解析失败" },
-  } satisfies Record<MetadataStatus, { className: string; label: string }>
+    completed: { label: "就绪" },
+    pending: { label: "补全中" },
+    processing: { label: "解析中" },
+    failed: { label: "解析失败" },
+  } satisfies Record<MetadataStatus, { label: string }>
 
   return map[status]
 }
@@ -308,11 +313,15 @@ function getCloudDrivePills(resource: Resource): ResourcePillItem[] {
     const availabilityLabels = {
       available: "可用",
       unavailable: "失效",
+      password_required: "需密码",
+      rate_limited: "受限",
       unknown: "未知",
     } as const
     const availabilityStatuses = {
       available: "online",
       unavailable: "offline",
+      password_required: "degraded",
+      rate_limited: "maintenance",
       unknown: "maintenance",
     } as const
 
@@ -409,7 +418,11 @@ function getHttpMetadata(value: unknown) {
 }
 
 function getCloudDriveAvailabilityStatus(value: unknown): CloudDriveAvailabilityStatus {
-  return value === "available" || value === "unavailable" || value === "unknown"
+  return value === "available" ||
+    value === "unavailable" ||
+    value === "password_required" ||
+    value === "rate_limited" ||
+    value === "unknown"
     ? value
     : "unknown"
 }

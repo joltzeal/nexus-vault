@@ -3,21 +3,20 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { APIError, createAuthMiddleware } from "better-auth/api"
 
 import { betterAuthSchema } from "@nexus-vault/db/better-auth-schema"
-import { getDb } from "@nexus-vault/db"
+import type { Db } from "@nexus-vault/db"
 import { getRegistrationPolicy } from "./registration-policy"
 
 export function createAuth(
   env: CloudflareEnv,
+  db: Db,
   executionCtx?: {
     waitUntil(promise: Promise<unknown>): void
   }
 ) {
-  const db = getDb(env.DB)
-
   return betterAuth({
     appName: "NexusVault",
     database: drizzleAdapter(db, {
-      provider: "sqlite",
+      provider: "pg",
       schema: betterAuthSchema,
       transaction: false,
     }),
@@ -53,6 +52,12 @@ export function createAuth(
     },
     verification: {
       storeInDatabase: true,
+    },
+    session: {
+      cookieCache: {
+        enabled: true,
+        maxAge: 5 * 60,
+      },
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {

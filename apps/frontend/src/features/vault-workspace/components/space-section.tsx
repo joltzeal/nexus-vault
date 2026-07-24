@@ -41,7 +41,12 @@ import {
 import { MarkdownContent } from "@/features/vault-workspace/components/markdown-content"
 import { ResourceCard } from "@/features/vault-workspace/components/resource-card"
 import { SpaceIcon, SpaceIconPicker } from "@/features/vault-workspace/components/space-icon-picker"
-import type { CommentItem, Resource, Space } from "@/features/vault-workspace/types"
+import type {
+  CommentItem,
+  Resource,
+  ResourceTransferTargetVault,
+  Space,
+} from "@/features/vault-workspace/types"
 import { cn } from "@/lib/utils"
 import type { ResourceDragData } from "./resource-card"
 import { getResourceDisplayUrl } from "./view-models"
@@ -70,20 +75,26 @@ export function SpaceSection({
   isSignedIn,
   mediaVisible,
   onAddResource,
+  onActivateResource,
   onCommentBodyChange,
+  onCreateTransferTargetSpace,
   onDeleteSpace,
   onEditSpace,
   onDeleteResource,
   onFocusResourceComments,
+  onLoadTransferTargets,
   onSelectResource,
   onSubmitComment,
   onToggleCollapsed,
   onToggleResourceStar,
+  onTransferResource,
   onUpdateIcon,
   resources,
   selectedResourceId,
   space,
   spacePosition,
+  transferFocusSpaceId,
+  transferTargets,
 }: {
   collapsed: boolean
   commentBody: string
@@ -96,20 +107,31 @@ export function SpaceSection({
   isSignedIn: boolean
   mediaVisible: boolean
   onAddResource: () => void
+  onActivateResource: (resourceId: string) => void
   onCommentBodyChange: (value: string) => void
+  onCreateTransferTargetSpace: (vaultId: string) => void
   onDeleteSpace: () => void
   onEditSpace: () => void
   onDeleteResource: (resourceId: string) => void
   onFocusResourceComments: (resourceId: string) => void
+  onLoadTransferTargets: () => Promise<void>
   onSelectResource: (resourceId: string) => void
   onSubmitComment: () => void
   onToggleCollapsed: () => void
   onToggleResourceStar: (resourceId: string) => void
+  onTransferResource: (input: {
+    action: "move" | "copy"
+    resourceId: string
+    targetVaultId: string
+    targetSpaceId: string
+  }) => Promise<void>
   onUpdateIcon: (icon: string) => void
   resources: Resource[]
   selectedResourceId?: string
   space: Space
   spacePosition: number
+  transferFocusSpaceId?: string
+  transferTargets: ResourceTransferTargetVault[]
 }) {
   const { handleRef, ref } = useSortable<SpaceDragData>({
     id: `space:${space.id}`,
@@ -197,8 +219,14 @@ export function SpaceSection({
                   <span className="sr-only">Space 描述</span>
                 </span>
               </HoverCardTrigger>
-              <HoverCardContent align="start" className="w-80 border-line bg-ink-850 p-3 text-fg">
-                <MarkdownContent value={space.description} />
+              <HoverCardContent
+                align="start"
+                className="max-h-[min(420px,calc(100dvh-7rem))] w-[min(440px,calc(100vw-2rem))] overflow-auto overscroll-contain border-line bg-ink-850 p-3 text-fg"
+              >
+                <MarkdownContent
+                  className="max-w-full text-[12.5px]"
+                  value={space.description}
+                />
               </HoverCardContent>
             </HoverCard>
           )}
@@ -260,14 +288,20 @@ export function SpaceSection({
               isVaultOwner={isVaultOwner}
               mediaVisible={mediaVisible}
               key={resource.id}
+              onActivate={() => onActivateResource(resource.id)}
               onCommentBodyChange={onCommentBodyChange}
+              onCreateTransferTargetSpace={onCreateTransferTargetSpace}
               onDelete={() => onDeleteResource(resource.id)}
               onFocusComments={() => onFocusResourceComments(resource.id)}
-              onSelect={() => onSelectResource(resource.id)}
+              onLoadTransferTargets={onLoadTransferTargets}
+              onOpenDetails={() => onSelectResource(resource.id)}
               onSubmitComment={onSubmitComment}
               onToggleStar={() => onToggleResourceStar(resource.id)}
+              onTransferResource={onTransferResource}
               resource={resource}
               spaceId={space.id}
+              transferFocusSpaceId={transferFocusSpaceId}
+              transferTargets={transferTargets}
             />
           ))}
           {resources.length === 0 && (

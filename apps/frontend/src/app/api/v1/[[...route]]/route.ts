@@ -1,15 +1,24 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 
+import { createApiApp } from "@/server/api/app"
+
+const app = createApiApp()
+
 async function handle(request: Request) {
   try {
     const cloudflare = await getCloudflareContext({ async: true })
-    const { createApiApp } = await import("@/server/api/app")
-    const app = createApiApp()
     return app.fetch(request, cloudflare.env, cloudflare.ctx)
   } catch (error) {
     console.error("API route failed", error)
-    return new Response(
-      "API route failed",
+    return Response.json(
+      {
+        success: false,
+        data: null,
+        error: {
+          code: "INTERNAL_SERVER_ERROR",
+          message: "API 请求失败，请稍后再试。",
+        },
+      },
       { status: 500 }
     )
   }

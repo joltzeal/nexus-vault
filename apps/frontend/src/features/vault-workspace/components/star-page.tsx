@@ -70,14 +70,19 @@ export function StarPage({
                     isSignedIn={isSignedIn}
                     isVaultOwner={false}
                     mediaVisible={mediaVisible}
+                    onActivate={() => setActiveResourceId(item.sourceResourceId)}
                     onCommentBodyChange={onCommentBodyChange}
+                    onCreateTransferTargetSpace={() => undefined}
                     onDelete={() => undefined}
                     onFocusComments={() => setActiveResourceId(item.sourceResourceId)}
-                    onSelect={() => setActiveResourceId(item.sourceResourceId)}
+                    onLoadTransferTargets={() => Promise.resolve()}
+                    onOpenDetails={() => setActiveResourceId(item.sourceResourceId)}
                     onSubmitComment={() => undefined}
                     onToggleStar={() => onResourceUnstar(item.sourceResourceId)}
+                    onTransferResource={() => Promise.resolve()}
                     resource={resource}
                     spaceId={item.sourceSpaceId ?? "starred-resources"}
+                    transferTargets={[]}
                   />
                 )
               })}

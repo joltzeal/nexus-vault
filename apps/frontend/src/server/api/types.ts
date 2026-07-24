@@ -1,6 +1,6 @@
-import type { getDb } from "@nexus-vault/db"
+import type { Db } from "@nexus-vault/db"
 
-export type Db = ReturnType<typeof getDb>
+export type { Db }
 
 export type ApiBindings = CloudflareEnv
 

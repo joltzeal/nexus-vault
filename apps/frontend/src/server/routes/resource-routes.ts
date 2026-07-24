@@ -8,17 +8,27 @@ import {
   createResourceSchema,
   createResourceWithVaultSchema,
   reorderResourcesSchema,
+  transferResourceSchema,
   updateResourceSchema,
 } from "@/server/schemas/resource"
 import {
   archiveResource,
   createResource,
+  listResourceTransferTargets,
   reorderResources,
+  transferResource,
   updateResource,
 } from "@/server/services/resource-service"
 import { enqueueMetadataTask } from "@/server/services/metadata-service"
 
 export const resourceRoutes = new Hono<ApiEnv>()
+
+resourceRoutes.get("/resources/transfer-targets", async (c) => {
+  const result = await listResourceTransferTargets(c.get("db"), {
+    actor: requireActor(c),
+  })
+  return ok(c, result)
+})
 
 resourceRoutes.post("/resources", async (c) => {
   const input = await parseJson(c, createResourceWithVaultSchema)
@@ -56,6 +66,15 @@ resourceRoutes.patch("/resources/:resourceId", async (c) => {
     actor: requireActor(c),
   })
   if (result.metadataTask) enqueueMetadataTask(c, result.metadataTask)
+  return ok(c, result)
+})
+
+resourceRoutes.post("/resources/:resourceId/transfer", async (c) => {
+  const input = await parseJson(c, transferResourceSchema)
+  const result = await transferResource(c.get("db"), c.req.param("resourceId"), {
+    ...input,
+    actor: requireActor(c),
+  })
   return ok(c, result)
 })
 

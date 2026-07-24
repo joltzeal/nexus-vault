@@ -1,7 +1,7 @@
-import { and, eq, isNull } from "drizzle-orm"
+import { and, eq, isNull, ne, sql } from "drizzle-orm"
 
 import { resources, spaces } from "@nexus-vault/db/schema"
-import { notFound } from "@/server/api/errors"
+import { conflict, notFound } from "@/server/api/errors"
 import type { Actor, Db } from "@/server/api/types"
 import { requireVaultPermission } from "@/server/services/permission-service"
 import { getVaultOrThrow } from "@/server/services/vault-service"
@@ -25,8 +25,9 @@ export async function createSpace(
     userEmail: input.userEmail,
     action: "space:create",
   })
+  await ensureSpaceNameNotDuplicate(db, vaultId, input.name)
 
-  const spaceId = newId("space")
+  const spaceId = newId()
   await db.insert(spaces).values({
     id: spaceId,
     vaultId,
@@ -59,6 +60,9 @@ export async function updateSpace(
     userEmail: input.userEmail,
     action: "space:update",
   })
+  if (input.name !== undefined) {
+    await ensureSpaceNameNotDuplicate(db, vaultId, input.name, spaceId)
+  }
 
   await db
     .update(spaces)
@@ -161,4 +165,26 @@ export async function getDefaultSpaceId(db: Db, vaultId: string) {
     .limit(1)
 
   return space?.id
+}
+
+async function ensureSpaceNameNotDuplicate(
+  db: Db,
+  vaultId: string,
+  name: string,
+  ignoreSpaceId?: string
+) {
+  const normalizedName = name.trim().toLowerCase()
+  const conditions = [
+    eq(spaces.vaultId, vaultId),
+    isNull(spaces.deletedAt),
+    sql`lower(${spaces.name}) = ${normalizedName}`,
+    ...(ignoreSpaceId ? [ne(spaces.id, ignoreSpaceId)] : []),
+  ]
+  const [existing] = await db
+    .select({ id: spaces.id })
+    .from(spaces)
+    .where(and(...conditions))
+    .limit(1)
+
+  if (existing) throw conflict("Space 名称已存在。")
 }

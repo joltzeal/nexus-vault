@@ -30,17 +30,19 @@
 		"@nexus-vault/ui": "../../packages/ui/src/index.ts"
 	},
 	"keep_vars": true,
+	"vars": {
+		"NEXTJS_ENV": "development"
+	},
 	"images": {
 		// Enable image optimization
 		// see https://opennext.js.org/cloudflare/howtos/image
 		"binding": "IMAGES"
 	},
-	"d1_databases": [
+	"hyperdrive": [
 		{
-			"binding": "DB",
-			"database_name": "nexus-vault-local",
-			"database_id": "local-development-db",
-			"migrations_dir": "../../migrations"
+			"binding": "HYPERDRIVE",
+			"id": "3271a1cca21447d9bc4ba2ff47a167ff",
+			"localConnectionString": "postgres://postgres:postgres@127.0.0.1:5432/nexus_vault"
 		}
 	],
 	"kv_namespaces": [
@@ -69,7 +71,7 @@
 		"consumers": [
 			{
 				"queue": "nexus-vault-metadata-local",
-				"max_batch_size": 5,
+				"max_batch_size": 1,
 				"max_batch_timeout": 10,
 				"max_retries": 3
 			},
@@ -96,15 +98,16 @@
 	"env": {
 		"production": {
 			"name": "nexus-vault",
+			"vars": {
+				"NEXTJS_ENV": "production"
+			},
 			"images": {
 				"binding": "IMAGES"
 			},
-			"d1_databases": [
+			"hyperdrive": [
 				{
-					"binding": "DB",
-					"database_name": "nexus-vault",
-					"database_id": "9623da2f-f1c1-4f02-b5aa-8ef1ab5e10d5",
-					"migrations_dir": "../../migrations"
+					"binding": "HYPERDRIVE",
+					"id": "3271a1cca21447d9bc4ba2ff47a167ff"
 				}
 			],
 			"kv_namespaces": [
@@ -133,7 +136,7 @@
 				"consumers": [
 					{
 						"queue": "nexus-vault-metadata",
-						"max_batch_size": 5,
+						"max_batch_size": 1,
 						"max_batch_timeout": 10,
 						"max_retries": 3
 					},

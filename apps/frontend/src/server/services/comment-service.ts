@@ -71,7 +71,7 @@ export async function createComment(
   })
   const authorId = input.actor ? await ensureActorUser(db, input.actor) : undefined
 
-  const commentId = newId("comment")
+  const commentId = newId()
   await db.insert(comments).values({
     id: commentId,
     vaultId,

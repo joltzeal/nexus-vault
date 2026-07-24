@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { SpaceIconPicker } from "@/features/vault-workspace/components/space-icon-picker"
 import type {
   AuthForm,
   AuthMode,
@@ -211,6 +212,7 @@ function shuffleCoverOptions(options: typeof vaultCoverOptions) {
 }
 
 export function CreateSpaceDialog({
+  contextLabel,
   form,
   mode = "create",
   onFormChange,
@@ -218,6 +220,7 @@ export function CreateSpaceDialog({
   onSubmit,
   open,
 }: {
+  contextLabel?: string
   form: SpaceForm
   mode?: "create" | "edit"
   onFormChange: (form: SpaceForm) => void
@@ -236,10 +239,24 @@ export function CreateSpaceDialog({
               {isEdit ? "编辑 Space" : "创建 Space"}
             </DialogTitle>
             <DialogDescription>
-              {isEdit ? "更新这个章节的名称与描述。" : "Space 会作为文档大纲中的章节。"}
+              {isEdit
+                ? "更新这个章节的名称与描述。"
+                : contextLabel
+                  ? `在 ${contextLabel} 中创建新的 Space。`
+                  : "Space 会作为文档大纲中的章节。"}
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
+            <Field>
+              <FieldLabel>图标</FieldLabel>
+              <div className="flex items-center">
+                <SpaceIconPicker
+                  disabled={false}
+                  onSelect={(icon) => onFormChange({ ...form, icon })}
+                  value={form.icon}
+                />
+              </div>
+            </Field>
             <Field>
               <FieldLabel htmlFor="space-name">名称</FieldLabel>
               <Input
@@ -252,6 +269,7 @@ export function CreateSpaceDialog({
             <Field>
               <FieldLabel htmlFor="space-description">描述</FieldLabel>
               <Textarea
+                className="max-h-40 resize-y overflow-auto"
                 id="space-description"
                 placeholder="这个 Space 收纳哪一类资源？"
                 rows={3}
@@ -315,7 +333,7 @@ export function CreateResourceDialog({
         <form className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col gap-5" onSubmit={onSubmit}>
           <DialogHeader>
             <DialogTitle className="font-display">添加资源</DialogTitle>
-            <DialogDescription>资源会进入 metadata 队列，解析后自动补全展示信息。</DialogDescription>
+            <DialogDescription>添加链接后会自动补全展示信息。</DialogDescription>
           </DialogHeader>
           <FieldGroup className="min-h-0 overflow-y-auto pr-1">
             <Field>

@@ -11,8 +11,10 @@ export async function getVaultAlerts(
   vaultId: string,
   input: {
     actor: Actor
+    includeSubmissions?: boolean
   }
 ) {
+  const includeSubmissions = input.includeSubmissions ?? true
   const [notificationData, notificationSummary, submissionData] = await Promise.all([
     listNotifications(db, {
       actor: input.actor,
@@ -22,10 +24,12 @@ export async function getVaultAlerts(
       actor: input.actor,
       vaultId,
     }),
-    listResourceSubmissions(db, vaultId, {
-      actor: input.actor,
-      status: "pending",
-    }),
+    includeSubmissions
+      ? listResourceSubmissions(db, vaultId, {
+          actor: input.actor,
+          status: "pending",
+        })
+      : Promise.resolve([]),
   ])
 
   return {

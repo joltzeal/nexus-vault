@@ -59,6 +59,7 @@ vaultRoutes.post("/vaults/import", async (c) => {
 vaultRoutes.get("/vaults/:vaultId/alerts", async (c) => {
   const result = await getVaultAlerts(c.get("db"), c.req.param("vaultId"), {
     actor: requireActor(c),
+    includeSubmissions: c.req.query("includeSubmissions") !== "false",
   })
   return ok(c, result)
 })

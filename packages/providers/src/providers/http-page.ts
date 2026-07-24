@@ -27,7 +27,15 @@ export const httpPageMetadataProvider: MetadataProvider = {
     }
 
     const fetchedAt = new Date().toISOString()
-    const pageResult = await fetchPageMetadata(parsed.url)
+    const pageResult =
+      options?.fetchHttpPage === false
+        ? {
+            source: "skipped" as const,
+            title: "",
+            favicon: getDefaultFaviconUrl(parsed.url),
+            warning: "HTTP page metadata fetch was skipped.",
+          }
+        : await fetchPageMetadata(parsed.url)
     const title = pageResult.title || resource.title
     let screenshotUrl: string | undefined
     let screenshotWarning: string | undefined

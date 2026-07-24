@@ -152,7 +152,7 @@ export async function processNotificationMessage(
   if (!userId) return
 
   await db.insert(notifications).values({
-    id: newId("notification"),
+    id: newId(),
     userId,
     vaultId: message.vaultId,
     type: message.type,

@@ -225,54 +225,6 @@
     letter-spacing: 0;
   }
 
-  .meta-state {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-family: var(--font-mono);
-    font-size: 10.5px;
-  }
-
-  .meta-state .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-  }
-
-  .ms-completed {
-    color: var(--jade);
-  }
-
-  .ms-completed .dot {
-    background: var(--jade);
-  }
-
-  .ms-pending {
-    color: var(--amber);
-  }
-
-  .ms-pending .dot {
-    animation: nv-pulse 1.4s infinite;
-    background: var(--amber);
-  }
-
-  .ms-processing {
-    color: var(--sky);
-  }
-
-  .ms-processing .dot {
-    animation: nv-pulse 1.1s infinite;
-    background: var(--sky);
-  }
-
-  .ms-failed {
-    color: var(--rose);
-  }
-
-  .ms-failed .dot {
-    background: var(--rose);
-  }
-
   .tp-magnet {
     color: var(--violet);
   }
@@ -325,12 +277,14 @@
   }
 }
 
-@keyframes nv-pulse {
-  0%,
-  100% {
-    opacity: 1;
+@keyframes nv-progress {
+  0% {
+    transform: translateX(-100%);
   }
   50% {
-    opacity: 0.3;
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(100%);
   }
 }

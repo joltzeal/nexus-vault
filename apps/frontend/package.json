@@ -16,8 +16,8 @@
 		"preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
 		"cf-typegen": "wrangler types --env-interface CloudflareEnv ../../cloudflare-env.d.ts",
 		"db:generate": "node ../../scripts/generate-migrations.mjs",
-		"db:migrate:local": "wrangler d1 migrations apply nexus-vault-local --local",
-		"db:migrate:production": "wrangler d1 migrations apply nexus-vault --env production --remote"
+		"db:migrate:local": "node ../../scripts/apply-postgres-migration.mjs",
+		"db:migrate:production": "node ../../scripts/apply-postgres-migration.mjs"
 	},
 	"dependencies": {
 		"@base-ui/react": "^1.5.0",
@@ -70,6 +70,7 @@
 		"motion": "^12.40.0",
 		"next": "16.2.6",
 		"next-themes": "^0.4.6",
+		"postgres": "^3.4.7",
 		"radix-ui": "^1.5.0",
 		"react": "^19.1.7",
 		"react-day-picker": "^10.0.1",

@@ -1,5 +1,5 @@
-export function newId(prefix: string) {
-  return `${prefix}_${crypto.randomUUID()}`
+export function newId() {
+  return crypto.randomUUID()
 }
 
 export function newToken() {

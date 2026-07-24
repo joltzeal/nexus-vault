@@ -71,13 +71,13 @@ export async function forkVault(
           )
       : []
 
-  const targetVaultId = newId("vault")
-  const forkId = newId("fork")
+  const targetVaultId = newId()
+  const forkId = newId()
   const spaceIdMap = new Map<string, string>()
   const resourceIdMap = new Map<string, string>()
 
   const newSpaces = sourceSpaces.map((space, index) => {
-    const nextSpaceId = newId("space")
+    const nextSpaceId = newId()
     spaceIdMap.set(space.id, nextSpaceId)
 
     return {
@@ -90,7 +90,7 @@ export async function forkVault(
   })
 
   const newResources = sourceResources.map((resource) => {
-    const nextResourceId = newId("resource")
+    const nextResourceId = newId()
     resourceIdMap.set(resource.id, nextResourceId)
 
     return {

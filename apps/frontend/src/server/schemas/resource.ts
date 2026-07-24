@@ -54,3 +54,9 @@ export const reorderResourcesSchema = z.object({
     })
   ).min(1),
 })
+
+export const transferResourceSchema = z.object({
+  action: z.enum(["move", "copy"]),
+  targetVaultId: z.string().trim().min(1),
+  targetSpaceId: z.string().trim().min(1),
+})

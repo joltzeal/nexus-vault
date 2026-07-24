@@ -50,7 +50,7 @@ export async function createResourceSubmission(
   const dedupeKey = getDuplicateResourceKey(parsed.url)
   await ensureResourceUrlNotDuplicate(db, vaultId, dedupeKey)
   const submitterId = input.actor ? await ensureActorUser(db, input.actor) : null
-  const submissionId = newId("submission")
+  const submissionId = newId()
   const now = new Date().toISOString()
   const metadata = await resolveSubmissionMetadata({
     id: submissionId,
@@ -126,6 +126,8 @@ async function resolveSubmissionMetadata(input: {
   const provider = getMetadataProvider(resource)
   const result = await provider
     .resolve(resource, {
+      fetchHttpPage: false,
+      probeCloudDriveAvailability: false,
       twitterRequestProxyUrl: getRuntimeBinding(input.env, "TWITTER_REQUEST_PROXY_URL"),
       twitterCookieString: getRuntimeBinding(input.env, "TWITTER_COOKIE_STRING"),
     })
@@ -222,7 +224,7 @@ export async function approveResourceSubmission(
     null
   if (spaceId) await getSpaceInVaultOrThrow(db, vaultId, spaceId)
 
-  const resourceId = newId("resource")
+  const resourceId = newId()
   const now = new Date().toISOString()
   const dedupeKey = getDuplicateResourceKey(submission.url)
   await ensureResourceUrlNotDuplicate(db, vaultId, dedupeKey)

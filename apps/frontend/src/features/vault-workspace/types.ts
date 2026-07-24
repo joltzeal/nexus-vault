@@ -55,6 +55,16 @@ export type Resource = {
   createdAt: string
 }
 
+export type ResourceTransferTargetVault = {
+  id: string
+  title: string
+  spaces: Array<{
+    id: string
+    name: string
+    icon: string
+  }>
+}
+
 export type Space = {
   id: string
   name: string
@@ -102,6 +112,7 @@ export type ResourceForm = {
 export type SpaceForm = {
   name: string
   description: string
+  icon: string
 }
 
 export type AuthMode = "sign-in" | "sign-up" | "forgot-password"
@@ -223,6 +234,7 @@ export const emptyResourceForm: ResourceForm = {
 export const emptySpaceForm: SpaceForm = {
   name: "",
   description: "",
+  icon: "tv",
 }
 
 export const emptyAuthForm: AuthForm = {

@@ -3,7 +3,7 @@ import { cookies } from "next/headers"
 import type { Metadata } from "next"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 
-import { getDb } from "@nexus-vault/db"
+import { createDbSession } from "@nexus-vault/db"
 import { ShareUnavailableClient } from "@/features/vault-workspace/components/share-unavailable-client"
 import { ShareUnlockClient } from "@/features/vault-workspace/components/share-unlock-client"
 import { VaultWorkspaceClient } from "@/features/vault-workspace/vault-workspace-client"
@@ -21,8 +21,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params
   const cloudflare = await getCloudflareContext({ async: true })
-  const db = getDb(cloudflare.env.DB)
-  const title = await getShareVaultTitleBySlug(db, slug)
+  const dbSession = await createDbSession(cloudflare.env)
+  const title = await getShareVaultTitleBySlug(dbSession.db, slug).finally(() =>
+    dbSession.close()
+  )
 
   return {
     title: `${title ?? "Vault 不可用"} · NexusVault`,
@@ -36,11 +38,16 @@ export default async function SharePage({
 }) {
   const { slug } = await params
   const cloudflare = await getCloudflareContext({ async: true })
-  const db = getDb(cloudflare.env.DB)
+  const dbSession = await createDbSession(cloudflare.env)
   const turnstileSiteKey = getTurnstileSiteKey(cloudflare.env)
   const cookieStore = await cookies()
   const unlockToken = cookieStore.get(getShareUnlockCookieName(slug))?.value
-  const share = await getUnlockedSharedVaultDetail(db, cloudflare.env, slug, unlockToken)
+  const share = await getUnlockedSharedVaultDetail(
+    dbSession.db,
+    cloudflare.env,
+    slug,
+    unlockToken
+  ).finally(() => dbSession.close())
 
   if (!share) notFound()
 

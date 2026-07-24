@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto"
+
 import { getMetadataProvider } from "@nexus-vault/providers"
 import { parseResourceInput } from "@nexus-vault/shared/resource-input"
 
@@ -18,9 +20,9 @@ async function main() {
 
   const now = new Date().toISOString()
   const resource = {
-    id: "resource_local-twitter-scraper",
-    vaultId: "vault_local",
-    spaceId: "space_local",
+    id: randomUUID(),
+    vaultId: randomUUID(),
+    spaceId: randomUUID(),
     type: parsed.type,
     title: parsed.title,
     description: "",

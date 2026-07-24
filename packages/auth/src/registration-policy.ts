@@ -12,7 +12,10 @@ type Db = ReturnType<typeof getDb>
 
 type RegistrationPolicyEnv = {
   ALLOW_USER_REGISTRATION?: string
+  CACHE?: KVNamespace
 }
+
+const REGISTRATION_POLICY_CACHE_KEY = "nexus-vault:auth:registration-policy"
 
 export async function getRegistrationPolicy(
   db: Db,
@@ -25,6 +28,9 @@ export async function getRegistrationPolicy(
     }
   }
 
+  const cachedPolicy = await readCachedRegistrationPolicy(env)
+  if (cachedPolicy) return cachedPolicy
+
   const firstUser = await db.select({ id: userTable.id }).from(userTable).limit(1)
 
   if (firstUser.length === 0) {
@@ -34,8 +40,33 @@ export async function getRegistrationPolicy(
     }
   }
 
-  return {
+  const policy = {
     allowSignUp: false,
     reason: "disabled",
+  } satisfies RegistrationPolicy
+
+  await env.CACHE?.put(REGISTRATION_POLICY_CACHE_KEY, JSON.stringify(policy), {
+    expirationTtl: 300,
+  })
+
+  return policy
+}
+
+async function readCachedRegistrationPolicy(env: RegistrationPolicyEnv) {
+  const cached = await env.CACHE?.get(REGISTRATION_POLICY_CACHE_KEY)
+  if (!cached) return null
+
+  try {
+    const policy = JSON.parse(cached) as Partial<RegistrationPolicy>
+    if (policy.allowSignUp === false && policy.reason === "disabled") {
+      return {
+        allowSignUp: false,
+        reason: "disabled",
+      } satisfies RegistrationPolicy
+    }
+  } catch {
+    return null
   }
+
+  return null
 }
