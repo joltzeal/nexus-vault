@@ -1,0 +1,149 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "nexus-vault",
+	"main": "src/worker.ts",
+	"compatibility_date": "2026-07-26",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".open-next/assets"
+	},
+	"images": {
+		// Enable image optimization
+		// see https://opennext.js.org/cloudflare/howtos/image
+		"binding": "IMAGES"
+	},
+	"services": [
+		{
+			// Self-reference service binding, the service name must match the worker name
+			// see https://opennext.js.org/cloudflare/caching
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "nexus-vault"
+		}
+	],
+	"observability": {
+		"enabled": true
+	},
+	"keep_vars": true,
+	"minify": true,
+	"upload_source_maps": true,
+	"vars": {
+		"NEXTJS_ENV": "development",
+		"ALLOW_USER_REGISTRATION": "true"
+	},
+	"r2_buckets": [
+		{
+			"binding": "MEDIA",
+			"bucket_name": "nexus-vault-media-local",
+			"preview_bucket_name": "nexus-vault-media-local",
+			"remote": false
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "CACHE",
+			"id": "local-cache",
+			"preview_id": "local-cache-preview",
+			"remote": false
+		}
+	],
+	"queues": {
+		"producers": [
+			{
+				"binding": "QUEUE",
+				"queue": "nexus-vault-queue",
+				"remote": false
+			}
+		],
+		"consumers": [
+			{
+				"queue": "nexus-vault-queue",
+				"max_batch_size": 10,
+				"max_batch_timeout": 30
+			}
+		]
+	},
+	"env": {
+		"production": {
+			"name": "nexus-vault",
+			"minify": true,
+			"vars": {
+				"NEXTJS_ENV": "production",
+				"ALLOW_USER_REGISTRATION": "false"
+			},
+			"assets": {
+				"binding": "ASSETS",
+				"directory": ".open-next/assets"
+			},
+			"images": {
+				"binding": "IMAGES"
+			},
+			"services": [
+				{
+					"binding": "WORKER_SELF_REFERENCE",
+					"service": "nexus-vault"
+				}
+			],
+			"hyperdrive": [
+				{
+					"binding": "HYPERDRIVE",
+					"id": "3271a1cca21447d9bc4ba2ff47a167ff",
+					"localConnectionString": "postgres://postgres:DYX920912@127.0.0.1:5432/nexus_vault"
+				}
+			],
+			"r2_buckets": [
+				{
+					"binding": "MEDIA",
+					"bucket_name": "nexus-vault-media"
+				}
+			],
+			"kv_namespaces": [
+				{
+					"binding": "CACHE",
+					"id": "7221c902e852402a9b1a72aa81156a67"
+				}
+			],
+			"observability": {
+				"enabled": true,
+				"head_sampling_rate": 1,
+				"logs": {
+					"enabled": true,
+					"head_sampling_rate": 1,
+					"persist": true,
+					"invocation_logs": true
+				},
+				"traces": {
+					"enabled": true,
+					"persist": true,
+					"head_sampling_rate": 1
+				}
+			},
+			"queues": {
+				"producers": [
+					{
+						"binding": "QUEUE",
+						"queue": "nexus-vault-queue"
+					}
+				],
+				"consumers": [
+					{
+						"queue": "nexus-vault-queue",
+						"max_batch_size": 10,
+						"max_batch_timeout": 30
+					}
+				]
+			}
+		}
+	}
+}

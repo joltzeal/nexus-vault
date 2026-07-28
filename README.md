@@ -1,31 +1,67 @@
-# OpenNext Starter
+# Nexus Vault
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Next.js on Cloudflare Workers with Better Auth, Drizzle, Postgres, and Hyperdrive.
 
-## Getting Started
+## Auth and Database
 
-Read the documentation at https://opennext.js.org/cloudflare.
+Local development reads the Postgres connection string from `.dev.vars`.
+
+Production uses the Cloudflare Hyperdrive binding named `HYPERDRIVE`, configured in `wrangler.jsonc` under the `production` environment:
+
+```txt
+nexus-vault-postgres
+3271a1cca21447d9bc4ba2ff47a167ff
+```
+
+Better Auth's CLI can generate the Drizzle auth schema:
+
+```bash
+pnpm auth:generate
+```
+
+The generated Better Auth tables live in `src/db/auth-schema.ts`. Add application tables in `src/db/schema.ts` so rerunning the Better Auth generator will not overwrite business schema.
+
+For this project, Drizzle owns applying schema changes. Because the local database is empty, push the schema directly:
+
+```bash
+pnpm db:push:local
+```
+
+After changing `wrangler.jsonc` bindings, regenerate Cloudflare types:
+
+```bash
+pnpm cf-typegen
+```
+
+Cloudflare resources are split by environment:
+
+- Local development uses Wrangler's local simulators for `MEDIA`, `CACHE`, and `QUEUE`.
+- Production uses the `production` environment in `wrangler.jsonc`.
+
+Create the production resources if they do not exist yet:
+
+```bash
+pnpm exec wrangler r2 bucket create nexus-vault-media
+pnpm exec wrangler kv namespace create CACHE --env production
+pnpm exec wrangler queues create nexus-vault-queue
+```
 
 ## Develop
 
 Run the Next.js development server:
 
 ```bash
-npm run dev
-# or similar package manager command
+pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 ## Preview
 
 Preview the application locally on the Cloudflare runtime:
 
 ```bash
-npm run preview
-# or similar package manager command
+pnpm preview
 ```
 
 ## Deploy
@@ -33,15 +69,5 @@ npm run preview
 Deploy the application to Cloudflare:
 
 ```bash
-npm run deploy
-# or similar package manager command
+pnpm deploy
 ```
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!

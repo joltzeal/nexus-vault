@@ -1,1 +1,1 @@
-export { createAuth, type Auth } from "@nexus-vault/auth/server"
+export { auth } from "./src/auth/cli"
