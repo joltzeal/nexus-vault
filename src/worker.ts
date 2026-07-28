@@ -1,3 +1,5 @@
+import "./auth/worker-async-storage"
+
 import { consumeQueueBatch } from "./server/queues/worker-consumer"
 import type { QueueMessage } from "./server/queues/messages"
 
