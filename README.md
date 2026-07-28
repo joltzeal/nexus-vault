@@ -1,6 +1,6 @@
 # Nexus Vault
 
-Next.js on Cloudflare Workers with Better Auth, Drizzle, Postgres, and Hyperdrive.
+Next.js on Cloudflare Workers with PostgreSQL-backed authentication, Drizzle, Postgres, and Hyperdrive.
 
 ## Auth and Database
 
@@ -13,13 +13,7 @@ nexus-vault-postgres
 3271a1cca21447d9bc4ba2ff47a167ff
 ```
 
-Better Auth's CLI can generate the Drizzle auth schema:
-
-```bash
-pnpm auth:generate
-```
-
-The generated Better Auth tables live in `src/db/auth-schema.ts`. Add application tables in `src/db/schema.ts` so rerunning the Better Auth generator will not overwrite business schema.
+Authentication reuses the existing `user`, `account`, `session`, and `verification` tables in `src/db/auth-schema.ts`. Password hashing and verification run inside PostgreSQL through `pgcrypto`; the Worker stores only random session tokens.
 
 For this project, Drizzle owns applying schema changes. Because the local database is empty, push the schema directly:
 

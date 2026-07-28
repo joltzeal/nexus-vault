@@ -1,41 +1,56 @@
-export const SESSION_COOKIE_NAMES = [
-  "__Secure-better-auth.session_token",
-  "better-auth.session_token",
-] as const
+const SECURE_SESSION_COOKIE = "__Host-nexus-vault.session"
+const LOCAL_SESSION_COOKIE = "nexus-vault.session"
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 
-const SESSION_COOKIE_NAME_SET: ReadonlySet<string> = new Set(SESSION_COOKIE_NAMES)
-const MAX_SESSION_COOKIE_VALUES = 8
-const MAX_ENCODED_COOKIE_LENGTH = 2048
+const SESSION_COOKIE_NAMES = [SECURE_SESSION_COOKIE, LOCAL_SESSION_COOKIE] as const
 
 export function hasSessionCookie(input: Request | Headers) {
-  return getSessionCookieValues(input).length > 0
+  return getSessionToken(input) !== null
 }
 
-export function getSessionCookieValues(input: Request | Headers) {
+export function getSessionToken(input: Request | Headers) {
   const headers = input instanceof Request ? input.headers : input
   const cookieHeader = headers.get("cookie")
-  if (!cookieHeader) return []
+  if (!cookieHeader) return null
 
-  const values = new Set<string>()
-
-  for (const part of cookieHeader.split(";", 64)) {
+  for (const part of cookieHeader.split(";")) {
     const separator = part.indexOf("=")
     if (separator < 1) continue
 
     const name = part.slice(0, separator).trim()
-    if (!SESSION_COOKIE_NAME_SET.has(name)) continue
-
-    const encodedValue = part.slice(separator + 1).trim()
-    if (!encodedValue || encodedValue.length > MAX_ENCODED_COOKIE_LENGTH) continue
-
-    try {
-      values.add(decodeURIComponent(encodedValue))
-    } catch {
-      values.add(encodedValue)
+    if (!SESSION_COOKIE_NAMES.includes(name as (typeof SESSION_COOKIE_NAMES)[number])) {
+      continue
     }
 
-    if (values.size === MAX_SESSION_COOKIE_VALUES) break
+    const value = part.slice(separator + 1).trim()
+    if (/^[a-f0-9]{64}$/.test(value)) return value
   }
 
-  return [...values]
+  return null
+}
+
+export function createSessionHeaders(request: Request, token: string) {
+  const secure = new URL(request.url).protocol === "https:"
+  const name = secure ? SECURE_SESSION_COOKIE : LOCAL_SESSION_COOKIE
+  const headers = new Headers({ "cache-control": "no-store" })
+  headers.append(
+    "set-cookie",
+    `${name}=${token}; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}; HttpOnly; SameSite=Lax${
+      secure ? "; Secure" : ""
+    }`,
+  )
+  return headers
+}
+
+export function createClearSessionHeaders() {
+  const headers = new Headers({ "cache-control": "no-store" })
+  headers.append(
+    "set-cookie",
+    `${SECURE_SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure`,
+  )
+  headers.append(
+    "set-cookie",
+    `${LOCAL_SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`,
+  )
+  return headers
 }

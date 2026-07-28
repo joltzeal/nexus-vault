@@ -325,7 +325,7 @@ export function VaultSidebar({
         <DialogContent className="border border-line bg-ink-850 text-fg sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Account</DialogTitle>
-            <DialogDescription>Better Auth 当前登录账户信息。</DialogDescription>
+            <DialogDescription>当前登录账户信息。</DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-3 rounded-card border border-line-soft bg-ink-800/70 p-3">
             <Avatar className="h-10 w-10 rounded-lg">
@@ -345,7 +345,7 @@ export function VaultSidebar({
               <span>Session</span>
             </div>
             <p className="mt-1 text-xs text-fg-dim">
-              账户资料由 Better Auth 管理。这里可以查看当前会话并更新登录密码。
+              账户资料存储在 NexusVault 数据库中。这里可以查看当前会话并更新登录密码。
             </p>
           </div>
           <form

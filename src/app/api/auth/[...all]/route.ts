@@ -1,32 +1,21 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { getCloudflareContext } from "@opennextjs/cloudflare"
 
-import { createAuthSession } from "@/auth";
+import { handleAuthRequest } from "@/auth"
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic"
 
 async function handler(request: Request) {
-	const env = await getRuntimeEnv();
-	const session = await createAuthSession(env as never);
-	try {
-		return await session.auth.handler(request);
-	} finally {
-		await session.close();
-	}
+  const env = await getRuntimeEnv()
+  return handleAuthRequest(request, env as never)
 }
 
 async function getRuntimeEnv() {
-	try {
-		const { env } = await getCloudflareContext({ async: true });
-		return env;
-	} catch {
-		return process.env;
-	}
+  try {
+    const { env } = await getCloudflareContext({ async: true })
+    return env
+  } catch {
+    return process.env
+  }
 }
 
-export {
-	handler as DELETE,
-	handler as GET,
-	handler as PATCH,
-	handler as POST,
-	handler as PUT,
-};
+export { handler as POST }

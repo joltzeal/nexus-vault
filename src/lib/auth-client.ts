@@ -1,1 +1,1 @@
-export { authClient, default } from "@/auth/auth-client";
+export { authClient, default } from "@/auth/auth-client"
