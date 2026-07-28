@@ -10,7 +10,8 @@ interface __BaseEnv_CloudflareEnv {
 	ASSETS: Fetcher;
 	NEXTJS_ENV: string;
 	DATABASE_URL: string;
-	APP_SECRET: string;
+	BETTER_AUTH_SECRET: string;
+	BETTER_AUTH_URL: string;
 	ALLOW_USER_REGISTRATION: string;
 	BROWSERLESS_TOKEN: string;
 	WORKER_SELF_REFERENCE: Service<typeof import("./src/worker").default>;
@@ -28,7 +29,8 @@ declare namespace Cloudflare {
 		ASSETS: Fetcher;
 		NEXTJS_ENV: string;
 		DATABASE_URL: string;
-		APP_SECRET: string;
+		BETTER_AUTH_SECRET: string;
+		BETTER_AUTH_URL: string;
 		ALLOW_USER_REGISTRATION: string;
 		BROWSERLESS_TOKEN: string;
 		WORKER_SELF_REFERENCE: Service<typeof import("./src/worker").default>;
@@ -40,7 +42,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "NEXTJS_ENV" | "DATABASE_URL" | "APP_SECRET" | "ALLOW_USER_REGISTRATION" | "BROWSERLESS_TOKEN">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "NEXTJS_ENV" | "DATABASE_URL" | "BETTER_AUTH_SECRET" | "BETTER_AUTH_URL" | "ALLOW_USER_REGISTRATION" | "BROWSERLESS_TOKEN">> {}
 }
 
 // Begin runtime types

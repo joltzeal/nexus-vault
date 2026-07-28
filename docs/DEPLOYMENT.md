@@ -1,6 +1,6 @@
 # Nexus Vault 部署文档
 
-本文档记录 Nexus Vault 部署到 Cloudflare Workers 的流程。当前项目使用 Next.js、OpenNext for Cloudflare、自有 PostgreSQL Session 认证、Drizzle、Postgres/Neon、Cloudflare Hyperdrive、KV、R2 和 Queue。密码使用 PostgreSQL `pgcrypto` bcrypt 计算，避免在 Free Worker 内执行高 CPU 密码哈希。
+本文档记录 Nexus Vault 首次部署到 Cloudflare Workers 的流程。当前项目使用 Next.js、OpenNext for Cloudflare、Better Auth、Drizzle、Postgres/Neon、Cloudflare Hyperdrive、KV、R2 和 Queue。
 
 ## 1. 前置准备
 
@@ -31,7 +31,9 @@ pnpm exec wrangler login
 
 ```txt
 DATABASE_URL="postgresql://..."
-APP_SECRET="replace-with-a-random-secret"
+BETTER_AUTH_SECRET="local-or-dev-secret"
+BETTER_AUTH_URL="http://localhost:3000"
+BETTER_AUTH_TRUSTED_ORIGINS="http://localhost:3000"
 ALLOW_USER_REGISTRATION="true"
 TURNSTILE_SITE_KEY=""
 TURNSTILE_SECRET_KEY=""
@@ -40,7 +42,8 @@ TURNSTILE_SECRET_KEY=""
 生产环境建议把敏感变量写入 Cloudflare Worker secrets：
 
 ```bash
-pnpm exec wrangler secret put APP_SECRET --env production
+pnpm exec wrangler secret put BETTER_AUTH_SECRET --env production
+pnpm exec wrangler secret put BETTER_AUTH_TRUSTED_ORIGINS --env production
 pnpm exec wrangler secret put TURNSTILE_SECRET_KEY --env production
 ```
 
@@ -60,7 +63,7 @@ pnpm exec wrangler secret put DATABASE_URL --env production
 
 - `HYPERDRIVE`：生产 Postgres 连接，当前配置的 Hyperdrive ID 为 `3271a1cca21447d9bc4ba2ff47a167ff`
 - `MEDIA`：R2 bucket，用于媒体文件
-- `CACHE`：KV namespace，用于缓存注册状态
+- `CACHE`：KV namespace，用于缓存注册状态和 Better Auth Cloudflare 插件
 - `QUEUE`：Cloudflare Queue，用于异步元数据处理
 - `WORKER_SELF_REFERENCE`：OpenNext 自引用 service binding
 - `IMAGES`：Cloudflare Images 绑定
@@ -85,6 +88,12 @@ pnpm cf-typegen
 
 首次部署且生产数据库为空时，不需要保留多段历史迁移。推荐从当前 Drizzle schema 生成一个干净的初始迁移。
 
+生成 Better Auth 的 Drizzle schema：
+
+```bash
+pnpm auth:generate
+```
+
 生成 Drizzle 迁移：
 
 ```bash
@@ -101,27 +110,7 @@ pnpm db:push:local
 
 - `pnpm db:generate` 会根据 `src/db/schema.ts` 生成 SQL 迁移文件。
 - `pnpm db:push:local` 会读取 `drizzle.config.ts`，使用 `.dev.vars` 或 shell 中的 `DATABASE_URL` 连接数据库并推送当前表结构。
-- 初始 SQL 会执行 `CREATE EXTENSION IF NOT EXISTS pgcrypto`，认证表继续使用现有的 `user`、`account`、`session` 和 `verification` 结构。
 - 如果目标是生产数据库，请在执行前确认 `DATABASE_URL` 指向生产库，并确认这是首次初始化或允许覆盖结构。
-
-### 已有 Better Auth 数据库
-
-业务表和认证表都可以直接保留，不需要清库。已有 `account.password` 使用 scrypt，与 PostgreSQL bcrypt 不兼容，因此每个已有邮箱账号需要执行一次密码迁移：
-
-```bash
-read -s AUTH_MIGRATION_PASSWORD
-export AUTH_MIGRATION_PASSWORD
-pnpm auth:migrate-password -- user@example.com
-unset AUTH_MIGRATION_PASSWORD
-```
-
-该命令读取 `.dev.vars` 中的 `DATABASE_URL`，请在执行前确认它指向目标生产数据库。命令会：
-
-1. 启用 `pgcrypto` 扩展。
-2. 只更新指定邮箱的 credential 密码 Hash。
-3. 删除该用户的旧 session，要求重新登录。
-
-命令不会修改用户 ID、Vault、Space、Resource 或其他业务数据。
 
 ## 5. 本地开发
 
@@ -181,18 +170,17 @@ pnpm upload
 2. 创建或确认 Cloudflare Hyperdrive，并把 ID 写入 `wrangler.jsonc`。
 3. 创建 R2、KV、Queue，并把真实资源 ID 写入 `wrangler.jsonc`。
 4. 配置生产 secrets。
-5. 执行 `pnpm db:generate`。
-6. 对目标数据库执行 `pnpm db:push:local`。
-7. 如果数据库已有 Better Auth 用户，逐个执行 `pnpm auth:migrate-password`。
+5. 执行 `pnpm auth:generate`。
+6. 执行 `pnpm db:generate`。
+7. 对目标数据库执行 `pnpm db:push:local`。
 8. 执行 `pnpm build`。
 9. 执行 `pnpm deploy`。
 10. 上线后将 `ALLOW_USER_REGISTRATION` 保持为 `false`，让系统进入首个用户可注册、之后仅登录的模式。
 
 ## 9. 注意事项
 
-- 不要把 `.dev.vars`、数据库连接串、迁移密码或 Turnstile secret 提交到 Git。
-- 认证 Cookie 使用 `HttpOnly`、`SameSite=Lax`，生产 HTTPS 环境使用 `__Host-` Cookie。
-- 认证写操作会检查浏览器 `Origin`，不再需要 `BETTER_AUTH_URL` 或 `BETTER_AUTH_TRUSTED_ORIGINS`。
-- `APP_SECRET` 用于分享解锁 token 签名，可以复用原 `BETTER_AUTH_SECRET` 的值，但必须以新变量名重新设置。
+- 不要把 `.dev.vars`、数据库连接串、Better Auth secret 或 Turnstile secret 提交到 Git。
+- 生产环境必须设置 `BETTER_AUTH_SECRET`，否则应用会在认证初始化时报错。
+- 生产域名确定后，应在 `wrangler.jsonc` 的 `env.production.vars` 中设置 `BETTER_AUTH_URL`，并把同源地址加入 `BETTER_AUTH_TRUSTED_ORIGINS`。
 - 如果生产数据库已经有真实数据，不要执行清空、drop 或无差别 push 操作。
 - 如果这是第一次部署且数据库为空，保留单一初始迁移比保留多段开发期迁移更清晰。

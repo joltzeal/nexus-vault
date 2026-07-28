@@ -1,7 +1,0 @@
-DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/nexus_vault"
-APP_SECRET="replace-with-at-least-32-random-characters"
-ALLOW_USER_REGISTRATION="true"
-TURNSTILE_SITE_KEY=""
-TURNSTILE_SECRET_KEY=""
-BROWSERLESS_SCREENSHOT_ENDPOINT=""
-BROWSERLESS_TOKEN=""

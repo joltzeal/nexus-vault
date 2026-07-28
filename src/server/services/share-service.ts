@@ -307,7 +307,7 @@ async function verifyShareUnlockToken(
 }
 
 function getShareSecret(env: CloudflareEnv) {
-  return env.APP_SECRET
+  return env.BETTER_AUTH_SECRET
 }
 
 async function hmacSha256Hex(secret: string, value: string) {
