@@ -1,9 +1,9 @@
-import { AsyncLocalStorage } from "node:async_hooks"
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { betterAuth } from "better-auth/minimal";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { withCloudflare } from "better-auth-cloudflare";
+import { sql } from "drizzle-orm";
 import type { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 
 import { createDbSession, type Db } from "@/db";
@@ -19,6 +19,8 @@ import {
 
 type RuntimeEnv = AuthRuntimeEnv & RegistrationEnv;
 type PostgresDb = ReturnType<typeof drizzlePostgres>;
+const BCRYPT_COST = 12;
+const MAX_PASSWORD_BYTES = 72;
 
 export function getAuthOptions(env: RuntimeEnv, db?: Db) {
 	return {
@@ -27,6 +29,8 @@ export function getAuthOptions(env: RuntimeEnv, db?: Db) {
 		secret: getAuthSecret(env),
 		emailAndPassword: {
 			enabled: true,
+			maxPasswordLength: MAX_PASSWORD_BYTES,
+			...(db ? { password: createPostgresPasswordStrategy(db) } : {}),
 		},
 		session: {
 			deferSessionRefresh: true,
@@ -73,32 +77,44 @@ export function getAuthOptions(env: RuntimeEnv, db?: Db) {
 	};
 }
 
-// Per-request db storage. betterAuth is initialized once with a Proxy that
-// reads from this storage, so each request gets a fresh TCP connection while
-// the expensive betterAuth initialization only runs once per isolate.
-const requestDbStorage = new AsyncLocalStorage<Db>();
-
-function createDbProxy(): Db {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	return new Proxy({} as Db, {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		get(_target, prop: string | symbol): any {
-			const db = requestDbStorage.getStore();
-			if (!db) throw new Error("No database in request context. Call createAuthSession() first.");
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const value = (db as any)[prop];
-			return typeof value === "function" ? value.bind(db) : value;
+function createPostgresPasswordStrategy(db: Db) {
+	return {
+		hash: async (password: string) => {
+			assertBcryptPasswordLength(password);
+			const rows = await db.execute(
+				sql`select crypt(${password}, gen_salt('bf', ${BCRYPT_COST})) as hash`,
+			);
+			const hash = (rows[0] as { hash?: unknown } | undefined)?.hash;
+			if (typeof hash !== "string" || !isPostgresBcryptHash(hash)) {
+				throw new Error("PostgreSQL did not return a valid password hash.");
+			}
+			return hash;
 		},
-	});
+		verify: async ({ hash, password }: { hash: string; password: string }) => {
+			if (!isPostgresBcryptHash(hash) || getPasswordByteLength(password) > MAX_PASSWORD_BYTES) {
+				return false;
+			}
+			const rows = await db.execute(
+				sql`select crypt(${password}, ${hash}) = ${hash} as valid`,
+			);
+			return (rows[0] as { valid?: unknown } | undefined)?.valid === true;
+		},
+	};
 }
 
-type CachedAuth = {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	instance: any;
-	env: RuntimeEnv;
-};
+function assertBcryptPasswordLength(password: string) {
+	if (getPasswordByteLength(password) > MAX_PASSWORD_BYTES) {
+		throw new Error("Password must not exceed 72 UTF-8 bytes.");
+	}
+}
 
-const _global = globalThis as typeof globalThis & { __nexusAuthCache?: CachedAuth };
+function getPasswordByteLength(password: string) {
+	return new TextEncoder().encode(password).byteLength;
+}
+
+function isPostgresBcryptHash(hash: string) {
+	return /^\$2[aby]\$\d{2}\$/.test(hash);
+}
 
 export async function createAuthSession(envOverride?: RuntimeEnv) {
 	let cfCtx: Awaited<ReturnType<typeof getCloudflareContext>> | null = null;
@@ -114,46 +130,33 @@ export async function createAuthSession(envOverride?: RuntimeEnv) {
 	const env = (envOverride ?? cfCtx?.env ?? process.env) as unknown as RuntimeEnv;
 	const database = await createDbSession(env);
 
-	if (!_global.__nexusAuthCache) {
-		// First request in this isolate: build betterAuth with a db proxy so
-		// subsequent requests can swap in a fresh connection without rebuilding.
-		const dbProxy = createDbProxy();
-
+	try {
 		const instance = betterAuth({
 			...withCloudflare(
 				{
 					autoDetectIpAddress: true,
 					geolocationTracking: false,
-					cf: {},
+					cf: cfCtx?.cf ?? {},
 					postgres: {
-						db: dbProxy as unknown as PostgresDb,
-						options: { schema, camelCase: true },
+						db: database.db as unknown as PostgresDb,
+						options: {
+							schema,
+							camelCase: true,
+						},
 					},
 				},
-				getAuthOptions(env, dbProxy),
+				getAuthOptions(env, database.db),
 			),
 		});
 
-		_global.__nexusAuthCache = { instance, env };
+		return {
+			auth: instance,
+			close: database.close,
+		};
+	} catch (error) {
+		await database.close();
+		throw error;
 	}
-
-	const { instance } = _global.__nexusAuthCache;
-
-	return {
-		auth: instance,
-		// Run the request inside the AsyncLocalStorage context so betterAuth's
-		// db calls resolve to this request's fresh postgres connection.
-		async handle(request: Request): Promise<Response> {
-			return requestDbStorage.run(database.db, async () => {
-				try {
-					return await instance.handler(request);
-				} finally {
-					await database.close();
-				}
-			});
-		},
-		close: database.close,
-	};
 }
 
 export { getAuthSecret } from "@/auth/config";

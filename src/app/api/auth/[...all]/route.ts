@@ -7,7 +7,11 @@ export const dynamic = "force-dynamic";
 async function handler(request: Request) {
 	const env = await getRuntimeEnv();
 	const session = await createAuthSession(env as never);
-	return session.handle(request);
+	try {
+		return await session.auth.handler(request);
+	} finally {
+		await session.close();
+	}
 }
 
 async function getRuntimeEnv() {
