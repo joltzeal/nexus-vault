@@ -1,28 +1,17 @@
 "use client"
 
-import type { FormEvent } from "react"
 import { useRef, useState } from "react"
-import { authClient } from "@/lib/auth-client"
 import {
   BadgeCheck,
   ChevronsUpDown,
   EyeOff,
   LogOut,
   Plus,
-  Shield,
   Star,
   Upload,
 } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,20 +21,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Spinner } from "@/components/ui/spinner"
+import {
+  AccountSettingsDialog,
+  type SidebarUser,
+} from "@/features/components/account-settings-dialog"
 import type { ResourceSet } from "@/features/types"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
-import { toast } from "@/lib/toast"
-
-type SidebarUser = {
-  email: string
-  image?: string | null
-  name: string
-}
 
 export function VaultSidebar({
   activeSetId,
@@ -81,59 +65,13 @@ export function VaultSidebar({
   user?: SidebarUser
 }) {
   const [accountOpen, setAccountOpen] = useState(false)
-  const [passwordBusy, setPasswordBusy] = useState(false)
-  const [passwordError, setPasswordError] = useState("")
   const importInputRef = useRef<HTMLInputElement>(null)
-  const [passwordForm, setPasswordForm] = useState({
-    confirmPassword: "",
-    currentPassword: "",
-    newPassword: "",
-  })
   const isMobile = useIsMobile()
   const displayName = user?.name?.trim() || "未登录"
   const displayEmail = user?.email?.trim() || "请先登录"
   const initials = getUserInitials(displayName, displayEmail)
   const vaultActionClass =
     "grid size-6 place-items-center rounded-md text-fg-dim transition hover:bg-ink-750 hover:text-jade focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jade/20 disabled:pointer-events-none disabled:opacity-40"
-
-  async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!user) return
-
-    const currentPassword = passwordForm.currentPassword
-    const newPassword = passwordForm.newPassword
-    if (!currentPassword || !newPassword) return
-    if (newPassword !== passwordForm.confirmPassword) {
-      setPasswordError("两次输入的新密码不一致。")
-      return
-    }
-
-    try {
-      setPasswordBusy(true)
-      setPasswordError("")
-      const result = await authClient.changePassword({
-        currentPassword,
-        newPassword,
-        revokeOtherSessions: true,
-      })
-
-      if (result.error) {
-        setPasswordError(result.error.message ?? "密码修改失败，请稍后再试。")
-        return
-      }
-
-      setPasswordForm({
-        confirmPassword: "",
-        currentPassword: "",
-        newPassword: "",
-      })
-      toast.success("密码已修改")
-    } catch (error) {
-      setPasswordError(error instanceof Error ? error.message : "密码修改失败，请稍后再试。")
-    } finally {
-      setPasswordBusy(false)
-    }
-  }
 
   return (
     <aside className="hidden min-h-0 border-r border-line bg-ink-850 lg:flex lg:flex-col">
@@ -321,112 +259,15 @@ export function VaultSidebar({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <Dialog open={accountOpen} onOpenChange={setAccountOpen}>
-        <DialogContent className="border border-line bg-ink-850 text-fg sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Account</DialogTitle>
-            <DialogDescription>Better Auth 当前登录账户信息。</DialogDescription>
-          </DialogHeader>
-          <div className="flex items-center gap-3 rounded-card border border-line-soft bg-ink-800/70 p-3">
-            <Avatar className="h-10 w-10 rounded-lg">
-              {user?.image ? <AvatarImage alt={displayName} src={user.image} /> : null}
-              <AvatarFallback className="rounded-lg bg-ink-700 text-xs font-semibold text-jade">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{displayName}</p>
-              <p className="truncate text-xs text-fg-dim">{displayEmail}</p>
-            </div>
-          </div>
-          <div className="rounded-card border border-line-soft bg-ink-800/40 p-3">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Shield className="size-4 text-jade" />
-              <span>Session</span>
-            </div>
-            <p className="mt-1 text-xs text-fg-dim">
-              账户资料由 Better Auth 管理。这里可以查看当前会话并更新登录密码。
-            </p>
-          </div>
-          <form
-            className="rounded-card border border-line-soft bg-ink-800/40 p-3"
-            onSubmit={handleChangePassword}
-          >
-            <FieldGroup>
-              <div>
-                <h3 className="text-sm font-semibold">修改密码</h3>
-                <p className="mt-1 text-xs text-fg-dim">
-                  修改后会撤销其他设备会话。
-                </p>
-              </div>
-              <Field>
-                <FieldLabel htmlFor="account-current-password">当前密码</FieldLabel>
-                <Input
-                  id="account-current-password"
-                  type="password"
-                  value={passwordForm.currentPassword}
-                  onChange={(event) =>
-                    setPasswordForm((form) => ({
-                      ...form,
-                      currentPassword: event.target.value,
-                    }))
-                  }
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="account-new-password">新密码</FieldLabel>
-                <Input
-                  id="account-new-password"
-                  type="password"
-                  value={passwordForm.newPassword}
-                  onChange={(event) =>
-                    setPasswordForm((form) => ({
-                      ...form,
-                      newPassword: event.target.value,
-                    }))
-                  }
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="account-confirm-password">确认新密码</FieldLabel>
-                <Input
-                  id="account-confirm-password"
-                  type="password"
-                  value={passwordForm.confirmPassword}
-                  onChange={(event) =>
-                    setPasswordForm((form) => ({
-                      ...form,
-                      confirmPassword: event.target.value,
-                    }))
-                  }
-                />
-              </Field>
-              {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
-              <Button
-                disabled={
-                  passwordBusy ||
-                  !user ||
-                  !passwordForm.currentPassword ||
-                  !passwordForm.newPassword ||
-                  !passwordForm.confirmPassword
-                }
-                type="submit"
-              >
-                保存新密码
-              </Button>
-            </FieldGroup>
-          </form>
-          <Button
-            className="justify-start"
-            disabled={!user}
-            onClick={onSignOut}
-            variant="outline"
-          >
-            <LogOut data-icon="inline-start" />
-            Log out
-          </Button>
-        </DialogContent>
-      </Dialog>
+      <AccountSettingsDialog
+        displayEmail={displayEmail}
+        displayName={displayName}
+        initials={initials}
+        onOpenChange={setAccountOpen}
+        onSignOut={onSignOut}
+        open={accountOpen}
+        user={user}
+      />
     </aside>
   )
 }

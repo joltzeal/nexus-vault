@@ -1,3 +1,8 @@
+import {
+  ErrorRateLimitStrategy,
+  Scraper,
+} from "@the-convocation/twitter-scraper"
+
 import { createBaseResourceMetadata } from "@/domain/resources/metadata"
 import { parseTwitterLink } from "@/domain/resources/input"
 
@@ -11,9 +16,9 @@ type TwitterOEmbedResponse = {
 }
 
 export const twitterMetadataProvider: MetadataProvider = {
-  name: "twitter-oembed",
+  name: "twitter",
   supports: (resource) => resource.type === "twitter",
-  async resolve(resource) {
+  async resolve(resource, options) {
     const parsed = parseTwitterLink(resource.url)
     const baseMetadata = createBaseResourceMetadata({
       type: "twitter",
@@ -22,10 +27,72 @@ export const twitterMetadataProvider: MetadataProvider = {
 
     if (!parsed) {
       return {
-        provider: "twitter-oembed",
+        provider: "twitter",
         status: "failed",
         data: baseMetadata,
         errorMessage: "Invalid x.com tweet URL.",
+      }
+    }
+
+    if (options?.twitterCookieString) {
+      const tweet = await fetchTweetWithCookie(
+        parsed.tweetId,
+        options.twitterCookieString,
+      )
+      if (!tweet) {
+        return {
+          provider: "twitter-scraper",
+          status: "failed",
+          data: baseMetadata,
+          errorMessage: "Cookie-authenticated x.com request returned no tweet.",
+        }
+      }
+
+      return {
+        provider: "twitter-scraper",
+        status: "completed",
+        data: {
+          ...baseMetadata,
+          title: getTweetTitle(tweet.name, tweet.username),
+          description: tweet.text,
+          identifiers: {
+            tweetId: tweet.id ?? parsed.tweetId,
+          },
+          source: {
+            name: "x.com",
+            url: tweet.permanentUrl ?? resource.url,
+          },
+          extra: {
+            twitter: {
+              tweetId: tweet.id ?? parsed.tweetId,
+              username: tweet.username,
+              authorName: tweet.name,
+              authorUrl: tweet.username ? `https://x.com/${tweet.username}` : undefined,
+              html: tweet.html,
+              photos: tweet.photos.map((photo) => ({
+                altText: photo.alt_text,
+                url: photo.url,
+              })),
+              videos: tweet.videos
+                .map((video) => ({
+                  preview: video.preview,
+                  url: video.url,
+                }))
+                .filter((video): video is { preview: string; url: string } =>
+                  Boolean(video.preview && video.url),
+                ),
+              counts: {
+                bookmarks: tweet.bookmarkCount,
+                likes: tweet.likes,
+                replies: tweet.replies,
+                retweets: tweet.retweets,
+                views: tweet.views,
+              },
+              createdAt: tweet.timeParsed?.toISOString(),
+              sensitiveContent: tweet.sensitiveContent,
+            },
+          },
+        },
       }
     }
 
@@ -59,6 +126,36 @@ export const twitterMetadataProvider: MetadataProvider = {
       },
     }
   },
+}
+
+async function fetchTweetWithCookie(tweetId: string, cookieString: string) {
+  try {
+    const scraper = new Scraper({
+      fetch: fetchWithTimeout,
+      rateLimitStrategy: new ErrorRateLimitStrategy(),
+    })
+    await scraper.setCookies(splitCookieString(cookieString))
+    return await scraper.getTweet(tweetId)
+  } catch (error) {
+    console.error("Twitter cookie-authenticated request failed", {
+      tweetId,
+      error,
+    })
+    return null
+  }
+}
+
+const fetchWithTimeout: typeof fetch = (input, init) =>
+  fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(8_000),
+  })
+
+function splitCookieString(cookieString: string) {
+  return cookieString
+    .split(";")
+    .map((cookie) => cookie.trim())
+    .filter((cookie) => cookie.includes("="))
 }
 
 async function fetchTweetOEmbed(url: string) {

@@ -3,10 +3,11 @@
 	"version": "0.1.0",
 	"private": true,
 	"scripts": {
-		"dev": "vite build && wrangler dev",
-		"dev:client": "vite --host 127.0.0.1",
+		"dev": "node scripts/dev.mjs",
+		"dev:client": "vite --host localhost",
+		"dev:worker": "wrangler dev --port 8787",
 		"build": "vite build",
-		"start": "wrangler dev",
+		"start": "wrangler dev --port 8787",
 		"lint": "eslint .",
 		"auth:generate": "set -a && . ./.dev.vars && set +a && pnpm dlx auth@latest generate --config ./auth.ts --output ./src/db/auth-schema.ts --yes",
 		"db:generate": "drizzle-kit generate",
@@ -15,7 +16,8 @@
 		"upload": "vite build && wrangler deploy --env production",
 		"preview": "vite build && wrangler dev",
 		"preview:production": "vite build && wrangler dev --env production",
-		"cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
+		"cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts",
+		"twitter:metadata": "tsx scripts/twitter-metadata-local.ts"
 	},
 	"dependencies": {
 		"@base-ui/react": "^1.6.0",

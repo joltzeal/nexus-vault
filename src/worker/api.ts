@@ -16,6 +16,8 @@ import {
 import type { QueueMessage } from "@/server/queues/messages"
 
 import * as healthRoute from "@/app/api/v1/health/route"
+import * as accountIntegrationsRoute from "@/app/api/v1/account/integrations/route"
+import * as accountXComIntegrationRoute from "@/app/api/v1/account/integrations/x-com/route"
 import * as notificationsRoute from "@/app/api/v1/notifications/route"
 import * as notificationReadRoute from "@/app/api/v1/notifications/[notificationId]/read/route"
 import * as notificationSummaryRoute from "@/app/api/v1/notifications/summary/route"
@@ -161,6 +163,8 @@ api.get("/api/v1/media/*", async (c) => {
 })
 
 register("/api/v1/health", healthRoute)
+register("/api/v1/account/integrations", accountIntegrationsRoute)
+register("/api/v1/account/integrations/x-com", accountXComIntegrationRoute)
 register("/api/v1/notifications", notificationsRoute)
 register("/api/v1/notifications/:notificationId/read", notificationReadRoute)
 register("/api/v1/notifications/summary", notificationSummaryRoute)

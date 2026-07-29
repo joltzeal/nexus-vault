@@ -22,6 +22,7 @@ import {
   getResourceOrThrow,
   requireResourceMutationPermission,
 } from "@/server/services/resource-service"
+import { getUserXComCookieString } from "@/server/services/account-integration-service"
 
 const STALE_METADATA_RETRY_AFTER_MS = 2 * 60 * 1000
 const STALE_METADATA_RETRY_LIMIT = 25
@@ -62,10 +63,13 @@ export async function resolveResourceMetadata(
     .where(eq(resources.id, resourceId))
 
   const provider = getMetadataProvider(resource)
+  const twitterCookieString = resource.type === "twitter" && resource.createdBy
+    ? await getUserXComCookieString(db, resource.createdBy)
+    : undefined
   const result = await provider
     .resolve(resource, {
       twitterRequestProxyUrl: getTwitterRequestProxyUrl(options.env),
-      twitterCookieString: getTwitterCookieString(options.env),
+      twitterCookieString,
       captureHttpScreenshot: options.env
         ? (input) => captureHttpScreenshot(options.env, input)
         : undefined,
@@ -226,10 +230,6 @@ function shouldResolveMetadataInline(env: CloudflareEnv) {
 
 function getTwitterRequestProxyUrl(env?: CloudflareEnv) {
   return getRuntimeBinding(env, "TWITTER_REQUEST_PROXY_URL")
-}
-
-function getTwitterCookieString(env?: CloudflareEnv) {
-  return getRuntimeBinding(env, "TWITTER_COOKIE_STRING")
 }
 
 async function captureHttpScreenshot(

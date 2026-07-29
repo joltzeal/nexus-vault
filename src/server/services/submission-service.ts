@@ -129,7 +129,6 @@ async function resolveSubmissionMetadata(input: {
       fetchHttpPage: false,
       probeCloudDriveAvailability: false,
       twitterRequestProxyUrl: getRuntimeBinding(input.env, "TWITTER_REQUEST_PROXY_URL"),
-      twitterCookieString: getRuntimeBinding(input.env, "TWITTER_COOKIE_STRING"),
     })
     .catch(() => ({
       provider: provider.name,

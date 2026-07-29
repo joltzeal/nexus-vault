@@ -8,6 +8,13 @@
       "when": 1785174622749,
       "tag": "0000_clear_juggernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785339470554,
+      "tag": "0001_silent_thundra",
+      "breakpoints": true
     }
   ]
 }

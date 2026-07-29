@@ -9,7 +9,15 @@ import {
 	starredResources,
 	resources,
 } from "./resources";
+import { userIntegrationSettings } from "./user-integrations";
 import { collaborators, forks, shares, spaces, vaults, vaultStars, vaultWatches } from "./vaults";
+
+export const userIntegrationSettingsRelations = relations(userIntegrationSettings, ({ one }) => ({
+	user: one(users, {
+		fields: [userIntegrationSettings.userId],
+		references: [users.id],
+	}),
+}));
 
 export const vaultRelations = relations(vaults, ({ one, many }) => ({
 	owner: one(users, {
