@@ -14,13 +14,17 @@ export const Pill = ({
   themed = false,
   className,
   ...props
-}: PillProps) => (
-  <Badge
-    className={cn("gap-2 rounded-full px-3 py-1.5 font-normal", className)}
-    variant={variant}
-    {...props}
-  />
-);
+}: PillProps) => {
+  void themed;
+
+  return (
+    <Badge
+      className={cn("gap-2 rounded-full px-3 py-1.5 font-normal", className)}
+      variant={variant}
+      {...props}
+    />
+  );
+};
 
 export type PillAvatarProps = ComponentProps<typeof AvatarImage> & {
   fallback?: string;

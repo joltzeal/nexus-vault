@@ -28,6 +28,7 @@ import * as resourceMetadataResolveRoute from "@/app/api/v1/resources/[resourceI
 import * as resourceReadLaterToggleRoute from "@/app/api/v1/resources/[resourceId]/read-later/route"
 import * as resourceStarRoute from "@/app/api/v1/resources/[resourceId]/star/route"
 import * as resourceTransferRoute from "@/app/api/v1/resources/[resourceId]/transfer/route"
+import * as resourcesTransferRoute from "@/app/api/v1/resources/transfer/route"
 import * as resourceTransferTargetsRoute from "@/app/api/v1/resources/transfer-targets/route"
 import * as shareSubmissionsRoute from "@/app/api/v1/shares/[slug]/submissions/route"
 import * as shareUnlockRoute from "@/app/api/v1/shares/[slug]/unlock/route"
@@ -166,6 +167,7 @@ register("/api/v1/notifications/summary", notificationSummaryRoute)
 register("/api/v1/resource-read-later", resourceReadLaterRoute)
 register("/api/v1/resource-stars", resourceStarsRoute)
 register("/api/v1/resources", resourcesRoute)
+register("/api/v1/resources/transfer", resourcesTransferRoute)
 register("/api/v1/resources/transfer-targets", resourceTransferTargetsRoute)
 register("/api/v1/resources/:resourceId", resourceRoute)
 register("/api/v1/resources/:resourceId/annotation", resourceAnnotationRoute)

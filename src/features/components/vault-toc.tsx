@@ -1,6 +1,7 @@
 "use client"
 
-import { ChevronsDownUp, ChevronsUpDown, ListTree, Plus } from "lucide-react"
+import { useState } from "react"
+import { ChevronsDownUp, ChevronsUpDown, ListTree, Plus, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -8,29 +9,50 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import type { Resource, Space } from "@/features/types"
+import { ResourceTransferDialog } from "@/features/components/resource-card"
+import type { Resource, ResourceTransferTargetVault, Space } from "@/features/types"
 import { cn } from "@/lib/utils"
 
 export function VaultToc({
   activeSpaceId,
   disabled,
   isVaultOwner,
+  onClearResourceSelection,
   onAddSpace,
+  onCreateTransferTargetSpace,
   onJump,
+  onLoadTransferTargets,
+  onTransferSelectedResources,
   onToggleAllSpaces,
   resources,
+  selectedResourceCount = 0,
+  selectedResourceSourceSpaceId = "",
   spaces,
   spacesCollapsed,
+  transferFocusSpaceId,
+  transferTargets,
 }: {
   activeSpaceId: string
   disabled: boolean
   isVaultOwner: boolean
+  onClearResourceSelection: () => void
   onAddSpace: () => void
+  onCreateTransferTargetSpace: (vaultId: string) => void
   onJump: (spaceId: string) => void
+  onLoadTransferTargets: () => Promise<void>
+  onTransferSelectedResources: (input: {
+    action: "move" | "copy"
+    targetVaultId: string
+    targetSpaceId: string
+  }) => Promise<void>
   onToggleAllSpaces: () => void
   resources: Resource[]
+  selectedResourceCount?: number
+  selectedResourceSourceSpaceId?: string
   spaces: Space[]
   spacesCollapsed: boolean
+  transferFocusSpaceId?: string
+  transferTargets: ResourceTransferTargetVault[]
 }) {
   function renderOutlineList() {
     return (
@@ -109,6 +131,26 @@ export function VaultToc({
     )
   }
 
+  function renderBulkResourceActions() {
+    if (!isVaultOwner || selectedResourceCount === 0 || !selectedResourceSourceSpaceId) {
+      return null
+    }
+
+    return (
+      <BulkResourceActions
+        count={selectedResourceCount}
+        disabled={disabled}
+        focusedSpaceId={transferFocusSpaceId}
+        onClear={onClearResourceSelection}
+        onCreateSpace={onCreateTransferTargetSpace}
+        onLoadTargets={onLoadTransferTargets}
+        onTransfer={onTransferSelectedResources}
+        sourceSpaceId={selectedResourceSourceSpaceId}
+        targets={transferTargets}
+      />
+    )
+  }
+
   return (
     <>
       <aside className="pointer-events-none fixed right-4 top-[72px] z-20 hidden w-[188px] flex-col gap-2 2xl:flex">
@@ -118,9 +160,10 @@ export function VaultToc({
           </div>
           {renderOutlineList()}
         </nav>
-        {(spaces.length > 0 || isVaultOwner) && (
-          <div className="pointer-events-auto rounded-card border border-line bg-ink-850/95 p-2 shadow-pop backdrop-blur">
+        {(spaces.length > 0 || isVaultOwner || selectedResourceCount > 0) && (
+          <div className="pointer-events-auto flex flex-col gap-2 rounded-card border border-line bg-ink-850/95 p-2 shadow-pop backdrop-blur">
             {renderOutlineActions()}
+            {renderBulkResourceActions()}
           </div>
         )}
       </aside>
@@ -149,13 +192,79 @@ export function VaultToc({
             Outline
           </div>
           {renderOutlineList()}
-          {(spaces.length > 0 || isVaultOwner) && (
-            <div className="mt-2 border-t border-line pt-2">
+          {(spaces.length > 0 || isVaultOwner || selectedResourceCount > 0) && (
+            <div className="mt-2 flex flex-col gap-2 border-t border-line pt-2">
               {renderOutlineActions()}
+              {renderBulkResourceActions()}
             </div>
           )}
         </PopoverContent>
       </Popover>
     </>
+  )
+}
+
+function BulkResourceActions({
+  count,
+  disabled,
+  focusedSpaceId,
+  onClear,
+  onCreateSpace,
+  onLoadTargets,
+  onTransfer,
+  sourceSpaceId,
+  targets,
+}: {
+  count: number
+  disabled: boolean
+  focusedSpaceId?: string
+  onClear: () => void
+  onCreateSpace: (vaultId: string) => void
+  onLoadTargets: () => Promise<void>
+  onTransfer: (input: {
+    action: "move" | "copy"
+    targetVaultId: string
+    targetSpaceId: string
+  }) => Promise<void>
+  sourceSpaceId: string
+  targets: ResourceTransferTargetVault[]
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="rounded-input border border-jade-dim bg-[var(--jade-glow)] p-1.5">
+      <div className="mono mb-1.5 truncate px-1 text-[10px] text-jade">
+        已选 {count} 个 Resource
+      </div>
+      <div className="flex min-w-0 items-center gap-1">
+        <ResourceTransferDialog
+          disabled={disabled}
+          focusedSpaceId={focusedSpaceId}
+          onCreateSpace={onCreateSpace}
+          onLoadTargets={onLoadTargets}
+          onOpenChange={setOpen}
+          onTransfer={onTransfer}
+          open={open}
+          resourceTitle={`已选择 ${count} 个 Resource`}
+          showTriggerLabel
+          sourceSpaceId={sourceSpaceId}
+          targets={targets}
+          triggerClassName="min-w-0 flex-1 justify-center rounded-sm border-jade-dim bg-ink-900/70 text-jade hover:bg-ink-850 hover:text-jade-bright"
+          triggerLabel="移动/复制"
+          triggerSize="sm"
+        />
+        <Button
+          aria-label="取消选择 Resource"
+          className="size-7 rounded-sm text-fg-dim hover:text-fg [&_svg]:size-3.5"
+          onClick={onClear}
+          size="icon-sm"
+          title="取消选择"
+          type="button"
+          variant="ghost"
+        >
+          <X />
+        </Button>
+      </div>
+    </div>
   )
 }

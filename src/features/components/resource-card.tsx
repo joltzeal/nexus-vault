@@ -11,6 +11,7 @@ import {
   Heart,
   LoaderCircle,
   Plus,
+  Search,
   Star,
   Trash2,
 } from "lucide-react"
@@ -30,6 +31,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
 import {
   Rating,
   RatingButton,
@@ -108,6 +110,7 @@ export function ResourceCard({
   index,
   canEditResource,
   isActive,
+  isSelected = false,
   isSignedIn,
   isVaultOwner,
   mediaVisible,
@@ -118,24 +121,24 @@ export function ResourceCard({
   onLoadTransferTargets,
   onOpenDetails,
   onToggleReadLater,
+  onToggleSelected,
   onToggleStar,
   onTransferResource,
   onUpdateAnnotation,
   resource,
   showAnnotationActions = true,
   showReadLaterAction = true,
+  showSelectionControl = false,
   showStarAction = true,
   spaceId,
   transferFocusSpaceId,
   transferTargets,
-  vaultId,
-  vaultName = "",
-  spaceName = "",
 }: {
   disabled: boolean
   index: number
   canEditResource: boolean
   isActive: boolean
+  isSelected?: boolean
   isSignedIn: boolean
   isVaultOwner: boolean
   mediaVisible: boolean
@@ -146,6 +149,7 @@ export function ResourceCard({
   onLoadTransferTargets: () => Promise<void>
   onOpenDetails: () => void
   onToggleReadLater?: (resourceId: string) => void
+  onToggleSelected?: (selected: boolean) => void
   onToggleStar: () => void
   onTransferResource: (input: {
     action: "move" | "copy"
@@ -157,6 +161,7 @@ export function ResourceCard({
   resource: Resource
   showAnnotationActions?: boolean
   showReadLaterAction?: boolean
+  showSelectionControl?: boolean
   showStarAction?: boolean
   spaceId: string
   transferFocusSpaceId?: string
@@ -179,7 +184,7 @@ export function ResourceCard({
       resourceId: resource.id,
       sourceSpaceId: spaceId,
     },
-    disabled: disabled || !isVaultOwner,
+    disabled: disabled || !isVaultOwner || showSelectionControl,
   })
   const [descriptionOpen, setDescriptionOpen] = useState(false)
   const [externalOpen, setExternalOpen] = useState(false)
@@ -249,11 +254,28 @@ export function ResourceCard({
         isActive && "border-jade hover:border-jade"
       )}
       id={`resource-${resource.id}`}
-      onClick={onActivate}
+      onClick={() => {
+        if (showSelectionControl) {
+          onToggleSelected?.(!isSelected)
+          return
+        }
+        onActivate()
+      }}
       ref={ref}
     >
       <div className="flex min-w-0 items-center gap-2">
-        {isVaultOwner ? (
+        {showSelectionControl ? (
+          <Checkbox
+            aria-label={isSelected ? "取消选择 resource" : "选择 resource"}
+            checked={isSelected}
+            className={cn(
+              "size-7 rounded-input border border-line-soft bg-ink-900 text-jade shadow-inner transition hover:border-jade-dim hover:bg-ink-850 focus-visible:border-jade-dim focus-visible:ring-2 focus-visible:ring-jade/20 data-checked:border-jade-dim data-checked:bg-ink-850 data-checked:text-jade [&_[data-slot=checkbox-indicator]>svg]:size-4",
+              isSelected && "shadow-[0_0_0_3px_var(--jade-glow),inset_0_1px_0_rgba(255,255,255,.06)]"
+            )}
+            onClick={(event) => event.stopPropagation()}
+            onCheckedChange={(value) => onToggleSelected?.(value === true)}
+          />
+        ) : isVaultOwner ? (
           <button
             className="relative grid size-[30px] shrink-0 cursor-grab place-items-center overflow-hidden rounded-input border border-line bg-ink-700 transition hover:border-ink-600 hover:bg-ink-750 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-60"
             disabled={disabled}
@@ -276,7 +298,7 @@ export function ResourceCard({
         )}
         <TooltipProvider>
           <Tooltip>
-            {canEditResource ? (
+            {canEditResource && !showSelectionControl ? (
               <TooltipTrigger
                 render={
                 <button
@@ -310,79 +332,81 @@ export function ResourceCard({
           label={metadataState.label}
           status={resource.metadataStatus}
         />
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="mono flex h-6 items-center gap-1 rounded-md border border-line-soft bg-ink-850/55 px-1 text-[10px] text-fg-dim">
-            {showAnnotationActions && rating > 0 && (
-              <ResourceLocalRating
-                ariaLabel={`资源评分 ${rating}/5`}
-                readOnly
-                size={12}
-                value={rating}
-              />
-            )}
+        {!showSelectionControl && (
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="mono flex h-6 items-center gap-1 rounded-md border border-line-soft bg-ink-850/55 px-1 text-[10px] text-fg-dim">
+              {showAnnotationActions && rating > 0 && (
+                <ResourceLocalRating
+                  ariaLabel={`资源评分 ${rating}/5`}
+                  readOnly
+                  size={12}
+                  value={rating}
+                />
+              )}
+              {showAnnotationActions && (
+                <LocalAnnotationPopover
+                  commentDraft={localCommentDraft}
+                  onClear={handleClearAnnotation}
+                  onCommentDraftChange={setLocalCommentDraft}
+                  onCommentSave={() =>
+                    handleUpdateAnnotation({ comment: localCommentDraft })
+                  }
+                  onRatingChange={(value) =>
+                    handleUpdateAnnotation({ rating: value > 0 ? value : null })
+                  }
+                  rating={rating}
+                />
+              )}
+              {showReadLaterAction && (
+                <Button
+                  className={cn(
+                    "size-5 rounded-sm border border-transparent p-0 text-fg-dim hover:text-jade [&_svg]:size-3",
+                    isWatchedLater && "border-jade-dim bg-[var(--jade-glow)] text-jade"
+                  )}
+                  size="icon-xs"
+                  variant="ghost"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    handleToggleWatchLater()
+                  }}
+                  type="button"
+                >
+                  <Clock3 />
+                  <span className="sr-only">
+                    {isWatchedLater ? "移出稍后查看" : "稍后查看"}
+                  </span>
+                </Button>
+              )}
+              {showStarAction && (
+                <Button
+                  className={cn(
+                    "size-5 rounded-sm p-0 text-fg-dim hover:text-jade [&_svg]:size-3",
+                    resource.isStarred && "text-jade"
+                  )}
+                  disabled={!isSignedIn}
+                  size="icon-xs"
+                  variant="ghost"
+                  onClick={onToggleStar}
+                  type="button"
+                >
+                  <Star className={cn(resource.isStarred && "fill-current")} />
+                  <span className="sr-only">{resource.isStarred ? "取消收藏资源" : "收藏资源"}</span>
+                </Button>
+              )}
+            </div>
             {showAnnotationActions && (
-              <LocalAnnotationPopover
-                commentDraft={localCommentDraft}
-                onClear={handleClearAnnotation}
-                onCommentDraftChange={setLocalCommentDraft}
-                onCommentSave={() =>
-                  handleUpdateAnnotation({ comment: localCommentDraft })
+              <Checkbox
+                aria-label={checked ? "标记为未处理" : "标记为已处理"}
+                checked={checked}
+                className="size-5 rounded-[5px] border border-line-soft bg-ink-950 text-jade shadow-inner hover:border-jade-dim focus-visible:border-jade-dim focus-visible:ring-2 focus-visible:ring-jade/20 data-checked:border-jade-dim data-checked:bg-[var(--jade-glow)] data-checked:text-jade [&_[data-slot=checkbox-indicator]>svg]:size-3.5"
+                onClick={(event) => event.stopPropagation()}
+                onCheckedChange={(value) =>
+                  handleUpdateAnnotation({ checked: value === true })
                 }
-                onRatingChange={(value) =>
-                  handleUpdateAnnotation({ rating: value > 0 ? value : null })
-                }
-                rating={rating}
               />
-            )}
-            {showReadLaterAction && (
-              <Button
-                className={cn(
-                  "size-5 rounded-sm border border-transparent p-0 text-fg-dim hover:text-jade [&_svg]:size-3",
-                  isWatchedLater && "border-jade-dim bg-[var(--jade-glow)] text-jade"
-                )}
-                size="icon-xs"
-                variant="ghost"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  handleToggleWatchLater()
-                }}
-                type="button"
-              >
-                <Clock3 />
-                <span className="sr-only">
-                  {isWatchedLater ? "移出稍后查看" : "稍后查看"}
-                </span>
-              </Button>
-            )}
-            {showStarAction && (
-              <Button
-                className={cn(
-                  "size-5 rounded-sm p-0 text-fg-dim hover:text-jade [&_svg]:size-3",
-                  resource.isStarred && "text-jade"
-                )}
-                disabled={!isSignedIn}
-                size="icon-xs"
-                variant="ghost"
-                onClick={onToggleStar}
-                type="button"
-              >
-                <Star className={cn(resource.isStarred && "fill-current")} />
-                <span className="sr-only">{resource.isStarred ? "取消收藏资源" : "收藏资源"}</span>
-              </Button>
             )}
           </div>
-          {showAnnotationActions && (
-            <Checkbox
-              aria-label={checked ? "标记为未处理" : "标记为已处理"}
-              checked={checked}
-              className="size-5 rounded-[5px] border border-line-soft bg-ink-950 text-jade shadow-inner hover:border-jade-dim focus-visible:border-jade-dim focus-visible:ring-2 focus-visible:ring-jade/20 data-checked:border-jade-dim data-checked:bg-[var(--jade-glow)] data-checked:text-jade [&_[data-slot=checkbox-indicator]>svg]:size-3.5"
-              onClick={(event) => event.stopPropagation()}
-              onCheckedChange={(value) =>
-                handleUpdateAnnotation({ checked: value === true })
-              }
-            />
-          )}
-        </div>
+        )}
       </div>
 
       <div className="flex min-w-0 items-center gap-2">
@@ -437,7 +461,7 @@ export function ResourceCard({
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-          {(canEditResource || isVaultOwner) && (
+          {!showSelectionControl && (canEditResource || isVaultOwner) && (
             <div className="ml-auto hidden h-6 items-center gap-1 rounded-md border border-line-soft bg-ink-850/70 px-1 group-hover/resource-card:inline-flex focus-within:inline-flex">
               {canEditResource && (
                 <AlertDialog>
@@ -478,11 +502,11 @@ export function ResourceCard({
                   onOpenChange={setTransferOpen}
                   onCreateSpace={onCreateTransferTargetSpace}
                   onTransfer={async (input) => {
+                    setTransferOpen(false)
                     await onTransferResource({
                       ...input,
                       resourceId: resource.id,
                     })
-                    setTransferOpen(false)
                   }}
                   open={transferOpen}
                   focusedSpaceId={transferFocusSpaceId}
@@ -787,7 +811,38 @@ function ResourceMetadataState({
   )
 }
 
-function ResourceTransferDialog({
+function normalizeTransferQuery(value: string) {
+  return value.trim().toLocaleLowerCase()
+}
+
+function getFilteredTransferTargets(
+  targets: ResourceTransferTargetVault[],
+  query: string
+) {
+  if (!query) return targets
+
+  return targets
+    .map((target) => {
+      const vaultMatches = normalizeTransferQuery(target.title).includes(query)
+      const spaces = vaultMatches
+        ? target.spaces
+        : target.spaces.filter((space) =>
+            normalizeTransferQuery(space.name).includes(query)
+          )
+
+      return {
+        ...target,
+        spaces,
+      }
+    })
+    .filter(
+      (target) =>
+        normalizeTransferQuery(target.title).includes(query) ||
+        target.spaces.length > 0
+    )
+}
+
+export function ResourceTransferDialog({
   disabled,
   focusedSpaceId,
   onCreateSpace,
@@ -796,8 +851,12 @@ function ResourceTransferDialog({
   onTransfer,
   open,
   resourceTitle,
+  showTriggerLabel = false,
   sourceSpaceId,
   targets,
+  triggerClassName,
+  triggerLabel = "移动或复制",
+  triggerSize = "icon-xs",
 }: {
   disabled: boolean
   focusedSpaceId?: string
@@ -811,11 +870,18 @@ function ResourceTransferDialog({
   }) => Promise<void>
   open: boolean
   resourceTitle: string
+  showTriggerLabel?: boolean
   sourceSpaceId: string
   targets: ResourceTransferTargetVault[]
+  triggerClassName?: string
+  triggerLabel?: string
+  triggerSize?: "xs" | "sm" | "icon-xs" | "icon-sm"
 }) {
   const [busyKey, setBusyKey] = useState("")
   const [loadingTargets, setLoadingTargets] = useState(false)
+  const [query, setQuery] = useState("")
+  const normalizedQuery = normalizeTransferQuery(query)
+  const filteredTargets = getFilteredTransferTargets(targets, normalizedQuery)
   const treeKey = targets
     .map((target) => `${target.id}:${target.spaces.map((space) => space.id).join(",")}`)
     .join("|")
@@ -832,6 +898,10 @@ function ResourceTransferDialog({
 
   async function handleOpenChange(nextOpen: boolean) {
     onOpenChange(nextOpen)
+    if (!nextOpen) {
+      setQuery("")
+      return
+    }
     if (!nextOpen || targets.length > 0) return
 
     setLoadingTargets(true)
@@ -848,6 +918,8 @@ function ResourceTransferDialog({
     targetSpaceId: string
   }) {
     if (input.targetSpaceId === sourceSpaceId) {
+      setQuery("")
+      onOpenChange(false)
       toast.info("目标就是当前 Space，无需操作。")
       return
     }
@@ -855,6 +927,8 @@ function ResourceTransferDialog({
     const key = `${input.action}:${input.targetSpaceId}`
     setBusyKey(key)
     try {
+      setQuery("")
+      onOpenChange(false)
       await onTransfer(input)
     } finally {
       setBusyKey("")
@@ -864,18 +938,21 @@ function ResourceTransferDialog({
   return (
     <Dialog open={open} onOpenChange={(value) => void handleOpenChange(value)}>
       <Button
-        className="size-5 rounded-sm text-fg-dim hover:text-jade [&_svg]:size-3"
+        className={cn(
+          !showTriggerLabel && "size-5 rounded-sm text-fg-dim hover:text-jade [&_svg]:size-3",
+          triggerClassName
+        )}
         disabled={disabled}
         onClick={(event) => {
           event.stopPropagation()
           void handleOpenChange(true)
         }}
-        size="icon-xs"
+        size={triggerSize}
         type="button"
         variant="ghost"
       >
         <FolderInput />
-        <span className="sr-only">移动或复制</span>
+        {showTriggerLabel ? <span>{triggerLabel}</span> : <span className="sr-only">{triggerLabel}</span>}
       </Button>
       <DialogContent className="max-h-[min(680px,calc(100dvh-2rem))] overflow-hidden border-line bg-ink-850 p-0 gap-0 text-fg sm:max-w-[520px]">
         <DialogHeader className="min-w-0 border-b border-line px-4 py-3">
@@ -884,23 +961,36 @@ function ResourceTransferDialog({
             {resourceTitle}
           </DialogDescription>
         </DialogHeader>
+        <div className="border-b border-line-soft p-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-dim" />
+            <Input
+              autoComplete="off"
+              className="h-8 border-line-soft bg-ink-900 pl-8 text-sm text-fg placeholder:text-fg-dim focus-visible:border-jade-dim focus-visible:ring-2 focus-visible:ring-jade/20"
+              disabled={loadingTargets || targets.length === 0}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="筛选 Vault 或 Space"
+              value={query}
+            />
+          </div>
+        </div>
         <ScrollArea className="max-h-[min(520px,calc(100dvh-12rem))]">
           <div className="p-2">
             {loadingTargets ? (
               <div className="flex min-h-32 items-center justify-center text-sm text-fg-dim">
                 正在加载 Vault...
               </div>
-            ) : targets.length > 0 ? (
+            ) : filteredTargets.length > 0 ? (
               <TreeProvider
-                defaultExpandedIds={targets.map((target) => target.id)}
-                key={`${treeKey}:${focusedSpaceId ?? ""}`}
+                defaultExpandedIds={filteredTargets.map((target) => target.id)}
+                key={`${treeKey}:${focusedSpaceId ?? ""}:${normalizedQuery}`}
                 selectable={false}
                 showLines={false}
               >
                 <TreeView className="p-0">
-                  {targets.map((vault, vaultIndex) => (
+                  {filteredTargets.map((vault, vaultIndex) => (
                     <TreeNode
-                      isLast={vaultIndex === targets.length - 1}
+                      isLast={vaultIndex === filteredTargets.length - 1}
                       key={vault.id}
                       nodeId={vault.id}
                     >
@@ -999,7 +1089,7 @@ function ResourceTransferDialog({
               </TreeProvider>
             ) : (
               <div className="flex min-h-32 items-center justify-center rounded-input border border-dashed border-line text-sm text-fg-dim">
-                还没有可用的目标 Space
+                {normalizedQuery ? "没有匹配的目标 Space" : "还没有可用的目标 Space"}
               </div>
             )}
           </div>
@@ -1034,7 +1124,6 @@ function ResourceIcon({
 
   if (iconSrc && !failed) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
       <img
         alt=""
         aria-hidden="true"
@@ -1050,7 +1139,6 @@ function ResourceIcon({
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
     <img
       alt=""
       aria-hidden="true"

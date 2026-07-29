@@ -21,15 +21,6 @@ export function useRouter() {
   }
 }
 
-export function redirect(url: string): never {
-  window.location.replace(url)
-  throw new Error(`Redirected to ${url}`)
-}
-
-export function notFound(): never {
-  throw new Error("Not found")
-}
-
 export function usePathname() {
   return window.location.pathname
 }

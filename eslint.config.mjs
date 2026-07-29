@@ -1,10 +1,33 @@
+import js from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTypescript from "eslint-config-next/typescript";
+import reactHooks from "eslint-plugin-react-hooks";
+import globals from "globals";
+import tseslint from "typescript-eslint";
 
 export default defineConfig([
-	...nextVitals,
-	...nextTypescript,
+	globalIgnores([
+		".wrangler/**",
+		"build/**",
+		"dist/**",
+		"cloudflare-env.d.ts",
+	]),
+	js.configs.recommended,
+	...tseslint.configs.recommended,
+	{
+		files: ["**/*.{js,jsx,ts,tsx}"],
+		languageOptions: {
+			globals: {
+				...globals.browser,
+				...globals.node,
+			},
+			parserOptions: {
+				ecmaFeatures: {
+					jsx: true,
+				},
+			},
+		},
+	},
+	reactHooks.configs.flat["recommended-latest"],
 	{
 		rules: {
 			"react-hooks/preserve-manual-memoization": "off",
@@ -13,14 +36,4 @@ export default defineConfig([
 			"react-hooks/static-components": "off",
 		},
 	},
-	globalIgnores([
-		".next/**",
-		".open-next/**",
-		".wrangler/**",
-		"out/**",
-		"build/**",
-		"dist/**",
-		"cloudflare-env.d.ts",
-		"next-env.d.ts",
-	]),
 ]);

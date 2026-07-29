@@ -14,11 +14,7 @@
 		"jsx": "react-jsx",
 		"incremental": true,
 		"paths": {
-			"@/*": ["./src/*"],
-			"next/dynamic": ["./src/shims/next-dynamic.tsx"],
-			"next/link": ["./src/shims/next-link.tsx"],
-			"next/navigation": ["./src/shims/next-navigation.ts"],
-			"next-themes": ["./src/shims/next-themes.ts"]
+			"@/*": ["./src/*"]
 		},
 		"types": [
 			"./cloudflare-env.d.ts",

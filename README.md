@@ -1,6 +1,6 @@
 # Nexus Vault
 
-Next.js on Cloudflare Workers with Better Auth, Drizzle, Postgres, and Hyperdrive.
+Vite React SPA on Cloudflare Workers with a Hono API, Better Auth, Drizzle, Postgres, Hyperdrive, KV, R2, and Queues.
 
 ## Auth and Database
 
@@ -48,13 +48,17 @@ pnpm exec wrangler queues create nexus-vault-queue
 
 ## Develop
 
-Run the Next.js development server:
+Start the Cloudflare Worker locally with the built SPA assets:
 
 ```bash
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+For client-only Vite development:
+
+```bash
+pnpm dev:client
+```
 
 ## Preview
 

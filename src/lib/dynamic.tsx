@@ -8,7 +8,7 @@ type Loader<TProps> = () => Promise<
     }
 >
 
-export default function dynamic<TProps extends object>(
+export function dynamic<TProps extends object>(
   loader: Loader<TProps>,
   _options?: { ssr?: boolean; loading?: ComponentType },
 ) {

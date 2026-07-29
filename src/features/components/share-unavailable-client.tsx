@@ -1,10 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import { ArrowLeft, Clock, LockKeyhole } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { useRouter } from "@/lib/router"
 
 export function ShareUnavailableClient() {
   const router = useRouter()

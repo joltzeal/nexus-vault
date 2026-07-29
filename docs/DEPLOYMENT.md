@@ -1,6 +1,6 @@
 # Nexus Vault 部署文档
 
-本文档记录 Nexus Vault 首次部署到 Cloudflare Workers 的流程。当前项目使用 Next.js、OpenNext for Cloudflare、Better Auth、Drizzle、Postgres/Neon、Cloudflare Hyperdrive、KV、R2 和 Queue。
+本文档记录 Nexus Vault 首次部署到 Cloudflare Workers 的流程。当前项目使用 Vite React SPA、Hono Worker API、Better Auth、Drizzle、Postgres/Neon、Cloudflare Hyperdrive、KV、R2 和 Queue。
 
 ## 1. 前置准备
 
@@ -65,7 +65,6 @@ pnpm exec wrangler secret put DATABASE_URL --env production
 - `MEDIA`：R2 bucket，用于媒体文件
 - `CACHE`：KV namespace，用于缓存注册状态和 Better Auth Cloudflare 插件
 - `QUEUE`：Cloudflare Queue，用于异步元数据处理
-- `WORKER_SELF_REFERENCE`：OpenNext 自引用 service binding
 - `IMAGES`：Cloudflare Images 绑定
 
 如果资源还不存在，先创建：
@@ -114,16 +113,22 @@ pnpm db:push:local
 
 ## 5. 本地开发
 
-启动 Next.js 开发服务器：
+启动本地 Cloudflare Worker，并使用构建后的 SPA 静态资源：
 
 ```bash
 pnpm dev
 ```
 
-默认访问：
+如只需要调试前端界面，也可以启动 Vite 开发服务器：
+
+```bash
+pnpm dev:client
+```
+
+Worker 本地预览默认访问：
 
 ```txt
-http://localhost:3000
+http://localhost:8787
 ```
 
 ## 6. Cloudflare 预览
@@ -148,7 +153,7 @@ pnpm preview:production
 pnpm deploy
 ```
 
-只上传构建产物但不立即切换流量：
+`upload` 是当前部署脚本的别名：
 
 ```bash
 pnpm upload

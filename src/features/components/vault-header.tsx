@@ -1,6 +1,5 @@
 "use client"
 
-import Link from "next/link"
 import { useState } from "react"
 import {
   ChevronDown,
@@ -38,6 +37,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import type { ResourceSet } from "@/features/types"
+import { Link } from "@/lib/link"
 import { cn } from "@/lib/utils"
 import { getInitials, getVaultStats, getVisibilityCopy } from "./view-models"
 import { VaultCover } from "./vault-cover"

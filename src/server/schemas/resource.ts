@@ -61,6 +61,10 @@ export const transferResourceSchema = z.object({
   targetSpaceId: z.string().trim().min(1),
 })
 
+export const transferResourcesSchema = transferResourceSchema.extend({
+  resourceIds: z.array(z.string().trim().min(1)).min(1).max(100),
+})
+
 export const updateResourceAnnotationSchema = z
   .object({
     checked: z.boolean().optional(),

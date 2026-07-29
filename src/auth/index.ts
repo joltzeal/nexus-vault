@@ -1,6 +1,5 @@
 import { betterAuth } from "better-auth/minimal";
 import { APIError } from "better-auth/api";
-import { nextCookies } from "better-auth/next-js";
 import { withCloudflare } from "better-auth-cloudflare";
 import { sql } from "drizzle-orm";
 import type { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
@@ -50,7 +49,6 @@ export function getAuthOptions(env: RuntimeEnv, db?: Db) {
 			},
 		},
 		trustedOrigins: splitAuthOrigins(env.BETTER_AUTH_TRUSTED_ORIGINS),
-		plugins: [nextCookies()],
 		...(db
 			? {
 					databaseHooks: {

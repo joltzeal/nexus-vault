@@ -483,13 +483,17 @@ function decodeThunderPayload(value: string) {
 
   try {
     if (typeof atob === "function") return atob(normalized)
-  } catch {}
+  } catch {
+    // Ignore invalid browser base64 payloads and try the Node fallback.
+  }
 
   try {
     if (typeof Buffer !== "undefined") {
       return Buffer.from(normalized, "base64").toString("utf8")
     }
-  } catch {}
+  } catch {
+    // Ignore invalid Node base64 payloads and fall through to null.
+  }
 
   return null
 }
@@ -515,7 +519,9 @@ function getFileInfoFromUrl(value: string) {
     const url = new URL(value)
     const lastSegment = url.pathname.split("/").filter(Boolean).pop()
     fileName = lastSegment ? decodeLinkPart(lastSegment) : fileName
-  } catch {}
+  } catch {
+    // Keep the path-split fallback for non-URL inputs.
+  }
 
   const fileExtension = fileName ? getFileExtension(fileName) : undefined
 

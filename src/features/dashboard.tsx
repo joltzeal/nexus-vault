@@ -2,7 +2,6 @@
 
 import type { FormEvent } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
 import { authClient } from "@/lib/auth-client"
 import {
   createCloudDriveUrlWithPassword,
@@ -64,6 +63,7 @@ import {
   type VaultWorkspaceInitialData,
   type Visibility,
 } from "@/features/types"
+import { useRouter } from "@/lib/router"
 
 type AuthPolicy = {
   allowSignUp: boolean
@@ -703,10 +703,6 @@ export function VaultWorkspaceClient({
     }
   }
 
-  function handleRequireSignIn() {
-    toast.info("请先注册或登录后再评论。")
-  }
-
   async function handleToggleStar() {
     if (!activeSet) return
     if (!currentUser) {
@@ -1200,9 +1196,9 @@ export function VaultWorkspaceClient({
       await apiRequest(`/vaults/${vaultId}`, {
         method: "DELETE",
       })
-      toast.success("Vault 已删除。")
       setSettingsOpen(false)
       setResourceDetailsOpen(false)
+      toast.success("Vault 已删除。")
       setStarredVaults((current) => current.filter((vault) => vault.id !== vaultId))
 
       if (nextSetId) {
@@ -1787,7 +1783,7 @@ export function VaultWorkspaceClient({
     if (!activeSet) return
 
     try {
-      const result = await apiRequest<{
+      await apiRequest<{
         id: string
         action: "move" | "copy"
         vaultId: string
@@ -1825,6 +1821,63 @@ export function VaultWorkspaceClient({
       const message = error instanceof Error ? error.message : "Failed to transfer resource."
       setApiError(message)
       toast.error(message)
+    }
+  }
+
+  async function handleTransferResources(input: {
+    action: "move" | "copy"
+    resourceIds: string[]
+    targetVaultId: string
+    targetSpaceId: string
+  }) {
+    if (!activeSet || input.resourceIds.length === 0) return
+
+    try {
+      await apiRequest<{
+        action: "move" | "copy"
+        items: Array<{
+          id: string
+          sourceId?: string
+          action: "move" | "copy"
+          vaultId: string
+          spaceId: string
+        }>
+      }>("/resources/transfer", {
+        method: "POST",
+        body: JSON.stringify(input),
+      })
+
+      if (input.action === "move" && input.targetVaultId !== activeSet.id) {
+        const movedIds = new Set(input.resourceIds)
+        setSets((currentSets) =>
+          currentSets.map((set) =>
+            set.id === activeSet.id
+              ? {
+                  ...set,
+                  resourceCount: Math.max(0, set.resourceCount - movedIds.size),
+                  resources: set.resources.filter((resource) => !movedIds.has(resource.id)),
+                }
+              : set
+          )
+        )
+        if (selectedResourceId && movedIds.has(selectedResourceId)) {
+          setSelectedResourceId("")
+          setResourceDetailsOpen(false)
+        }
+      } else {
+        await refreshVaultDetail(activeSet.id)
+      }
+
+      toast.success(
+        input.action === "move"
+          ? `已移动 ${input.resourceIds.length} 个 Resource`
+          : `已复制 ${input.resourceIds.length} 个 Resource`
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to transfer resources."
+      setApiError(message)
+      toast.error(message)
+      throw error instanceof Error ? error : new Error(message)
     }
   }
 
@@ -2088,6 +2141,7 @@ export function VaultWorkspaceClient({
             onToggleResourceStar={handleToggleResourceStar}
             onToggleStar={handleToggleStar}
             onTransferResource={handleTransferResource}
+            onTransferResources={handleTransferResources}
             onToggleMediaVisibility={handleMediaVisibleChange}
             onEditSpace={openEditSpaceDialog}
             onUpdateSpaceIcon={handleUpdateSpaceIcon}

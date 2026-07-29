@@ -11,6 +11,7 @@ import {
   GripVertical,
   Info,
   LoaderCircle,
+  ListChecks,
   MoreVertical,
   Pencil,
   Plus,
@@ -94,11 +95,15 @@ export function SpaceSection({
   onToggleResourceReadLater,
   onToggleCollapsed,
   onToggleResourceStar,
+  onToggleResourceSelected,
+  onToggleSelectionMode,
   onTransferResource,
   onUpdateResourceAnnotation,
   onUpdateIcon,
   resources,
   selectedResourceId,
+  selectedResourceIds,
+  selectionMode,
   space,
   spacePosition,
   transferFocusSpaceId,
@@ -127,6 +132,8 @@ export function SpaceSection({
   onToggleResourceReadLater: (resourceId: string) => void
   onToggleCollapsed: () => void
   onToggleResourceStar: (resourceId: string) => void
+  onToggleResourceSelected: (resourceId: string, selected: boolean) => void
+  onToggleSelectionMode: () => void
   onTransferResource: (input: {
     action: "move" | "copy"
     resourceId: string
@@ -137,6 +144,8 @@ export function SpaceSection({
   onUpdateIcon: (icon: string) => void
   resources: Resource[]
   selectedResourceId?: string
+  selectedResourceIds: Set<string>
+  selectionMode: boolean
   space: Space
   spacePosition: number
   transferFocusSpaceId?: string
@@ -169,6 +178,9 @@ export function SpaceSection({
     },
     disabled: disabled || !isVaultOwner,
   })
+  const selectedCount = resources.filter((resource) =>
+    selectedResourceIds.has(resource.id)
+  ).length
 
   async function handleCopySpaceLinks() {
     const links = resources.map((resource) => getResourceDisplayUrl(resource)).filter(Boolean)
@@ -219,6 +231,11 @@ export function SpaceSection({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <h2 className="truncate font-display text-[15.5px] font-semibold">{space.name}</h2>
           <span className="mono text-[11px] text-fg-dim">{resources.length}</span>
+          {selectedCount > 0 && (
+            <span className="mono rounded-chip border border-jade-dim bg-[var(--jade-glow)] px-1.5 py-0.5 text-[10px] text-jade">
+              已选 {selectedCount}
+            </span>
+          )}
           {space.description && (
             <HoverCard>
               <HoverCardTrigger
@@ -246,7 +263,29 @@ export function SpaceSection({
             </HoverCard>
           )}
         </div>
-        <div className="flex gap-1 opacity-0 transition hover:opacity-100 group-hover:opacity-100 md:group-hover:opacity-100">
+        <div
+          className={cn(
+            "flex gap-1 opacity-0 transition hover:opacity-100 group-hover:opacity-100 md:group-hover:opacity-100",
+            selectionMode && "opacity-100"
+          )}
+        >
+          {isVaultOwner && resources.length > 0 && (
+            <Button
+              aria-label={selectionMode ? "退出多选模式" : "进入多选模式"}
+              className={cn(
+                "text-fg-dim hover:text-jade",
+                selectionMode && "border-jade-dim bg-[var(--jade-glow)] text-jade"
+              )}
+              disabled={disabled}
+              onClick={onToggleSelectionMode}
+              size="icon-sm"
+              title={selectionMode ? "退出多选" : "多选 Resource"}
+              type="button"
+              variant="ghost"
+            >
+              <ListChecks />
+            </Button>
+          )}
           {resources.length > 0 && (
             <Button size="icon-sm" variant="ghost" onClick={handleCopySpaceLinks} type="button">
               <Copy />
@@ -300,6 +339,7 @@ export function SpaceSection({
               disabled={disabled}
               index={index}
               isActive={selectedResourceId === resource.id}
+              isSelected={selectedResourceIds.has(resource.id)}
               isSignedIn={isSignedIn}
               canEditResource={
                 !isResourceResolving(resource.metadataStatus) &&
@@ -316,10 +356,14 @@ export function SpaceSection({
               onLoadTransferTargets={onLoadTransferTargets}
               onOpenDetails={() => onSelectResource(resource.id)}
               onToggleReadLater={() => onToggleResourceReadLater(resource.id)}
+              onToggleSelected={(selected) =>
+                onToggleResourceSelected(resource.id, selected)
+              }
               onToggleStar={() => onToggleResourceStar(resource.id)}
               onTransferResource={onTransferResource}
               onUpdateAnnotation={(_, patch) => onUpdateResourceAnnotation(resource.id, patch)}
               resource={resource}
+              showSelectionControl={selectionMode}
               spaceId={space.id}
               spaceName={space.name}
               transferFocusSpaceId={transferFocusSpaceId}
@@ -391,10 +435,10 @@ function SpaceTransferDialog({
 
     setMovingTargetId(targetVaultId)
     try {
-      await onMove(targetVaultId)
       setOpen(false)
+      await onMove(targetVaultId)
     } catch {
-      // The dashboard reports the API error and keeps this dialog open for retry.
+      // The dashboard reports the API error.
     } finally {
       setMovingTargetId("")
     }

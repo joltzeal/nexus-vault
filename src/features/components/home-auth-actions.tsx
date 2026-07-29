@@ -1,7 +1,6 @@
 "use client"
 
 import { type FormEvent, useState } from "react"
-import { useRouter } from "next/navigation"
 import { ArrowRight, Fingerprint, Loader2 } from "lucide-react"
 
 import { authClient } from "@/lib/auth-client"
@@ -17,6 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useRouter } from "@/lib/router"
 
 type AuthMode = "sign-in" | "sign-up"
 

@@ -3,7 +3,11 @@ import test from "node:test"
 
 import { parseResourceInput } from "../domain/resources/input"
 import { can } from "../domain/vaults/permissions"
-import { createResourceSchema, updateResourceSchema } from "./schemas/resource"
+import {
+  createResourceSchema,
+  transferResourcesSchema,
+  updateResourceSchema,
+} from "./schemas/resource"
 import {
   createSpaceSchema,
   transferSpaceSchema,
@@ -32,6 +36,28 @@ test("space transfer schema requires a target vault UUID", () => {
     "6805e441-b73b-4318-aa8c-bf0da42e5548",
   )
   assert.throws(() => transferSpaceSchema.parse({ targetVaultId: "not-a-vault" }))
+})
+
+test("resource transfer schema accepts multiple resources", () => {
+  const input = transferResourcesSchema.parse({
+    action: "move",
+    resourceIds: [
+      "6805e441-b73b-4318-aa8c-bf0da42e5548",
+      "1a88dc2c-2c9f-447c-a5aa-00d75229ed0f",
+    ],
+    targetVaultId: "f9a4f3dd-4a09-42f5-9d4f-e81556767421",
+    targetSpaceId: "6886d566-0be7-4ab7-b5e3-0ced26fc04e4",
+  })
+
+  assert.equal(input.resourceIds.length, 2)
+  assert.throws(() =>
+    transferResourcesSchema.parse({
+      action: "copy",
+      resourceIds: [],
+      targetVaultId: "f9a4f3dd-4a09-42f5-9d4f-e81556767421",
+      targetSpaceId: "6886d566-0be7-4ab7-b5e3-0ced26fc04e4",
+    })
+  )
 })
 
 test("description schemas accept long text", () => {

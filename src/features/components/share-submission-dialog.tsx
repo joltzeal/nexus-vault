@@ -74,7 +74,6 @@ export function ShareSubmissionDialog({
           turnstileToken,
         }),
       })
-      toast.success("资源已提交，等待 owner 审核。")
       setForm((value) => ({
         ...value,
         url: "",
@@ -84,6 +83,7 @@ export function ShareSubmissionDialog({
       }))
       resetTurnstile()
       setOpen(false)
+      toast.success("资源已提交，等待 owner 审核。")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "提交失败。")
       resetTurnstile()

@@ -6,10 +6,7 @@ import {
   parseResourceInput,
   type ResourceType,
 } from "@/domain/resources/input"
-import {
-  createMetadataQueueMessage,
-  type MetadataQueueMessage,
-} from "@/server/metadata"
+import { createMetadataQueueMessage } from "@/server/metadata"
 import { conflict, forbidden, notFound } from "@/server/api/errors"
 import type { Actor, Db } from "@/server/api/types"
 import {
@@ -417,6 +414,172 @@ export async function transferResource(
     action: "copy" as const,
     vaultId: input.targetVaultId,
     spaceId: input.targetSpaceId,
+  }
+}
+
+export async function transferResources(
+  db: Db,
+  input: {
+    action: "move" | "copy"
+    resourceIds: string[]
+    targetVaultId: string
+    targetSpaceId: string
+    actor: Actor
+  }
+) {
+  const resourceIds = [...new Set(input.resourceIds)]
+  if (resourceIds.length === 0) return { action: input.action, items: [] }
+
+  const resourceRows = await db
+    .select({
+      id: resources.id,
+      vaultId: resources.vaultId,
+      spaceId: resources.spaceId,
+      type: resources.type,
+      title: resources.title,
+      description: resources.description,
+      url: resources.url,
+      dedupeKey: resources.dedupeKey,
+      metadataStatus: resources.metadataStatus,
+      createdBy: resources.createdBy,
+    })
+    .from(resources)
+    .where(inArray(resources.id, resourceIds))
+
+  if (resourceRows.length !== resourceIds.length) {
+    throw notFound("Some resources were not found.")
+  }
+
+  const orderedResources = resourceIds.map((resourceId) => {
+    const resource = resourceRows.find((item) => item.id === resourceId)
+    if (!resource) throw notFound("Resource not found.")
+    return resource
+  })
+
+  const sameSpaceResource = orderedResources.find(
+    (resource) => resource.spaceId === input.targetSpaceId
+  )
+  if (sameSpaceResource) {
+    throw conflict("部分 Resource 已经在目标 Space 中，无需操作。")
+  }
+
+  for (const vaultId of new Set(orderedResources.map((resource) => resource.vaultId))) {
+    const sourceRole = await getVaultRoleForActor(db, vaultId, input.actor)
+    if (sourceRole !== "owner") {
+      throw forbidden("Only the vault owner can transfer resources.")
+    }
+  }
+
+  await getVaultOrThrow(db, input.targetVaultId)
+  await getSpaceInVaultOrThrow(db, input.targetVaultId, input.targetSpaceId)
+  await requireVaultPermission(db, {
+    vaultId: input.targetVaultId,
+    actor: input.actor,
+    action: "resource:create",
+  })
+
+  const movingResourceIds = new Set(input.action === "move" ? resourceIds : [])
+  const duplicateRows = await db
+    .select({
+      id: resources.id,
+      dedupeKey: resources.dedupeKey,
+    })
+    .from(resources)
+    .where(
+      and(
+        eq(resources.vaultId, input.targetVaultId),
+        inArray(resources.dedupeKey, orderedResources.map((resource) => resource.dedupeKey))
+      )
+    )
+  const conflictingDuplicate = duplicateRows.find((row) => !movingResourceIds.has(row.id))
+  if (conflictingDuplicate) {
+    throw conflict("目标 vault 中已经存在部分链接，请不要重复添加。")
+  }
+
+  const now = new Date().toISOString()
+  const basePosition = await getNextResourcePosition(db, input.targetSpaceId)
+
+  if (input.action === "move") {
+    await db.transaction(async (tx) => {
+      for (const [index, resource] of orderedResources.entries()) {
+        await tx
+          .update(resources)
+          .set({
+            vaultId: input.targetVaultId,
+            spaceId: input.targetSpaceId,
+            position: basePosition + index,
+            updatedAt: now,
+          })
+          .where(eq(resources.id, resource.id))
+      }
+    })
+
+    return {
+      action: "move" as const,
+      items: orderedResources.map((resource) => ({
+        id: resource.id,
+        action: "move" as const,
+        vaultId: input.targetVaultId,
+        spaceId: input.targetSpaceId,
+      })),
+    }
+  }
+
+  const metadataRows = await db
+    .select({
+      resourceId: resourceMetadata.resourceId,
+      provider: resourceMetadata.provider,
+      status: resourceMetadata.status,
+      dataJson: resourceMetadata.dataJson,
+      errorMessage: resourceMetadata.errorMessage,
+    })
+    .from(resourceMetadata)
+    .where(inArray(resourceMetadata.resourceId, resourceIds))
+  const metadataByResourceId = new Map(
+    metadataRows.map((metadata) => [metadata.resourceId, metadata])
+  )
+  const copiedResources = orderedResources.map((resource, index) => ({
+    sourceId: resource.id,
+    id: newId(),
+    resource,
+    metadata: metadataByResourceId.get(resource.id),
+    position: basePosition + index,
+  }))
+
+  await db.transaction(async (tx) => {
+    for (const item of copiedResources) {
+      await tx.insert(resources).values({
+        id: item.id,
+        vaultId: input.targetVaultId,
+        spaceId: input.targetSpaceId,
+        type: item.resource.type,
+        title: item.resource.title,
+        description: item.resource.description,
+        url: item.resource.url,
+        dedupeKey: item.resource.dedupeKey,
+        metadataStatus: item.resource.metadataStatus,
+        position: item.position,
+        createdBy: input.actor.id,
+      })
+      await tx.insert(resourceMetadata).values({
+        resourceId: item.id,
+        provider: item.metadata?.provider ?? item.resource.type,
+        status: item.metadata?.status ?? item.resource.metadataStatus,
+        dataJson: item.metadata?.dataJson ?? {},
+        errorMessage: item.metadata?.errorMessage,
+      })
+    }
+  })
+
+  return {
+    action: "copy" as const,
+    items: copiedResources.map((item) => ({
+      id: item.id,
+      sourceId: item.sourceId,
+      action: "copy" as const,
+      vaultId: input.targetVaultId,
+      spaceId: input.targetSpaceId,
+    })),
   }
 }
 

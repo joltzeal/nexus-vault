@@ -59,6 +59,7 @@ export function VaultDocument({
   onToggleResourceStar,
   onToggleStar,
   onTransferResource,
+  onTransferResources,
   onUpdateResourceAnnotation,
   onUpdateSpaceIcon,
   pendingSubmissionCount,
@@ -112,6 +113,12 @@ export function VaultDocument({
     targetVaultId: string
     targetSpaceId: string
   }) => Promise<void>
+  onTransferResources: (input: {
+    action: "move" | "copy"
+    resourceIds: string[]
+    targetVaultId: string
+    targetSpaceId: string
+  }) => Promise<void>
   onUpdateResourceAnnotation: (resourceId: string, patch: ResourceAnnotationPatch) => void
   onUpdateSpaceIcon: (spaceId: string, icon: string) => void
   pendingSubmissionCount: number
@@ -125,6 +132,8 @@ export function VaultDocument({
   const handledSearchRequestId = useRef(0)
   const [activeSpaceId, setActiveSpaceId] = useState("")
   const [collapsedSpaceIds, setCollapsedSpaceIds] = useState<Set<string>>(new Set())
+  const [selectionSpaceId, setSelectionSpaceId] = useState("")
+  const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(new Set())
   const spaces = useMemo(() => getSortedSpaces(activeSet), [activeSet])
   const allSpacesCollapsed =
     spaces.length > 0 && spaces.every((space) => collapsedSpaceIds.has(space.id))
@@ -132,10 +141,36 @@ export function VaultDocument({
     () => groupResourcesBySpace(activeSet?.resources ?? [], spaces),
     [activeSet?.resources, spaces]
   )
+  const selectedResources = useMemo(
+    () =>
+      (activeSet?.resources ?? []).filter((resource) =>
+        selectedResourceIds.has(resource.id)
+      ),
+    [activeSet?.resources, selectedResourceIds]
+  )
+  const selectedResourceSourceSpaceId =
+    selectionSpaceId || selectedResources[0]?.spaceId || ""
 
   useEffect(() => {
     setActiveSpaceId((current) => current || spaces[0]?.id || "")
   }, [spaces])
+
+  useEffect(() => {
+    setSelectedResourceIds((current) => {
+      if (current.size === 0) return current
+
+      const availableIds = new Set((activeSet?.resources ?? []).map((resource) => resource.id))
+      const next = new Set(
+        [...current].filter((resourceId) => availableIds.has(resourceId))
+      )
+
+      return next.size === current.size ? current : next
+    })
+
+    if (selectionSpaceId && !spaces.some((space) => space.id === selectionSpaceId)) {
+      setSelectionSpaceId("")
+    }
+  }, [activeSet?.resources, selectionSpaceId, spaces])
 
   useEffect(() => {
     if (
@@ -262,6 +297,40 @@ export function VaultDocument({
     setActiveSpaceId(spaceId)
   }
 
+  function toggleResourceSelectionMode(spaceId: string) {
+    const shouldExit = selectionSpaceId === spaceId
+    setSelectedResourceIds(new Set())
+    setSelectionSpaceId(shouldExit ? "" : spaceId)
+  }
+
+  function toggleSelectedResource(resourceId: string, selected: boolean) {
+    setSelectedResourceIds((current) => {
+      const next = new Set(current)
+      if (selected) next.add(resourceId)
+      else next.delete(resourceId)
+      return next
+    })
+  }
+
+  function clearResourceSelection() {
+    setSelectedResourceIds(new Set())
+    setSelectionSpaceId("")
+  }
+
+  async function transferSelectedResources(input: {
+    action: "move" | "copy"
+    targetVaultId: string
+    targetSpaceId: string
+  }) {
+    if (selectedResources.length === 0) return
+
+    await onTransferResources({
+      ...input,
+      resourceIds: selectedResources.map((resource) => resource.id),
+    })
+    clearResourceSelection()
+  }
+
   return (
     <>
       <main className="h-full min-h-0 overflow-auto scroll-smooth" ref={mainRef}>
@@ -316,6 +385,8 @@ export function VaultDocument({
                     onSelectResource={onSelectResource}
                     onToggleResourceReadLater={onToggleResourceReadLater}
                     onToggleResourceStar={onToggleResourceStar}
+                    onToggleResourceSelected={toggleSelectedResource}
+                    onToggleSelectionMode={() => toggleResourceSelectionMode(space.id)}
                     onTransferResource={onTransferResource}
                     onUpdateResourceAnnotation={onUpdateResourceAnnotation}
                     onToggleCollapsed={() =>
@@ -329,6 +400,8 @@ export function VaultDocument({
                     onUpdateIcon={(icon) => onUpdateSpaceIcon(space.id, icon)}
                     resources={groupedResources.get(space.id) ?? []}
                     selectedResourceId={selectedResourceId}
+                    selectedResourceIds={selectedResourceIds}
+                    selectionMode={selectionSpaceId === space.id}
                     space={space}
                     spacePosition={index}
                     transferFocusSpaceId={transferFocusSpaceId}
@@ -375,13 +448,21 @@ export function VaultDocument({
       <VaultToc
         activeSpaceId={activeSpaceId}
         disabled={!isSignedIn || !activeSet || isVaultLoading}
+        onClearResourceSelection={clearResourceSelection}
         onAddSpace={onAddSpace}
+        onCreateTransferTargetSpace={onCreateTransferTargetSpace}
         onJump={jumpToSpace}
+        onLoadTransferTargets={onLoadTransferTargets}
+        onTransferSelectedResources={transferSelectedResources}
         onToggleAllSpaces={toggleAllSpaces}
         resources={isVaultLoading ? [] : activeSet?.resources ?? []}
+        selectedResourceCount={selectedResources.length}
+        selectedResourceSourceSpaceId={selectedResourceSourceSpaceId}
         isVaultOwner={isVaultOwner}
         spaces={isVaultLoading ? [] : spaces}
         spacesCollapsed={allSpacesCollapsed}
+        transferFocusSpaceId={transferFocusSpaceId}
+        transferTargets={transferTargets}
       />
     </>
   )

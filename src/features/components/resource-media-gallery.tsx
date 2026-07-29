@@ -103,7 +103,6 @@ export function ResourceMediaGallery({
                 </div>
               </div>
               <div className="relative grid max-h-[78vh] min-h-[260px] place-items-start overflow-auto rounded-input border border-line bg-black/35">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   alt={`${title} preview ${previewIndex + 1}`}
                   className="h-auto w-full max-w-none object-contain"
@@ -169,7 +168,6 @@ function MediaPreview({
             <span className="text-xs">媒体无法显示</span>
           </div>
         ) : (
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             alt={`${title} preview ${index + 1}`}
             className="size-full object-cover"
@@ -206,7 +204,6 @@ function MediaPreview({
           <span className="text-xs">媒体无法显示</span>
         </div>
       ) : (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           alt={`${title} preview ${index + 1}`}
           className="size-full object-cover"
