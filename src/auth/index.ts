@@ -1,4 +1,3 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { betterAuth } from "better-auth/minimal";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
@@ -117,17 +116,7 @@ function isPostgresBcryptHash(hash: string) {
 }
 
 export async function createAuthSession(envOverride?: RuntimeEnv) {
-	let cfCtx: Awaited<ReturnType<typeof getCloudflareContext>> | null = null;
-
-	if (!envOverride) {
-		try {
-			cfCtx = await getCloudflareContext({ async: true });
-		} catch {
-			cfCtx = null;
-		}
-	}
-
-	const env = (envOverride ?? cfCtx?.env ?? process.env) as unknown as RuntimeEnv;
+	const env = (envOverride ?? process.env) as unknown as RuntimeEnv;
 	const database = await createDbSession(env);
 
 	try {
@@ -136,7 +125,7 @@ export async function createAuthSession(envOverride?: RuntimeEnv) {
 				{
 					autoDetectIpAddress: true,
 					geolocationTracking: false,
-					cf: cfCtx?.cf ?? {},
+					cf: {},
 					postgres: {
 						db: database.db as unknown as PostgresDb,
 						options: {

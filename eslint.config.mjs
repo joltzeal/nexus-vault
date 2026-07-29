@@ -19,6 +19,7 @@ export default defineConfig([
 		".wrangler/**",
 		"out/**",
 		"build/**",
+		"dist/**",
 		"cloudflare-env.d.ts",
 		"next-env.d.ts",
 	]),

@@ -1,4 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { AsyncLocalStorage } from "node:async_hooks"
 import type { z } from "zod"
 
 import { hasSessionCookie } from "@/auth/cookies"
@@ -8,6 +8,15 @@ import { ApiError, unauthorized, validationFailed } from "@/server/api/errors"
 import type { Actor, ApiContext, ApiBindings, Db } from "@/server/api/types"
 
 type AuthMode = "none" | "optional" | "required"
+
+type RuntimeContext = {
+  env: ApiBindings
+  executionCtx: {
+    waitUntil(promise: Promise<unknown>): void
+  }
+}
+
+const runtimeStorage = new AsyncLocalStorage<RuntimeContext>()
 
 export type RequestContext = ApiContext & {
   actor?: Actor
@@ -125,6 +134,10 @@ export function serializeCookie(
   return parts.join("; ")
 }
 
+export function withApiRuntime<T>(runtime: RuntimeContext, callback: () => T) {
+  return runtimeStorage.run(runtime, callback)
+}
+
 function failure(error: ApiError) {
   return Response.json(
     {
@@ -141,24 +154,15 @@ function failure(error: ApiError) {
 }
 
 async function getRuntimeContext() {
-  try {
-    const { env, ctx } = await getCloudflareContext({ async: true })
-    return {
-      env: env as unknown as ApiBindings,
-      executionCtx: {
-        waitUntil(promise: Promise<unknown>) {
-          ctx.waitUntil(promise)
-        },
+  const runtime = runtimeStorage.getStore()
+  if (runtime) return runtime
+
+  return {
+    env: process.env as unknown as ApiBindings,
+    executionCtx: {
+      waitUntil(promise: Promise<unknown>) {
+        void promise.catch((error) => console.error(error))
       },
-    }
-  } catch {
-    return {
-      env: process.env as unknown as ApiBindings,
-      executionCtx: {
-        waitUntil(promise: Promise<unknown>) {
-          void promise.catch((error) => console.error(error))
-        },
-      },
-    }
+    },
   }
 }

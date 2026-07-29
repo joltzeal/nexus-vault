@@ -1,8 +1,4 @@
-import "server-only"
-
 import { and, desc, eq, gt, inArray } from "drizzle-orm"
-import { headers } from "next/headers"
-import { redirect } from "next/navigation"
 
 import { getAuthSecret, type AuthRuntimeEnv } from "@/auth/config"
 import { getSessionCookieValues } from "@/auth/cookies"
@@ -58,13 +54,17 @@ export async function resolveViewerFromRequest(
   }
 }
 
-export async function getViewer(env?: Partial<CloudflareEnv>): Promise<Viewer | null> {
-  return resolveViewerFromRequest(new Headers(await headers()), env)
+export async function getViewer(
+  env?: Partial<CloudflareEnv>,
+  input?: Request | Headers,
+): Promise<Viewer | null> {
+  if (!input) return null
+  return resolveViewerFromRequest(input, env)
 }
 
-export async function requireViewer(env?: Partial<CloudflareEnv>) {
-  const viewer = await getViewer(env)
-  if (!viewer) redirect("/")
+export async function requireViewer(env?: Partial<CloudflareEnv>, input?: Request | Headers) {
+  const viewer = await getViewer(env, input)
+  if (!viewer) throw new Error("Authentication required.")
   return viewer
 }
 

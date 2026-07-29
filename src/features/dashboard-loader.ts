@@ -1,5 +1,3 @@
-import "server-only"
-
 import type { Viewer } from "@/auth/session"
 import { createDbSession } from "@/db"
 import { mapVaultDetail, mapVaultListItem } from "@/features/mappers"

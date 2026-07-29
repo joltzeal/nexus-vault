@@ -1,4 +1,3 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { drizzle } from "drizzle-orm/postgres-js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -12,17 +11,8 @@ type RuntimeEnv = Partial<CloudflareEnv> & {
 
 export type Db = PostgresJsDatabase<typeof schema>;
 
-async function getRuntimeEnv(): Promise<RuntimeEnv> {
-	try {
-		const { env } = await getCloudflareContext({ async: true });
-		return env as unknown as RuntimeEnv;
-	} catch {
-		return process.env as unknown as RuntimeEnv;
-	}
-}
-
 async function getDatabaseUrl(env?: RuntimeEnv | Promise<RuntimeEnv>) {
-	const runtimeEnv = await (env ?? getRuntimeEnv());
+	const runtimeEnv = await (env ?? (process.env as unknown as RuntimeEnv));
 	return runtimeEnv.HYPERDRIVE?.connectionString ?? runtimeEnv.DATABASE_URL ?? process.env.DATABASE_URL;
 }
 

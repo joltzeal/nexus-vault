@@ -13,19 +13,18 @@
 		"isolatedModules": true,
 		"jsx": "react-jsx",
 		"incremental": true,
-		"plugins": [
-			{
-				"name": "next"
-			}
-		],
 		"paths": {
-			"@/*": ["./src/*"]
+			"@/*": ["./src/*"],
+			"next/dynamic": ["./src/shims/next-dynamic.tsx"],
+			"next/link": ["./src/shims/next-link.tsx"],
+			"next/navigation": ["./src/shims/next-navigation.ts"],
+			"next-themes": ["./src/shims/next-themes.ts"]
 		},
 		"types": [
 			"./cloudflare-env.d.ts",
 			"node"
 		]
 	},
-	"include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
+	"include": ["**/*.ts", "**/*.tsx"],
 	"exclude": ["node_modules"]
 }
