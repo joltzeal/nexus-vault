@@ -1,5 +1,4 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { betterAuth } from "better-auth/minimal";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
@@ -20,42 +19,6 @@ import {
 type RuntimeEnv = AuthRuntimeEnv & RegistrationEnv;
 
 type PostgresDb = ReturnType<typeof drizzlePostgres>;
-
-const SCRYPT_KEY_LENGTH = 64;
-const SCRYPT_PARAMS = {
-	N: 16384,
-	r: 16,
-	p: 1,
-	maxmem: 128 * 16384 * 16 * 2,
-};
-
-async function hashPassword(password: string) {
-	const salt = randomBytes(16).toString("hex");
-	const key = scryptSync(
-		password.normalize("NFKC"),
-		salt,
-		SCRYPT_KEY_LENGTH,
-		SCRYPT_PARAMS,
-	);
-	return `${salt}:${key.toString("hex")}`;
-}
-
-async function verifyPassword({ hash, password }: { hash: string; password: string }) {
-	const [salt, keyHex, extra] = hash.split(":");
-	if (extra !== undefined || !/^[a-f\d]{32}$/i.test(salt) || !/^[a-f\d]{128}$/i.test(keyHex)) {
-		return false;
-	}
-
-	const expected = Buffer.from(keyHex, "hex");
-	const derived = scryptSync(
-		password.normalize("NFKC"),
-		salt,
-		SCRYPT_KEY_LENGTH,
-		SCRYPT_PARAMS,
-	);
-	return timingSafeEqual(expected, derived);
-}
-
 export function getAuthOptions(env: RuntimeEnv, db?: Db) {
 	return {
 		appName: "NexusVault",
@@ -63,10 +26,6 @@ export function getAuthOptions(env: RuntimeEnv, db?: Db) {
 		secret: getAuthSecret(env),
 		emailAndPassword: {
 			enabled: true,
-			password: {
-				hash: hashPassword,
-				verify: verifyPassword,
-			},
 		},
 		session: {
 			deferSessionRefresh: true,
