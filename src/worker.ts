@@ -1,5 +1,6 @@
 import { api, queue } from "@/worker/api"
 import type { QueueMessage } from "@/server/queues/messages"
+import { runScheduledCloudDriveChecks } from "@/server/services/cloud-drive-check-service"
 
 export default {
   async fetch(request, env, ctx) {
@@ -16,6 +17,14 @@ export default {
     }
 
     return env.ASSETS.fetch(request)
+  },
+  scheduled(controller, env, ctx) {
+    ctx.waitUntil(
+      runScheduledCloudDriveChecks(env, {
+        cron: controller.cron,
+        scheduledTime: controller.scheduledTime,
+      })
+    )
   },
   queue,
 } satisfies ExportedHandler<CloudflareEnv, QueueMessage>

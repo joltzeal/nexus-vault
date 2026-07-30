@@ -17,6 +17,7 @@ export const resourceTypeValues = [
 	"google_drive",
 	"dropbox",
 	"alist",
+	"ftp",
 	"http",
 	"youtube",
 	"other",

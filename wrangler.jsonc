@@ -51,12 +51,22 @@
 				"binding": "QUEUE",
 				"queue": "nexus-vault-queue",
 				"remote": false
+			},
+			{
+				"binding": "CLOUD_DRIVE_CHECK_QUEUE",
+				"queue": "nexus-vault-cloud-drive-checks",
+				"remote": false
 			}
 		],
 		"consumers": [
 			{
 				"queue": "nexus-vault-queue",
 				"max_batch_size": 10,
+				"max_batch_timeout": 30
+			},
+			{
+				"queue": "nexus-vault-cloud-drive-checks",
+				"max_batch_size": 5,
 				"max_batch_timeout": 30
 			}
 		]
@@ -65,6 +75,11 @@
 		"production": {
 			"name": "nexus-vault",
 			"minify": true,
+			"triggers": {
+				"crons": [
+					"15 19 * * *"
+				]
+			},
 			"vars": {
 				"NEXTJS_ENV": "production",
 				"ALLOW_USER_REGISTRATION": "false"
@@ -112,12 +127,21 @@
 					{
 						"binding": "QUEUE",
 						"queue": "nexus-vault-queue"
+					},
+					{
+						"binding": "CLOUD_DRIVE_CHECK_QUEUE",
+						"queue": "nexus-vault-cloud-drive-checks"
 					}
 				],
 				"consumers": [
 					{
 						"queue": "nexus-vault-queue",
 						"max_batch_size": 10,
+						"max_batch_timeout": 30
+					},
+					{
+						"queue": "nexus-vault-cloud-drive-checks",
+						"max_batch_size": 5,
 						"max_batch_timeout": 30
 					}
 				]

@@ -16,6 +16,7 @@ import type {
 } from "@/features/types"
 
 export type MediaItem = {
+  fit?: "cover" | "natural"
   kind: "image" | "video"
   src: string
   preview?: string
@@ -145,9 +146,13 @@ export function getResourceMedia(resource: Resource): MediaItem[] {
   if (twitterVideos.length > 0) return twitterVideos
 
   const images = uniqueImages([metadata?.cover, ...(metadata?.screenshots ?? [])])
+  const imageFit = isWhatsLinkMetadataSource(metadata?.source?.url)
+    ? ("natural" as const)
+    : ("cover" as const)
 
   return [
     ...uniqueImages([...twitterPhotos, ...images]).map((src) => ({
+      fit: imageFit,
       kind: resource.type === "youtube" ? ("video" as const) : ("image" as const),
       src,
     })),
@@ -187,6 +192,7 @@ export function getMetadataState(status: MetadataStatus) {
 export function getTypePill(type: ResourceType) {
   if (type === "magnet") return { className: "tp-magnet", label: "MAG" }
   if (type === "twitter") return { className: "tp-http", label: "X" }
+  if (type === "ftp") return { className: "tp-http", label: "FTP" }
   if (type === "baidu_pan") return { className: "tp-drive", label: "BD" }
   if (type === "pan_115") return { className: "tp-drive", label: "115" }
   if (type === "pan_123") return { className: "tp-drive", label: "123" }
@@ -381,6 +387,15 @@ function isTwitterVideo(
   value: { url: string; preview?: string } | null
 ): value is { url: string; preview?: string } {
   return value !== null
+}
+
+function isWhatsLinkMetadataSource(value?: string) {
+  if (!value) return false
+  try {
+    return new URL(value).hostname === "whatslink.info"
+  } catch {
+    return value.startsWith("https://whatslink.info/")
+  }
 }
 
 function getCloudDriveMetadata(value: unknown) {

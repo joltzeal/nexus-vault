@@ -7,9 +7,11 @@ import type { ReactNode } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { ScrollToTopButton } from "@/features/components/scroll-to-top-button"
 import { VaultHeader } from "@/features/components/vault-header"
 import { SpaceSection, type BoardDragData } from "@/features/components/space-section"
 import { VaultToc } from "@/features/components/vault-toc"
+import type { VaultResourceViewMode } from "@/features/components/vault-view-mode"
 import type {
   ResourceAnnotationPatch,
   ResourceSet,
@@ -53,6 +55,7 @@ export function VaultDocument({
   onMoveSpace,
   onOpenSettings,
   onReorderSpace,
+  onResolveResourceMetadata,
   onSelectResource,
   onToggleMediaVisibility,
   onToggleResourceReadLater,
@@ -102,6 +105,7 @@ export function VaultDocument({
   onMoveSpace: (spaceId: string, targetVaultId: string) => Promise<void>
   onOpenSettings: (tab: "share" | "members" | "submissions") => void
   onReorderSpace: (input: { spaceId: string; position: number }) => void
+  onResolveResourceMetadata: (resourceId: string) => void
   onSelectResource: (resourceId: string) => void
   onToggleMediaVisibility: (visible: boolean) => void
   onToggleResourceReadLater: (resourceId: string) => void
@@ -128,12 +132,13 @@ export function VaultDocument({
   transferFocusSpaceId?: string
   transferTargets: ResourceTransferTargetVault[]
 }) {
-  const mainRef = useRef<HTMLDivElement>(null)
+  const mainRef = useRef<HTMLElement>(null)
   const handledSearchRequestId = useRef(0)
   const [activeSpaceId, setActiveSpaceId] = useState("")
   const [collapsedSpaceIds, setCollapsedSpaceIds] = useState<Set<string>>(new Set())
   const [selectionSpaceId, setSelectionSpaceId] = useState("")
   const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(new Set())
+  const [viewMode, setViewMode] = useState<VaultResourceViewMode>("list")
   const spaces = useMemo(() => getSortedSpaces(activeSet), [activeSet])
   const allSpacesCollapsed =
     spaces.length > 0 && spaces.every((space) => collapsedSpaceIds.has(space.id))
@@ -334,117 +339,125 @@ export function VaultDocument({
   return (
     <>
       <main className="h-full min-h-0 overflow-auto scroll-smooth" ref={mainRef}>
-        <div className="mx-auto w-full max-w-[1120px] px-4 py-5 pb-20 md:px-7 2xl:pr-[236px]">
-          <VaultHeader
-            collaboratorsCount={collaboratorsCount}
-            disabled={!isSignedIn}
-            canAddResource={canAddResource}
-            isVaultOwner={isVaultOwner}
-            isShareMode={isShareMode}
-            mediaVisible={mediaVisible}
-            onAddResource={onAddResource}
-            onCreateSpace={onAddSpace}
-            onDeleteVault={onDeleteVault}
-            onEditVault={onEditVault}
-            onForkVault={onForkVault}
-            onOpenSettings={onOpenSettings}
-            onToggleMediaVisibility={onToggleMediaVisibility}
-            onToggleStar={onToggleStar}
-            pendingSubmissionCount={pendingSubmissionCount}
-            set={activeSet}
-          />
-          {shareSubmissionSlot}
-          {activeSet && isVaultLoading ? (
-            <div className="mt-4 flex min-h-[320px] flex-col items-center justify-center gap-3 rounded-card border border-line bg-ink-800/45 text-fg-dim">
-              <LoaderCircle className="size-5 animate-spin text-jade" />
-              <span className="text-sm">正在加载 Vault...</span>
-            </div>
-          ) : activeSet ? (
-            <DragDropProvider onDragEnd={handleDragEnd}>
-              <section className="mt-3.5">
-                {spaces.map((space, index) => (
-                  <SpaceSection
-                    collapsed={collapsedSpaceIds.has(space.id)}
-                    disabled={!isSignedIn}
-                    canAddResource={canAddResource}
-                    currentUserId={currentUserId}
-                    isVaultEditor={isVaultEditor}
-                    isVaultOwner={isVaultOwner}
-                    isSignedIn={isSignedIn}
-                    mediaVisible={mediaVisible}
-                    key={space.id}
-                    onAddResource={() => onAddResourceToSpace(space.id)}
-                    onActivateResource={onActivateResource}
-                    onClearResourceAnnotation={onClearResourceAnnotation}
-                    onCreateTransferTargetSpace={onCreateTransferTargetSpace}
-                    onDeleteSpace={() => onDeleteSpace(space.id)}
-                    onEditSpace={() => onEditSpace(space)}
-                    onDeleteResource={onDeleteResource}
-                    onLoadTransferTargets={onLoadTransferTargets}
-                    onMoveSpace={(targetVaultId) => onMoveSpace(space.id, targetVaultId)}
-                    onSelectResource={onSelectResource}
-                    onToggleResourceReadLater={onToggleResourceReadLater}
-                    onToggleResourceStar={onToggleResourceStar}
-                    onToggleResourceSelected={toggleSelectedResource}
-                    onToggleSelectionMode={() => toggleResourceSelectionMode(space.id)}
-                    onTransferResource={onTransferResource}
-                    onUpdateResourceAnnotation={onUpdateResourceAnnotation}
-                    onToggleCollapsed={() =>
-                      setCollapsedSpaceIds((current) => {
-                        const next = new Set(current)
-                        if (next.has(space.id)) next.delete(space.id)
-                        else next.add(space.id)
-                        return next
-                      })
-                    }
-                    onUpdateIcon={(icon) => onUpdateSpaceIcon(space.id, icon)}
-                    resources={groupedResources.get(space.id) ?? []}
-                    selectedResourceId={selectedResourceId}
-                    selectedResourceIds={selectedResourceIds}
-                    selectionMode={selectionSpaceId === space.id}
-                    space={space}
-                    spacePosition={index}
-                    transferFocusSpaceId={transferFocusSpaceId}
-                    transferTargets={transferTargets}
-                    vaultId={activeSet.id}
-                    vaultName={activeSet.name}
-                  />
-                ))}
-                {spaces.length === 0 && (
-                  isVaultOwner ? (
-                    <button
-                      className="mt-4 flex min-h-28 w-full flex-col items-center justify-center gap-2 rounded-card border border-dashed border-line bg-ink-800/35 p-4 text-center text-fg-dim transition hover:border-jade-dim hover:text-fg disabled:opacity-50"
-                      disabled={!isSignedIn}
-                      onClick={onAddSpace}
-                      type="button"
-                    >
-                      <FolderPlus />
-                      <span className="text-sm font-semibold">添加 Space</span>
-                    </button>
-                  ) : (
-                    <div className="mt-4 flex min-h-28 w-full flex-col items-center justify-center gap-2 rounded-card border border-dashed border-line bg-ink-800/35 p-4 text-center text-fg-dim">
-                      <FolderPlus />
-                      <span className="text-sm font-semibold">该 Vault 还没有 Space</span>
-                    </div>
-                  )
-                )}
-              </section>
-            </DragDropProvider>
-          ) : (
-            <div className="mt-8 rounded-card border border-line bg-ink-800 p-6 text-center">
-              <div className="mx-auto grid size-10 place-items-center rounded-card border border-line-soft bg-ink-850 text-jade">
-                <Database className="size-5" />
+        <div className="w-full px-4 py-5 pb-20 md:px-7 lg:pr-[236px]">
+          <div className="mx-auto w-full max-w-[1280px]">
+            <VaultHeader
+              collaboratorsCount={collaboratorsCount}
+              disabled={!isSignedIn}
+              canAddResource={canAddResource}
+              isVaultOwner={isVaultOwner}
+              isShareMode={isShareMode}
+              mediaVisible={mediaVisible}
+              onAddResource={onAddResource}
+              onCreateSpace={onAddSpace}
+              onDeleteVault={onDeleteVault}
+              onEditVault={onEditVault}
+              onForkVault={onForkVault}
+              onOpenSettings={onOpenSettings}
+              onToggleMediaVisibility={onToggleMediaVisibility}
+              onToggleStar={onToggleStar}
+              pendingSubmissionCount={pendingSubmissionCount}
+              set={activeSet}
+            />
+            {shareSubmissionSlot}
+            {activeSet && isVaultLoading ? (
+              <div className="mt-4 flex min-h-[320px] flex-col items-center justify-center gap-3 rounded-card border border-line bg-ink-800/45 text-fg-dim">
+                <LoaderCircle className="size-5 animate-spin text-jade" />
+                <span className="text-sm">正在加载 Vault...</span>
               </div>
-              <p className="mt-3 font-display text-lg font-semibold">还没有 Vault</p>
-              <p className="mt-1 text-sm text-fg-muted">创建第一个 Vault，开始整理资源。</p>
-              <Button className="mt-4" onClick={onCreateVault} disabled={!isSignedIn}>
-                <Plus data-icon="inline-start" />
-                创建 Vault
-              </Button>
-            </div>
-          )}
+            ) : activeSet ? (
+              <DragDropProvider onDragEnd={handleDragEnd}>
+                <section className="mt-3.5">
+                  {spaces.map((space, index) => (
+                    <SpaceSection
+                      collapsed={collapsedSpaceIds.has(space.id)}
+                      disabled={!isSignedIn}
+                      canAddResource={canAddResource}
+                      currentUserId={currentUserId}
+                      isVaultEditor={isVaultEditor}
+                      isVaultOwner={isVaultOwner}
+                      isSignedIn={isSignedIn}
+                      mediaVisible={mediaVisible}
+                      key={space.id}
+                      onAddResource={() => onAddResourceToSpace(space.id)}
+                      onActivateResource={onActivateResource}
+                      onClearResourceAnnotation={onClearResourceAnnotation}
+                      onCreateTransferTargetSpace={onCreateTransferTargetSpace}
+                      onDeleteSpace={() => onDeleteSpace(space.id)}
+                      onEditSpace={() => onEditSpace(space)}
+                      onDeleteResource={onDeleteResource}
+                      onLoadTransferTargets={onLoadTransferTargets}
+                      onMoveSpace={(targetVaultId) => onMoveSpace(space.id, targetVaultId)}
+                      onResolveResourceMetadata={onResolveResourceMetadata}
+                      onSelectResource={onSelectResource}
+                      onToggleResourceReadLater={onToggleResourceReadLater}
+                      onToggleResourceStar={onToggleResourceStar}
+                      onToggleResourceSelected={toggleSelectedResource}
+                      onToggleSelectionMode={() => toggleResourceSelectionMode(space.id)}
+                      onTransferResource={onTransferResource}
+                      onUpdateResourceAnnotation={onUpdateResourceAnnotation}
+                      onToggleCollapsed={() =>
+                        setCollapsedSpaceIds((current) => {
+                          const next = new Set(current)
+                          if (next.has(space.id)) next.delete(space.id)
+                          else next.add(space.id)
+                          return next
+                        })
+                      }
+                      onUpdateIcon={(icon) => onUpdateSpaceIcon(space.id, icon)}
+                      resources={groupedResources.get(space.id) ?? []}
+                      selectedResourceId={selectedResourceId}
+                      selectedResourceIds={selectedResourceIds}
+                      selectionMode={selectionSpaceId === space.id}
+                      space={space}
+                      spacePosition={index}
+                      transferFocusSpaceId={transferFocusSpaceId}
+                      transferTargets={transferTargets}
+                      vaultId={activeSet.id}
+                      vaultName={activeSet.name}
+                      viewMode={viewMode}
+                    />
+                  ))}
+                  {spaces.length === 0 && (
+                    isVaultOwner ? (
+                      <button
+                        className="mt-4 flex min-h-28 w-full flex-col items-center justify-center gap-2 rounded-card border border-dashed border-line bg-ink-800/35 p-4 text-center text-fg-dim transition hover:border-jade-dim hover:text-fg disabled:opacity-50"
+                        disabled={!isSignedIn}
+                        onClick={onAddSpace}
+                        type="button"
+                      >
+                        <FolderPlus />
+                        <span className="text-sm font-semibold">添加 Space</span>
+                      </button>
+                    ) : (
+                      <div className="mt-4 flex min-h-28 w-full flex-col items-center justify-center gap-2 rounded-card border border-dashed border-line bg-ink-800/35 p-4 text-center text-fg-dim">
+                        <FolderPlus />
+                        <span className="text-sm font-semibold">该 Vault 还没有 Space</span>
+                      </div>
+                    )
+                  )}
+                </section>
+              </DragDropProvider>
+            ) : (
+              <div className="mt-8 rounded-card border border-line bg-ink-800 p-6 text-center">
+                <div className="mx-auto grid size-10 place-items-center rounded-card border border-line-soft bg-ink-850 text-jade">
+                  <Database className="size-5" />
+                </div>
+                <p className="mt-3 font-display text-lg font-semibold">还没有 Vault</p>
+                <p className="mt-1 text-sm text-fg-muted">创建第一个 Vault，开始整理资源。</p>
+                <Button className="mt-4" onClick={onCreateVault} disabled={!isSignedIn}>
+                  <Plus data-icon="inline-start" />
+                  创建 Vault
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       </main>
+      <ScrollToTopButton
+        className="bottom-16 lg:bottom-4"
+        scrollRef={mainRef}
+      />
       <VaultToc
         activeSpaceId={activeSpaceId}
         disabled={!isSignedIn || !activeSet || isVaultLoading}
@@ -455,6 +468,7 @@ export function VaultDocument({
         onLoadTransferTargets={onLoadTransferTargets}
         onTransferSelectedResources={transferSelectedResources}
         onToggleAllSpaces={toggleAllSpaces}
+        onViewModeChange={setViewMode}
         resources={isVaultLoading ? [] : activeSet?.resources ?? []}
         selectedResourceCount={selectedResources.length}
         selectedResourceSourceSpaceId={selectedResourceSourceSpaceId}
@@ -463,6 +477,7 @@ export function VaultDocument({
         spacesCollapsed={allSpacesCollapsed}
         transferFocusSpaceId={transferFocusSpaceId}
         transferTargets={transferTargets}
+        viewMode={viewMode}
       />
     </>
   )

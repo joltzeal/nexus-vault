@@ -2,9 +2,10 @@
 
 import { DragDropProvider } from "@dnd-kit/react"
 import { Clock3 } from "lucide-react"
-import { useState } from "react"
+import { useRef, useState } from "react"
 
 import { ResourceCard } from "@/features/components/resource-card"
+import { ScrollToTopButton } from "@/features/components/scroll-to-top-button"
 import type {
   ReadLaterResourceItem,
   ResourceAnnotationPatch,
@@ -27,10 +28,11 @@ export function WatchLaterPage({
   onToggleResourceStar: (resourceId: string) => void
   onUpdateResourceAnnotation: (resourceId: string, patch: ResourceAnnotationPatch) => void
 }) {
+  const mainRef = useRef<HTMLElement>(null)
   const [activeResourceId, setActiveResourceId] = useState("")
 
   return (
-    <main className="h-full min-h-0 overflow-auto bg-background">
+    <main className="h-full min-h-0 overflow-auto bg-background" ref={mainRef}>
       <div className="mx-auto flex w-full max-w-[1160px] flex-col gap-5 px-4 py-5 pb-20 md:px-7">
         <header className="flex flex-wrap items-end justify-between gap-3 border-b border-line-soft pb-4">
           <div>
@@ -100,6 +102,7 @@ export function WatchLaterPage({
           <EmptyWatchLaterState />
         )}
       </div>
+      <ScrollToTopButton scrollRef={mainRef} />
     </main>
   )
 }

@@ -12,6 +12,7 @@ export type ResourceType =
   | "google_drive"
   | "dropbox"
   | "alist"
+  | "ftp"
   | "http"
   | "youtube"
   | "other"

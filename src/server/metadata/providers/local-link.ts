@@ -1,5 +1,5 @@
 import { createBaseResourceMetadata } from "@/domain/resources/metadata"
-import { parseEd2kLink, parseThunderLink } from "@/domain/resources/input"
+import { parseEd2kLink, parseFtpLink, parseThunderLink } from "@/domain/resources/input"
 
 import type { MetadataProvider } from "../metadata-provider"
 
@@ -7,9 +7,52 @@ export const localLinkMetadataProvider: MetadataProvider = {
   name: "local-link-parser",
   supports: (resource) => {
     const url = resource.url.trim().toLowerCase()
-    return url.startsWith("ed2k://") || url.startsWith("thunder://")
+    return url.startsWith("ed2k://") || url.startsWith("ftp://") || url.startsWith("thunder://")
   },
   async resolve(resource) {
+    const ftp = parseFtpLink(resource.url)
+    if (ftp) {
+      return {
+        provider: "local-ftp-parser",
+        status: "completed",
+        data: {
+          ...createBaseResourceMetadata({
+            type: resource.type,
+            title: ftp.fileName ?? resource.title,
+          }),
+          title: ftp.fileName ?? resource.title,
+          fileCount: ftp.fileName ? 1 : undefined,
+          fileType: ftp.fileType,
+          tree: ftp.fileName
+            ? [
+                {
+                  name: ftp.fileName,
+                  type: ftp.fileType,
+                },
+              ]
+            : [],
+          source: {
+            name: "local-ftp-parser",
+            url: ftp.url,
+          },
+          extra: {
+            ftp: {
+              host: ftp.host,
+              path: ftp.path,
+              port: ftp.port,
+              fileName: ftp.fileName,
+              fileExtension: ftp.fileExtension,
+              fileType: ftp.fileType,
+              availability: {
+                status: "not_checked",
+                reason: "FTP size probing is not available in the Worker fetch runtime.",
+              },
+            },
+          },
+        },
+      }
+    }
+
     const ed2k = parseEd2kLink(resource.url)
     if (ed2k) {
       return {

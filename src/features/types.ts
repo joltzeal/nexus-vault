@@ -14,6 +14,7 @@ export type ResourceType =
   | "google_drive"
   | "dropbox"
   | "alist"
+  | "ftp"
   | "http"
   | "youtube"
   | "other"
@@ -223,6 +224,7 @@ export const resourceTypes: Array<{ value: ResourceType; label: string }> = [
   { value: "google_drive", label: "Google Drive" },
   { value: "dropbox", label: "Dropbox" },
   { value: "alist", label: "AList" },
+  { value: "ftp", label: "FTP" },
   { value: "http", label: "Website" },
   { value: "youtube", label: "YouTube" },
   { value: "other", label: "Other" },

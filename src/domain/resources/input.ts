@@ -33,6 +33,16 @@ export type ParsedTwitterLink = {
   url: string
 }
 
+export type ParsedFtpLink = {
+  fileExtension?: string
+  fileName?: string
+  fileType?: ParsedResourceFileType
+  host: string
+  path: string
+  port?: number
+  url: string
+}
+
 export type ParsedHttpLink = {
   host: string
   url: string
@@ -186,6 +196,33 @@ export function parseTwitterLink(url: string): ParsedTwitterLink | null {
   }
 }
 
+export function parseFtpLink(url: string): ParsedFtpLink | null {
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(url.trim())
+  } catch {
+    return null
+  }
+
+  if (parsedUrl.protocol.toLowerCase() !== "ftp:") return null
+  const host = normalizeHostname(parsedUrl.hostname)
+  if (!host) return null
+
+  const path = decodePathname(parsedUrl.pathname)
+  const fileName = path.split("/").filter(Boolean).pop()
+  const fileExtension = fileName ? getFileExtension(fileName) : undefined
+
+  return {
+    fileExtension,
+    fileName,
+    fileType: inferFileType(fileExtension),
+    host,
+    path,
+    port: parsedUrl.port ? Number.parseInt(parsedUrl.port, 10) : undefined,
+    url: parsedUrl.toString(),
+  }
+}
+
 export function parseCloudDriveLink(
   url: string,
   extractionCode?: string,
@@ -253,6 +290,7 @@ export function parseHttpLink(url: string): ParsedHttpLink | null {
 function defaultResourceTitle(type: ResourceType) {
   if (type === "magnet") return "名称未知"
   if (type === "twitter") return "Untitled tweet"
+  if (type === "ftp") return "FTP link"
   if (isCloudDriveResourceType(type)) return getCloudDriveProviderLabel(type)
   if (type === "http") return "Untitled link"
   return "Untitled resource"
@@ -413,6 +451,38 @@ export const httpInputParser: ResourceInputParser = {
   },
 }
 
+export const ftpInputParser: ResourceInputParser = {
+  name: "ftp",
+  supports(input) {
+    return input.type === "ftp" || input.url.trim().toLowerCase().startsWith("ftp://")
+  },
+  parse(input) {
+    const parsed = parseFtpLink(input.url)
+
+    return {
+      type: "ftp",
+      url: parsed?.url ?? input.url.trim(),
+      title:
+        normalizeInputTitle(input.title) ||
+        parsed?.fileName ||
+        parsed?.host ||
+        defaultResourceTitle("ftp"),
+      metadata: {
+        ...(parsed
+          ? {
+              host: parsed.host,
+              path: parsed.path,
+              port: parsed.port,
+              fileName: parsed.fileName,
+              fileExtension: parsed.fileExtension,
+              fileType: parsed.fileType,
+            }
+          : {}),
+      },
+    }
+  },
+}
+
 export const thunderInputParser: ResourceInputParser = {
   name: "thunder",
   supports(input) {
@@ -455,6 +525,7 @@ const resourceInputParsers: ResourceInputParser[] = [
   magnetInputParser,
   ed2kInputParser,
   thunderInputParser,
+  ftpInputParser,
   httpInputParser,
   fallbackInputParser,
 ]
@@ -537,6 +608,13 @@ function getFileExtension(fileName: string) {
   const match = cleanName.match(/\.([a-z0-9]{1,12})$/i)
 
   return match?.[1]?.toLowerCase()
+}
+
+function decodePathname(value: string) {
+  return value
+    .split("/")
+    .map((part) => decodeLinkPart(part))
+    .join("/")
 }
 
 function parseHttpUrl(value: string) {

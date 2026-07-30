@@ -1,15 +1,25 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronsDownUp, ChevronsUpDown, ListTree, Plus, X } from "lucide-react"
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  LayoutGrid,
+  List,
+  ListTree,
+  Plus,
+  X,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { ButtonGroup } from "@/components/ui/button-group"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { ResourceTransferDialog } from "@/features/components/resource-card"
+import type { VaultResourceViewMode } from "@/features/components/vault-view-mode"
 import type { Resource, ResourceTransferTargetVault, Space } from "@/features/types"
 import { cn } from "@/lib/utils"
 
@@ -24,6 +34,7 @@ export function VaultToc({
   onLoadTransferTargets,
   onTransferSelectedResources,
   onToggleAllSpaces,
+  onViewModeChange,
   resources,
   selectedResourceCount = 0,
   selectedResourceSourceSpaceId = "",
@@ -31,6 +42,7 @@ export function VaultToc({
   spacesCollapsed,
   transferFocusSpaceId,
   transferTargets,
+  viewMode,
 }: {
   activeSpaceId: string
   disabled: boolean
@@ -46,6 +58,7 @@ export function VaultToc({
     targetSpaceId: string
   }) => Promise<void>
   onToggleAllSpaces: () => void
+  onViewModeChange: (mode: VaultResourceViewMode) => void
   resources: Resource[]
   selectedResourceCount?: number
   selectedResourceSourceSpaceId?: string
@@ -53,6 +66,7 @@ export function VaultToc({
   spacesCollapsed: boolean
   transferFocusSpaceId?: string
   transferTargets: ResourceTransferTargetVault[]
+  viewMode: VaultResourceViewMode
 }) {
   function renderOutlineList() {
     return (
@@ -124,10 +138,44 @@ export function VaultToc({
     if (spaces.length === 0 && !isVaultOwner) return null
 
     return (
-      <div className="flex min-w-0 items-center gap-1">
-        {renderToggleSpacesButton()}
-        {isVaultOwner && renderAddSpaceButton()}
-      </div>
+      <>
+        <ButtonGroup className="w-full">
+          <Button
+            aria-label="列表视图"
+            className={cn(
+              "min-w-0 flex-1 justify-center",
+              viewMode === "list" && "border-jade-dim bg-[var(--jade-glow)] text-jade"
+            )}
+            onClick={() => onViewModeChange("list")}
+            size="sm"
+            title="列表视图"
+            type="button"
+            variant="outline"
+          >
+            <List data-icon="inline-start" />
+            列表
+          </Button>
+          <Button
+            aria-label="卡片瀑布流视图"
+            className={cn(
+              "min-w-0 flex-1 justify-center",
+              viewMode === "masonry" && "border-jade-dim bg-[var(--jade-glow)] text-jade"
+            )}
+            onClick={() => onViewModeChange("masonry")}
+            size="sm"
+            title="卡片瀑布流视图"
+            type="button"
+            variant="outline"
+          >
+            <LayoutGrid data-icon="inline-start" />
+            卡片
+          </Button>
+        </ButtonGroup>
+        <div className="flex min-w-0 items-center gap-1">
+          {renderToggleSpacesButton()}
+          {isVaultOwner && renderAddSpaceButton()}
+        </div>
+      </>
     )
   }
 
@@ -153,7 +201,7 @@ export function VaultToc({
 
   return (
     <>
-      <aside className="pointer-events-none fixed right-4 top-[72px] z-20 hidden w-[188px] flex-col gap-2 2xl:flex">
+      <aside className="pointer-events-none fixed right-4 top-[72px] z-20 hidden w-[188px] flex-col gap-2 lg:flex">
         <nav className="pointer-events-auto max-h-[42vh] overflow-auto rounded-card border border-line bg-ink-850/95 p-2.5 shadow-pop backdrop-blur">
           <div className="mono flex items-center gap-1.5 px-1.5 pb-2 text-[10px] uppercase tracking-[.16em] text-fg-dim">
             Outline
@@ -172,7 +220,7 @@ export function VaultToc({
           render={
           <Button
             aria-label="打开大纲"
-            className="fixed bottom-4 right-4 z-50 gap-1.5 shadow-pop 2xl:hidden"
+            className="fixed bottom-4 right-4 z-50 gap-1.5 shadow-pop lg:hidden"
             size="sm"
             variant="outline"
             type="button"

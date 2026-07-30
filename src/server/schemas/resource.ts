@@ -14,6 +14,7 @@ export const resourceTypeSchema = z.enum([
   "google_drive",
   "dropbox",
   "alist",
+  "ftp",
   "http",
   "youtube",
   "other",

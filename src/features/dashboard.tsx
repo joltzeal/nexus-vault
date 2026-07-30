@@ -22,6 +22,10 @@ import {
   type ResourceDetailsForm,
 } from "@/features/components/resource-details-sheet"
 import { ShareSubmissionDialog } from "@/features/components/share-submission-dialog"
+import {
+  SidebarInset,
+  SidebarProvider,
+} from "@/components/ui/sidebar"
 import { StarPage } from "@/features/components/star-page"
 import {
   VaultDocument,
@@ -2011,6 +2015,39 @@ export function VaultWorkspaceClient({
     }
   }
 
+  async function handleResolveResourceMetadata(resourceId: string) {
+    if (!activeSet) return
+
+    const previousSets = sets
+    setApiError("")
+    setSets((currentSets) =>
+      currentSets.map((set) => ({
+        ...set,
+        resources: set.resources.map((resource) =>
+          resource.id === resourceId
+            ? {
+                ...resource,
+                metadataStatus: "pending",
+              }
+            : resource
+        ),
+      }))
+    )
+
+    try {
+      await apiRequest(`/resources/${resourceId}/metadata/resolve`, {
+        method: "POST",
+      })
+      await refreshVaultDetail(activeSet.id)
+      toast.success("metadata 已重新获取")
+    } catch (error) {
+      setSets(previousSets)
+      const message = error instanceof Error ? error.message : "Failed to refresh metadata."
+      setApiError(message)
+      toast.error(message)
+    }
+  }
+
   function handleHomeNavigation() {
     setActivePage("workspace")
     router.push("/")
@@ -2033,7 +2070,7 @@ export function VaultWorkspaceClient({
   }
 
   return (
-    <main className={`fixed inset-0 grid h-dvh grid-cols-1 grid-rows-[52px_1fr] overflow-hidden bg-background text-foreground ${isShareMode ? "" : "lg:grid-cols-[236px_1fr]"}`}>
+    <main className="fixed inset-0 flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <VaultTopbar
         activePage={activePage}
         currentUserName={currentUserName}
@@ -2059,6 +2096,13 @@ export function VaultWorkspaceClient({
         currentVaultSearchItems={currentVaultSearchItems}
         globalSearchItems={globalSearchItems}
       />
+      <SidebarProvider
+        className="min-h-0 flex-1 overflow-hidden bg-background text-foreground"
+        style={{
+          "--sidebar-width": "236px",
+          "--sidebar-width-icon": "52px",
+        } as React.CSSProperties}
+      >
       {!isShareMode && (
         <VaultSidebar
           activeSetId={activeSetId}
@@ -2087,7 +2131,8 @@ export function VaultWorkspaceClient({
           }
         />
       )}
-      <div className="h-full min-h-0 overflow-hidden">
+      <SidebarInset className="h-full min-h-0 overflow-hidden bg-background">
+        <div className="h-full min-h-0 overflow-hidden">
         {activePage === "star" && !isShareMode ? (
           <StarPage
             isSignedIn={Boolean(currentUser)}
@@ -2136,6 +2181,9 @@ export function VaultWorkspaceClient({
             onMoveSpace={handleTransferSpace}
             onOpenSettings={openSettings}
             onReorderSpace={handleReorderSpace}
+            onResolveResourceMetadata={(resourceId) =>
+              void handleResolveResourceMetadata(resourceId)
+            }
             onSelectResource={handleSelectResource}
             onToggleResourceReadLater={handleToggleResourceReadLater}
             onToggleResourceStar={handleToggleResourceStar}
@@ -2163,6 +2211,7 @@ export function VaultWorkspaceClient({
           />
         )}
       </div>
+      </SidebarInset>
 
       <VaultSettingsSheet
         activeTab={settingsTab}
@@ -2255,6 +2304,7 @@ export function VaultWorkspaceClient({
         open={authDialogOpen}
         registrationReason={authPolicy.reason}
       />
+      </SidebarProvider>
     </main>
   )
 }

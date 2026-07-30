@@ -182,8 +182,8 @@ async function fetchTweetOEmbed(url: string) {
 }
 
 function getTweetTitle(authorName?: string, fallbackUsername?: string) {
-  if (authorName) return `X.com @ ${authorName}`
-  return fallbackUsername ? `X.com @ ${fallbackUsername}` : "X.com"
+  if (authorName) return `${authorName}@x.com`
+  return fallbackUsername ? `${fallbackUsername}@x.com` : "x.com"
 }
 
 function getUsernameFromAuthorUrl(authorUrl?: string) {

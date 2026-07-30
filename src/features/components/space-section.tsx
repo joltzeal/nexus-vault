@@ -51,6 +51,7 @@ import {
 import { MarkdownContent } from "@/features/components/markdown-content"
 import { ResourceCard } from "@/features/components/resource-card"
 import { SpaceIcon, SpaceIconPicker } from "@/features/components/space-icon-picker"
+import type { VaultResourceViewMode } from "@/features/components/vault-view-mode"
 import type {
   Resource,
   ResourceAnnotationPatch,
@@ -91,6 +92,7 @@ export function SpaceSection({
   onDeleteResource,
   onLoadTransferTargets,
   onMoveSpace,
+  onResolveResourceMetadata,
   onSelectResource,
   onToggleResourceReadLater,
   onToggleCollapsed,
@@ -110,6 +112,7 @@ export function SpaceSection({
   transferTargets,
   vaultId,
   vaultName,
+  viewMode,
 }: {
   collapsed: boolean
   disabled: boolean
@@ -128,6 +131,7 @@ export function SpaceSection({
   onDeleteResource: (resourceId: string) => void
   onLoadTransferTargets: () => Promise<void>
   onMoveSpace: (targetVaultId: string) => Promise<void>
+  onResolveResourceMetadata: (resourceId: string) => void
   onSelectResource: (resourceId: string) => void
   onToggleResourceReadLater: (resourceId: string) => void
   onToggleCollapsed: () => void
@@ -152,6 +156,7 @@ export function SpaceSection({
   transferTargets: ResourceTransferTargetVault[]
   vaultId: string
   vaultName: string
+  viewMode: VaultResourceViewMode
 }) {
   const { handleRef, ref } = useSortable<SpaceDragData>({
     id: `space:${space.id}`,
@@ -329,18 +334,26 @@ export function SpaceSection({
       {!collapsed && (
         <div
           className={cn(
-            "flex min-h-20 flex-col gap-2 rounded-input px-0 pt-2 transition",
+            "min-h-20 rounded-input px-0 pt-2 transition",
+            viewMode === "masonry" && resources.length > 0
+              ? "columns-1 gap-2 sm:columns-2 xl:columns-3 2xl:columns-4 min-[1800px]:columns-5"
+              : "flex flex-col gap-2",
             isDropTarget && "bg-[var(--jade-glow)] ring-1 ring-jade-dim"
           )}
           ref={dropRef}
         >
           {resources.map((resource, index) => (
             <ResourceCard
+              className={viewMode === "masonry" ? "mb-2 [break-inside:avoid]" : undefined}
               disabled={disabled}
               index={index}
               isActive={selectedResourceId === resource.id}
               isSelected={selectedResourceIds.has(resource.id)}
               isSignedIn={isSignedIn}
+              canDeleteResource={
+                isVaultOwner ||
+                Boolean(isVaultEditor && resource.createdBy && resource.createdBy === currentUserId)
+              }
               canEditResource={
                 !isResourceResolving(resource.metadataStatus) &&
                 (isVaultOwner ||
@@ -355,6 +368,7 @@ export function SpaceSection({
               onDelete={() => onDeleteResource(resource.id)}
               onLoadTransferTargets={onLoadTransferTargets}
               onOpenDetails={() => onSelectResource(resource.id)}
+              onResolveMetadata={() => onResolveResourceMetadata(resource.id)}
               onToggleReadLater={() => onToggleResourceReadLater(resource.id)}
               onToggleSelected={(selected) =>
                 onToggleResourceSelected(resource.id, selected)
@@ -370,6 +384,7 @@ export function SpaceSection({
               transferTargets={transferTargets}
               vaultId={vaultId}
               vaultName={vaultName}
+              viewMode={viewMode}
             />
           ))}
           {resources.length === 0 && (

@@ -11,6 +11,7 @@ import {
   Heart,
   LoaderCircle,
   Plus,
+  RefreshCw,
   Search,
   Star,
   Trash2,
@@ -70,9 +71,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { ButtonGroup } from "@/components/ui/button-group"
+import { ResourceCardMediaCarousel } from "@/features/components/resource-card-media-carousel"
 import { MarkdownContent } from "@/features/components/markdown-content"
 import { ResourceMediaGallery } from "@/features/components/resource-media-gallery"
 import { SpaceIcon } from "@/features/components/space-icon-picker"
+import type { VaultResourceViewMode } from "@/features/components/vault-view-mode"
 import type {
   Resource,
   ResourceAnnotationPatch,
@@ -106,8 +110,10 @@ const RESOURCE_ICON_MAP = {
 } as const
 
 export function ResourceCard({
+  className,
   disabled,
   index,
+  canDeleteResource = false,
   canEditResource,
   isActive,
   isSelected = false,
@@ -120,6 +126,7 @@ export function ResourceCard({
   onClearAnnotation,
   onLoadTransferTargets,
   onOpenDetails,
+  onResolveMetadata,
   onToggleReadLater,
   onToggleSelected,
   onToggleStar,
@@ -133,9 +140,12 @@ export function ResourceCard({
   spaceId,
   transferFocusSpaceId,
   transferTargets,
+  viewMode = "list",
 }: {
+  className?: string
   disabled: boolean
   index: number
+  canDeleteResource?: boolean
   canEditResource: boolean
   isActive: boolean
   isSelected?: boolean
@@ -148,6 +158,7 @@ export function ResourceCard({
   onClearAnnotation?: (resourceId: string) => void
   onLoadTransferTargets: () => Promise<void>
   onOpenDetails: () => void
+  onResolveMetadata?: () => void
   onToggleReadLater?: (resourceId: string) => void
   onToggleSelected?: (selected: boolean) => void
   onToggleStar: () => void
@@ -169,6 +180,7 @@ export function ResourceCard({
   vaultId: string
   vaultName?: string
   spaceName?: string
+  viewMode?: VaultResourceViewMode
 }) {
   const { handleRef, ref } = useSortable<ResourceDragData>({
     id: `resource:${resource.id}`,
@@ -197,11 +209,13 @@ export function ResourceCard({
   const media = getResourceMedia(resource)
   const pills = getResourcePillItems(resource)
   const metadataState = getMetadataState(resource.metadataStatus)
+  const hasMetadataState = resource.metadataStatus !== "completed"
   const isResolvingMetadata =
     resource.metadataStatus === "pending" || resource.metadataStatus === "processing"
+  const isMasonryView = viewMode === "masonry"
   const iconName = getResourceIconName(resource)
   const iconSrc = getResourceFaviconUrl(resource)
-  const iconLabel = resource.type === "http" ? "WEB" : "LINK"
+  const iconLabel = resource.type === "http" ? "WEB" : resource.type === "ftp" ? "FTP" : "LINK"
   const annotation = resource.annotation ?? null
   const checked = annotation?.checked === true
   const rating = annotation?.rating ?? 0
@@ -212,6 +226,10 @@ export function ResourceCard({
   const copyDisplayUrl = async () => {
     await navigator.clipboard?.writeText(displayUrl)
     toast.success("链接已复制")
+  }
+  const copyDescription = async () => {
+    await navigator.clipboard?.writeText(description)
+    toast.success("描述已复制")
   }
   const copyPillValue = (value: string) => {
     void navigator.clipboard?.writeText(value)
@@ -246,12 +264,274 @@ export function ResourceCard({
     onClearAnnotation?.(resource.id)
   }
 
+  function renderAnnotationActions(className?: string) {
+    if (showSelectionControl) return null
+
+    return (
+      <ButtonGroup className={cn("mono h-6 items-center rounded-md border border-line-soft bg-ink-850/55 px-1 text-[10px] text-fg-dim", className)}>
+        {showAnnotationActions && rating > 0 && (
+          <ResourceLocalRating
+            ariaLabel={`资源评分 ${rating}/5`}
+            readOnly
+            size={12}
+            value={rating}
+          />
+        )}
+        {showAnnotationActions && (
+          <LocalAnnotationPopover
+            commentDraft={localCommentDraft}
+            onClear={handleClearAnnotation}
+            onCommentDraftChange={setLocalCommentDraft}
+            onCommentSave={() =>
+              handleUpdateAnnotation({ comment: localCommentDraft })
+            }
+            onRatingChange={(value) =>
+              handleUpdateAnnotation({ rating: value > 0 ? value : null })
+            }
+            rating={rating}
+          />
+        )}
+        {showReadLaterAction && (
+          <Button
+            className={cn(
+              "size-5 rounded-sm border border-transparent p-0 text-fg-dim hover:text-jade [&_svg]:size-3",
+              isWatchedLater && "border-jade-dim bg-[var(--jade-glow)] text-jade"
+            )}
+            size="icon-xs"
+            variant="ghost"
+            onClick={(event) => {
+              event.stopPropagation()
+              handleToggleWatchLater()
+            }}
+            type="button"
+          >
+            <Clock3 />
+            <span className="sr-only">
+              {isWatchedLater ? "移出稍后查看" : "稍后查看"}
+            </span>
+          </Button>
+        )}
+        {showStarAction && (
+          <Button
+            className={cn(
+              "size-5 rounded-sm p-0 text-fg-dim hover:text-jade [&_svg]:size-3",
+              resource.isStarred && "text-jade"
+            )}
+            disabled={!isSignedIn}
+            size="icon-xs"
+            variant="ghost"
+            onClick={onToggleStar}
+            type="button"
+          >
+            <Star className={cn(resource.isStarred && "fill-current")} />
+            <span className="sr-only">{resource.isStarred ? "取消收藏资源" : "收藏资源"}</span>
+          </Button>
+        )}
+      </ButtonGroup>
+    )
+  }
+
+  function renderCheckedAction() {
+    if (!showAnnotationActions || showSelectionControl) return null
+
+    return (
+      <Checkbox
+        aria-label={checked ? "标记为未处理" : "标记为已处理"}
+        checked={checked}
+        className="size-5 rounded-[5px] border border-line-soft bg-ink-950 text-jade shadow-inner hover:border-jade-dim focus-visible:border-jade-dim focus-visible:ring-2 focus-visible:ring-jade/20 data-checked:border-jade-dim data-checked:bg-[var(--jade-glow)] data-checked:text-jade [&_[data-slot=checkbox-indicator]>svg]:size-3.5"
+        onClick={(event) => event.stopPropagation()}
+        onCheckedChange={(value) =>
+          handleUpdateAnnotation({ checked: value === true })
+        }
+      />
+    )
+  }
+
+  function renderResourceActions(className?: string) {
+    if (
+      showSelectionControl ||
+      (!canDeleteResource && !canEditResource && !isVaultOwner)
+    ) {
+      return null
+    }
+
+    return (
+      <ButtonGroup className={cn("h-6 items-center rounded-md border border-line-soft bg-ink-850/70 px-1", className)}>
+        {canDeleteResource && (
+          <Button
+            className="size-5 rounded-sm text-fg-dim hover:text-jade [&_svg]:size-3"
+            disabled={disabled || isResolvingMetadata}
+            onClick={(event) => {
+              event.stopPropagation()
+              onResolveMetadata?.()
+            }}
+            size="icon-xs"
+            title="重新获取 metadata"
+            type="button"
+            variant="ghost"
+          >
+            <RefreshCw className={cn(isResolvingMetadata && "animate-spin")} />
+            <span className="sr-only">重新获取 metadata</span>
+          </Button>
+        )}
+        {canDeleteResource && (
+          <AlertDialog>
+            <AlertDialogTrigger
+              render={
+              <Button
+                className="size-5 rounded-sm text-fg-dim hover:text-rose [&_svg]:size-3"
+                size="icon-xs"
+                variant="ghost"
+                type="button"
+              >
+                <Trash2 />
+                <span className="sr-only">删除资源</span>
+              </Button>
+              }
+            />
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>删除这个 resource?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  此操作会归档该资源，并从当前列表中移除。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={onDelete}>
+                  删除
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+        {isVaultOwner && (
+          <ResourceTransferDialog
+            disabled={disabled}
+            onLoadTargets={onLoadTransferTargets}
+            onOpenChange={setTransferOpen}
+            onCreateSpace={onCreateTransferTargetSpace}
+            onTransfer={async (input) => {
+              setTransferOpen(false)
+              await onTransferResource({
+                ...input,
+                resourceId: resource.id,
+              })
+            }}
+            open={transferOpen}
+            focusedSpaceId={transferFocusSpaceId}
+            resourceTitle={title}
+            sourceSpaceId={resource.spaceId}
+            targets={transferTargets}
+          />
+        )}
+      </ButtonGroup>
+    )
+  }
+
+  function renderLeadingControl(className?: string) {
+    if (showSelectionControl) {
+      return (
+        <Checkbox
+          aria-label={isSelected ? "取消选择 resource" : "选择 resource"}
+          checked={isSelected}
+          className={cn(
+            "size-7 rounded-input border border-line-soft bg-ink-900 text-jade shadow-inner transition hover:border-jade-dim hover:bg-ink-850 focus-visible:border-jade-dim focus-visible:ring-2 focus-visible:ring-jade/20 data-checked:border-jade-dim data-checked:bg-ink-850 data-checked:text-jade [&_[data-slot=checkbox-indicator]>svg]:size-4",
+            isSelected && "shadow-[0_0_0_3px_var(--jade-glow),inset_0_1px_0_rgba(255,255,255,.06)]",
+            className
+          )}
+          onClick={(event) => event.stopPropagation()}
+          onCheckedChange={(value) => onToggleSelected?.(value === true)}
+        />
+      )
+    }
+
+    if (isVaultOwner) {
+      return (
+        <button
+          className={cn(
+            "relative grid size-[30px] shrink-0 cursor-grab place-items-center overflow-hidden rounded-input border border-line bg-ink-700 transition hover:border-ink-600 hover:bg-ink-750 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-60",
+            className
+          )}
+          disabled={disabled}
+          ref={handleRef}
+          type="button"
+        >
+          <ResourceIcon
+            className="transition group-hover/resource-card:opacity-0"
+            iconName={iconName}
+            iconSrc={iconSrc}
+            label={iconLabel}
+          />
+          <GripVertical className="absolute size-4 text-fg-faint opacity-0 transition group-hover/resource-card:opacity-100" />
+          <span className="sr-only">拖动排序资源</span>
+        </button>
+      )
+    }
+
+    return (
+      <span
+        className={cn(
+          "relative grid size-[30px] shrink-0 place-items-center overflow-hidden rounded-input border border-line bg-ink-700",
+          className
+        )}
+      >
+        <ResourceIcon iconName={iconName} iconSrc={iconSrc} label={iconLabel} />
+      </span>
+    )
+  }
+
+  function renderExternalLinkAction(className?: string) {
+    return (
+      <AlertDialog open={externalOpen} onOpenChange={setExternalOpen}>
+        <AlertDialogTrigger
+          render={
+          <button
+            className={cn(
+              "inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-fg-dim transition hover:bg-ink-700 hover:text-jade [&_svg]:size-3",
+              className
+            )}
+            onClick={(event) => event.stopPropagation()}
+            type="button"
+          >
+            <ExternalLink />
+            <span className="sr-only">打开源链接</span>
+          </button>
+          }
+        />
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>即将打开外部链接</AlertDialogTitle>
+            <AlertDialogDescription>
+              你将离开 NexusVault 并访问第三方站点。请确认链接来源可信后再继续。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="mono max-w-full truncate rounded-input border border-line bg-ink-900 px-2.5 py-2 text-[11px] text-fg-dim">
+            {displayUrl}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setExternalOpen(false)
+                window.open(displayUrl, "_blank", "noopener,noreferrer")
+              }}
+            >
+              继续打开
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    )
+  }
+
   return (
     <article
       className={cn(
         "group/resource-card flex min-w-0 flex-col gap-1 rounded-card border border-line bg-ink-800 px-3.5 py-3 transition hover:border-ink-700 hover:bg-ink-750",
         isResolvingMetadata && "border-line bg-ink-800/80",
-        isActive && "border-jade hover:border-jade"
+        isActive && "border-jade hover:border-jade",
+        className
       )}
       id={`resource-${resource.id}`}
       onClick={() => {
@@ -263,262 +543,154 @@ export function ResourceCard({
       }}
       ref={ref}
     >
-      <div className="flex min-w-0 items-center gap-2">
-        {showSelectionControl ? (
-          <Checkbox
-            aria-label={isSelected ? "取消选择 resource" : "选择 resource"}
-            checked={isSelected}
-            className={cn(
-              "size-7 rounded-input border border-line-soft bg-ink-900 text-jade shadow-inner transition hover:border-jade-dim hover:bg-ink-850 focus-visible:border-jade-dim focus-visible:ring-2 focus-visible:ring-jade/20 data-checked:border-jade-dim data-checked:bg-ink-850 data-checked:text-jade [&_[data-slot=checkbox-indicator]>svg]:size-4",
-              isSelected && "shadow-[0_0_0_3px_var(--jade-glow),inset_0_1px_0_rgba(255,255,255,.06)]"
-            )}
-            onClick={(event) => event.stopPropagation()}
-            onCheckedChange={(value) => onToggleSelected?.(value === true)}
-          />
-        ) : isVaultOwner ? (
-          <button
-            className="relative grid size-[30px] shrink-0 cursor-grab place-items-center overflow-hidden rounded-input border border-line bg-ink-700 transition hover:border-ink-600 hover:bg-ink-750 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={disabled}
-            ref={handleRef}
-            type="button"
-          >
-            <ResourceIcon
-              className="transition group-hover/resource-card:opacity-0"
-              iconName={iconName}
-              iconSrc={iconSrc}
-              label={iconLabel}
-            />
-            <GripVertical className="absolute size-4 text-fg-faint opacity-0 transition group-hover/resource-card:opacity-100" />
-            <span className="sr-only">拖动排序资源</span>
-          </button>
-        ) : (
-          <span className="relative grid size-[30px] shrink-0 place-items-center overflow-hidden rounded-input border border-line bg-ink-700">
-            <ResourceIcon iconName={iconName} iconSrc={iconSrc} label={iconLabel} />
-          </span>
-        )}
-        <TooltipProvider>
-          <Tooltip>
-            {canEditResource && !showSelectionControl ? (
-              <TooltipTrigger
-                render={
-                <button
-                  className="min-w-0 flex-1 truncate text-left text-[14.5px] font-semibold text-fg hover:text-jade-bright"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onOpenDetails()
-                  }}
-                  type="button"
-                >
-                  {title}
-                </button>
-                }
-              />
-            ) : (
-              <TooltipTrigger
-                render={
-                <span className="min-w-0 flex-1 truncate text-left text-[14.5px] font-semibold text-fg">
-                  {title}
-                </span>
-                }
-              />
-            )}
-            <TooltipContent className="max-w-[360px] break-words" side="top" sideOffset={6}>
-              {title}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <ResourceMetadataState
-          className="shrink-0"
-          label={metadataState.label}
-          status={resource.metadataStatus}
-        />
-        {!showSelectionControl && (
-          <div className="flex shrink-0 items-center gap-2">
-            <div className="mono flex h-6 items-center gap-1 rounded-md border border-line-soft bg-ink-850/55 px-1 text-[10px] text-fg-dim">
-              {showAnnotationActions && rating > 0 && (
-                <ResourceLocalRating
-                  ariaLabel={`资源评分 ${rating}/5`}
-                  readOnly
-                  size={12}
-                  value={rating}
-                />
-              )}
-              {showAnnotationActions && (
-                <LocalAnnotationPopover
-                  commentDraft={localCommentDraft}
-                  onClear={handleClearAnnotation}
-                  onCommentDraftChange={setLocalCommentDraft}
-                  onCommentSave={() =>
-                    handleUpdateAnnotation({ comment: localCommentDraft })
-                  }
-                  onRatingChange={(value) =>
-                    handleUpdateAnnotation({ rating: value > 0 ? value : null })
-                  }
-                  rating={rating}
-                />
-              )}
-              {showReadLaterAction && (
-                <Button
-                  className={cn(
-                    "size-5 rounded-sm border border-transparent p-0 text-fg-dim hover:text-jade [&_svg]:size-3",
-                    isWatchedLater && "border-jade-dim bg-[var(--jade-glow)] text-jade"
-                  )}
-                  size="icon-xs"
-                  variant="ghost"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    handleToggleWatchLater()
-                  }}
-                  type="button"
-                >
-                  <Clock3 />
-                  <span className="sr-only">
-                    {isWatchedLater ? "移出稍后查看" : "稍后查看"}
-                  </span>
-                </Button>
-              )}
-              {showStarAction && (
-                <Button
-                  className={cn(
-                    "size-5 rounded-sm p-0 text-fg-dim hover:text-jade [&_svg]:size-3",
-                    resource.isStarred && "text-jade"
-                  )}
-                  disabled={!isSignedIn}
-                  size="icon-xs"
-                  variant="ghost"
-                  onClick={onToggleStar}
-                  type="button"
-                >
-                  <Star className={cn(resource.isStarred && "fill-current")} />
-                  <span className="sr-only">{resource.isStarred ? "取消收藏资源" : "收藏资源"}</span>
-                </Button>
-              )}
-            </div>
-            {showAnnotationActions && (
-              <Checkbox
-                aria-label={checked ? "标记为未处理" : "标记为已处理"}
-                checked={checked}
-                className="size-5 rounded-[5px] border border-line-soft bg-ink-950 text-jade shadow-inner hover:border-jade-dim focus-visible:border-jade-dim focus-visible:ring-2 focus-visible:ring-jade/20 data-checked:border-jade-dim data-checked:bg-[var(--jade-glow)] data-checked:text-jade [&_[data-slot=checkbox-indicator]>svg]:size-3.5"
-                onClick={(event) => event.stopPropagation()}
-                onCheckedChange={(value) =>
-                  handleUpdateAnnotation({ checked: value === true })
-                }
-              />
-            )}
+      {isMasonryView ? (
+        <div className={cn("relative min-w-0", hasMetadataState && "pr-14")}>
+          <div className="absolute left-0 top-0">
+            {renderLeadingControl("size-5 rounded-[5px] [&_img]:size-3.5 [&_span.mono]:text-[8px]")}
           </div>
-        )}
-      </div>
-
-      <div className="flex min-w-0 items-center gap-2">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-          {pills.map((pill) => (
-            <ResourceMetadataPill
-              key={pill.key}
-              onCopy={copyPillValue}
-              pill={pill}
-            />
-          ))}
-          <button
-            className="mono min-w-0 max-w-full truncate rounded-input border border-line bg-ink-900 px-2 py-1 text-left text-[10.5px] text-fg-muted transition hover:text-jade hover:underline md:max-w-[520px]"
-            onClick={() => void copyDisplayUrl()}
-            title="点击复制链接"
-            type="button"
-          >
-            {displayUrl}
-          </button>
-          <AlertDialog open={externalOpen} onOpenChange={setExternalOpen}>
-            <AlertDialogTrigger
-              render={
-              <button
-                className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-fg-dim transition hover:bg-ink-700 hover:text-jade [&_svg]:size-3"
-                type="button"
-              >
-                <ExternalLink />
-                <span className="sr-only">打开源链接</span>
-              </button>
-              }
-            />
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>即将打开外部链接</AlertDialogTitle>
-                <AlertDialogDescription>
-                  你将离开 NexusVault 并访问第三方站点。请确认链接来源可信后再继续。
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <div className="mono max-w-full truncate rounded-input border border-line bg-ink-900 px-2.5 py-2 text-[11px] text-fg-dim">
-                {displayUrl}
-              </div>
-              <AlertDialogFooter>
-                <AlertDialogCancel>取消</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => {
-                    setExternalOpen(false)
-                    window.open(displayUrl, "_blank", "noopener,noreferrer")
-                  }}
-                >
-                  继续打开
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-          {!showSelectionControl && (canEditResource || isVaultOwner) && (
-            <div className="ml-auto hidden h-6 items-center gap-1 rounded-md border border-line-soft bg-ink-850/70 px-1 group-hover/resource-card:inline-flex focus-within:inline-flex">
-              {canEditResource && (
-                <AlertDialog>
-                  <AlertDialogTrigger
-                    render={
-                    <Button
-                      className="size-5 rounded-sm text-fg-dim hover:text-rose [&_svg]:size-3"
-                      size="icon-xs"
-                      variant="ghost"
-                      disabled={disabled}
-                      type="button"
-                    >
-                      <Trash2 />
-                      <span className="sr-only">删除资源</span>
-                    </Button>
-                    }
-                  />
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>删除这个 resource?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        此操作会归档该资源，并从当前列表中移除。
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>取消</AlertDialogCancel>
-                      <AlertDialogAction variant="destructive" onClick={onDelete}>
-                        删除
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              )}
-              {isVaultOwner && (
-                <ResourceTransferDialog
-                  disabled={disabled}
-                  onLoadTargets={onLoadTransferTargets}
-                  onOpenChange={setTransferOpen}
-                  onCreateSpace={onCreateTransferTargetSpace}
-                  onTransfer={async (input) => {
-                    setTransferOpen(false)
-                    await onTransferResource({
-                      ...input,
-                      resourceId: resource.id,
-                    })
-                  }}
-                  open={transferOpen}
-                  focusedSpaceId={transferFocusSpaceId}
-                  resourceTitle={title}
-                  sourceSpaceId={resource.spaceId}
-                  targets={transferTargets}
+          <TooltipProvider>
+            <Tooltip>
+              {canEditResource && !showSelectionControl ? (
+                <TooltipTrigger
+                  render={
+                  <button
+                    className="block min-w-0 w-full whitespace-normal break-words text-left text-sm font-semibold leading-[22px] text-fg [text-indent:28px] hover:text-jade-bright"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onOpenDetails()
+                    }}
+                    type="button"
+                  >
+                    {title}
+                  </button>
+                  }
+                />
+              ) : (
+                <TooltipTrigger
+                  render={
+                  <span className="block min-w-0 w-full whitespace-normal break-words text-left text-sm font-semibold leading-[22px] text-fg [text-indent:28px]">
+                    {title}
+                  </span>
+                  }
                 />
               )}
+              <TooltipContent className="max-w-[360px] break-words" side="top" sideOffset={6}>
+                {title}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <ResourceMetadataState
+            className="absolute right-0 top-0"
+            label={metadataState.label}
+            status={resource.metadataStatus}
+          />
+        </div>
+      ) : (
+        <div className="flex min-w-0 items-center gap-2">
+          {renderLeadingControl()}
+          <TooltipProvider>
+            <Tooltip>
+              {canEditResource && !showSelectionControl ? (
+                <TooltipTrigger
+                  render={
+                  <button
+                    className="min-w-0 flex-1 truncate text-left text-[14.5px] font-semibold text-fg hover:text-jade-bright"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onOpenDetails()
+                    }}
+                    type="button"
+                  >
+                    {title}
+                  </button>
+                  }
+                />
+              ) : (
+                <TooltipTrigger
+                  render={
+                  <span className="min-w-0 flex-1 truncate text-left text-[14.5px] font-semibold text-fg">
+                    {title}
+                  </span>
+                  }
+                />
+              )}
+              <TooltipContent className="max-w-[360px] break-words" side="top" sideOffset={6}>
+                {title}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <ResourceMetadataState
+            className="shrink-0"
+            label={metadataState.label}
+            status={resource.metadataStatus}
+          />
+          {!showSelectionControl && (
+            <div className="flex shrink-0 items-center gap-2">
+              {renderAnnotationActions()}
+              {renderCheckedAction()}
             </div>
           )}
         </div>
-      </div>
+      )}
+
+      {isMasonryView && !showSelectionControl && (
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+          {renderAnnotationActions("shrink-0")}
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            {renderCheckedAction()}
+            {renderResourceActions("shrink-0")}
+          </div>
+        </div>
+      )}
+
+      {isMasonryView ? (
+        <div className="flex min-w-0 flex-col gap-1.5">
+          {pills.length > 0 && (
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              {pills.map((pill) => (
+                <ResourceMetadataPill
+                  key={pill.key}
+                  onCopy={copyPillValue}
+                  pill={pill}
+                />
+              ))}
+            </div>
+          )}
+          <div className="flex min-w-0 items-center gap-1.5">
+            <button
+              className="mono min-w-0 flex-1 truncate rounded-input border border-line bg-ink-900 px-2 py-1 text-left text-[10.5px] text-fg-muted transition hover:text-jade hover:underline"
+              onClick={() => void copyDisplayUrl()}
+              title="点击复制链接"
+              type="button"
+            >
+              {displayUrl}
+            </button>
+            {renderExternalLinkAction("size-6 rounded-input border border-line-soft bg-ink-850 hover:border-jade-dim hover:bg-ink-800")}
+          </div>
+        </div>
+      ) : (
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            {pills.map((pill) => (
+              <ResourceMetadataPill
+                key={pill.key}
+                onCopy={copyPillValue}
+                pill={pill}
+              />
+            ))}
+            <button
+              className="mono min-w-0 max-w-full truncate rounded-input border border-line bg-ink-900 px-2 py-1 text-left text-[10.5px] text-fg-muted transition hover:text-jade hover:underline md:max-w-[520px]"
+              onClick={() => void copyDisplayUrl()}
+              title="点击复制链接"
+              type="button"
+            >
+              {displayUrl}
+            </button>
+            {renderExternalLinkAction()}
+            {renderResourceActions("ml-auto hidden group-hover/resource-card:inline-flex focus-within:inline-flex")}
+          </div>
+        </div>
+      )}
 
       {description && (
         <div
@@ -527,10 +699,11 @@ export function ResourceCard({
             descriptionOpen && "border-line bg-ink-850"
           )}
           onClick={(event) => {
-            if (event.target instanceof Element && event.target.closest("a")) return
+            if (event.target instanceof Element && event.target.closest("a,button")) return
             setDescriptionOpen((value) => !value)
           }}
           onKeyDown={(event) => {
+            if (event.target instanceof Element && event.target.closest("button")) return
             if (event.key !== "Enter" && event.key !== " ") return
             event.preventDefault()
             setDescriptionOpen((value) => !value)
@@ -545,12 +718,43 @@ export function ResourceCard({
                 : collapsedDescriptionText}
             </span>
           ) : (
-            <MarkdownContent
-              className="min-w-0 gap-1.5 text-fg-muted"
-              value={description}
-            />
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <div className="flex justify-end">
+                <Button
+                  className="h-6 rounded-sm px-1.5 text-[11px] text-fg-dim hover:text-jade [&_svg]:size-3"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    void copyDescription()
+                  }}
+                  size="xs"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Copy data-icon="inline-start" />
+                  复制
+                </Button>
+              </div>
+              <MarkdownContent
+                className="min-w-0 gap-1.5 text-fg-muted"
+                value={description}
+              />
+            </div>
           )}
         </div>
+      )}
+
+      {isResolvingMetadata && (
+        <div className="mt-1 overflow-hidden rounded-input border border-line-soft bg-ink-850/45">
+          <div className="h-0.5 w-full animate-[nv-progress_1.8s_ease-in-out_infinite] bg-linear-to-r from-transparent via-jade-dim to-transparent" />
+        </div>
+      )}
+
+      {mediaVisible && !isResolvingMetadata && (
+        isMasonryView ? (
+          <ResourceCardMediaCarousel media={media} title={title} />
+        ) : (
+          <ResourceMediaGallery media={media} title={title} />
+        )
       )}
 
       {showAnnotationActions && annotation?.comment && (
@@ -564,14 +768,6 @@ export function ResourceCard({
           {annotation.comment}
         </div>
       )}
-
-      {isResolvingMetadata && (
-        <div className="mt-1 overflow-hidden rounded-input border border-line-soft bg-ink-850/45">
-          <div className="h-0.5 w-full animate-[nv-progress_1.8s_ease-in-out_infinite] bg-linear-to-r from-transparent via-jade-dim to-transparent" />
-        </div>
-      )}
-
-      {mediaVisible && !isResolvingMetadata && <ResourceMediaGallery media={media} title={title} />}
     </article>
   )
 }
@@ -1166,6 +1362,7 @@ function getResourceIconName(resource: Resource): ResourceIconName | undefined {
 function getResourceProtocol(url: string) {
   const value = url.trim().toLowerCase()
   if (value.startsWith("ed2k://")) return "ed2k"
+  if (value.startsWith("ftp://")) return "ftp"
   if (value.startsWith("thunder://")) return "thunder"
   return undefined
 }

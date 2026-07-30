@@ -22,6 +22,8 @@ export function ResourceMediaGallery({
   const [previewIndex, setPreviewIndex] = useState<number | null>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const activeItem = previewIndex === null ? null : media[previewIndex]
+  const naturalPreview =
+    activeItem?.kind === "image" && activeItem.fit === "natural"
 
   useEffect(() => {
     const scroller = scrollerRef.current
@@ -102,10 +104,16 @@ export function ResourceMediaGallery({
                   </p>
                 </div>
               </div>
-              <div className="relative grid max-h-[78vh] min-h-[260px] place-items-start overflow-auto rounded-input border border-line bg-black/35">
+              <div
+                className={
+                  naturalPreview
+                    ? "relative grid max-h-[78vh] min-h-[260px] place-items-center overflow-hidden rounded-input border border-line bg-black/35"
+                    : "relative grid max-h-[78vh] min-h-[260px] place-items-start overflow-auto rounded-input border border-line bg-black/35"
+                }
+              >
                 <img
                   alt={`${title} preview ${previewIndex + 1}`}
-                  className="h-auto w-full max-w-none object-contain"
+                  className={naturalPreview ? "max-h-[78vh] max-w-full object-contain" : "h-auto w-full max-w-none object-contain"}
                   src={activeItem.src}
                 />
                 {media.length > 1 && (
