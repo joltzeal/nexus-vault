@@ -10,6 +10,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { LazyMediaImage } from "@/features/components/lazy-media-image"
 import type { MediaItem } from "./view-models"
 
 export function ResourceMediaGallery({
@@ -111,9 +112,10 @@ export function ResourceMediaGallery({
                     : "relative grid max-h-[78vh] min-h-[260px] place-items-start overflow-auto rounded-input border border-line bg-black/35"
                 }
               >
-                <img
+                <LazyMediaImage
                   alt={`${title} preview ${previewIndex + 1}`}
                   className={naturalPreview ? "max-h-[78vh] max-w-full object-contain" : "h-auto w-full max-w-none object-contain"}
+                  eager
                   src={activeItem.src}
                 />
                 {media.length > 1 && (
@@ -176,7 +178,7 @@ function MediaPreview({
             <span className="text-xs">媒体无法显示</span>
           </div>
         ) : (
-          <img
+          <LazyMediaImage
             alt={`${title} preview ${index + 1}`}
             className="size-full object-cover"
             onError={() => setFailed(true)}
@@ -212,7 +214,7 @@ function MediaPreview({
           <span className="text-xs">媒体无法显示</span>
         </div>
       ) : (
-        <img
+        <LazyMediaImage
           alt={`${title} preview ${index + 1}`}
           className="size-full object-cover"
           onError={() => setFailed(true)}

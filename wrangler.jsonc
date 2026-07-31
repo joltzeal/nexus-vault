@@ -92,7 +92,7 @@
 				{
 					"binding": "HYPERDRIVE",
 					"id": "3271a1cca21447d9bc4ba2ff47a167ff",
-					"localConnectionString": "postgres://postgres:DYX920912@127.0.0.1:5432/nexus_vault"
+					"localConnectionString": "postgres://postgres:postgres@127.0.0.1:5432/nexus_vault"
 				}
 			],
 			"r2_buckets": [

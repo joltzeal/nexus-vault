@@ -24,6 +24,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { LazyMediaImage } from "@/features/components/lazy-media-image"
 import type { MediaItem } from "@/features/components/view-models"
 import { cn } from "@/lib/utils"
 
@@ -124,12 +125,13 @@ export function ResourceCardMediaCarousel({
                 </div>
               </div>
               <div className="relative grid max-h-[78vh] min-h-[260px] place-items-center overflow-hidden rounded-input border border-line bg-black/35">
-                <img
+                <LazyMediaImage
                   alt={`${title} preview ${previewIndex + 1}`}
                   className={cn(
                     "max-w-full object-contain",
                     naturalPreview ? "max-h-[78vh]" : "max-h-[78vh]"
                   )}
+                  eager
                   src={activeItem.src}
                 />
                 {media.length > 1 && (
@@ -221,7 +223,7 @@ function CardMediaSlide({
           <span className="text-xs">媒体无法显示</span>
         </div>
       ) : (
-        <img
+        <LazyMediaImage
           alt={`${title} preview ${index + 1}`}
           className={cn(
             "object-contain",
