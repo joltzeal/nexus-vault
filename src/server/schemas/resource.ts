@@ -3,6 +3,7 @@ import { z } from "zod"
 export const resourceTypeSchema = z.enum([
   "magnet",
   "twitter",
+  "telegram",
   "baidu_pan",
   "pan_115",
   "pan_123",

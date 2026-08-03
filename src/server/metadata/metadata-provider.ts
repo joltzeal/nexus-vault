@@ -5,6 +5,7 @@ import { httpPageMetadataProvider } from "./providers/http-page"
 import { localLinkMetadataProvider } from "./providers/local-link"
 import { magnetMetadataProvider } from "./providers/magnet"
 import { placeholderMetadataProvider } from "./providers/placeholder"
+import { telegramMetadataProvider } from "./providers/telegram"
 import { twitterMetadataProvider } from "./providers/twitter"
 
 export type MetadataProviderResource = {
@@ -27,6 +28,16 @@ export type MetadataResolveOptions = {
   probeCloudDriveAvailability?: boolean
   twitterRequestProxyUrl?: string
   twitterCookieString?: string
+  telegramMetadataApiUrl?: string
+  telegramMetadataApiToken?: string
+  persistTelegramMedia?: (input: {
+    resourceId: string
+    url: string
+    mediaType: string
+    contentType?: string
+    fileName?: string
+    sourceId?: string
+  }) => Promise<string | undefined>
   captureHttpScreenshot?: (input: {
     resourceId: string
     title: string
@@ -57,6 +68,7 @@ export function isRetryableMetadataError(error: unknown) {
 const metadataProviders: MetadataProvider[] = [
   magnetMetadataProvider,
   twitterMetadataProvider,
+  telegramMetadataProvider,
   cloudDriveMetadataProvider,
   httpPageMetadataProvider,
   localLinkMetadataProvider,
@@ -76,5 +88,6 @@ export {
   localLinkMetadataProvider,
   magnetMetadataProvider,
   placeholderMetadataProvider,
+  telegramMetadataProvider,
   twitterMetadataProvider,
 }

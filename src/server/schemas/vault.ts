@@ -32,6 +32,7 @@ export const updateShareSchema = z.object({
 
 export const unlockShareSchema = z.object({
   passwordHash: z.string().trim().min(1),
+  turnstileToken: z.string().trim().min(1).optional(),
 })
 
 export const starSchema = z.object({

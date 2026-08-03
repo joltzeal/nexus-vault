@@ -296,6 +296,7 @@ const METADATA_STATUS_LABELS: Record<MetadataStatus, string> = {
 const RESOURCE_TYPE_LABELS: Record<ResourceType, string> = {
   magnet: "磁力链接",
   twitter: "X/Twitter",
+  telegram: "Telegram",
   baidu_pan: "百度网盘",
   pan_115: "115 盘",
   pan_123: "123 云盘",

@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
+import { TurnstileField } from "@/components/turnstile-field"
 import { SpaceIconPicker } from "@/features/components/space-icon-picker"
 import type {
   AuthForm,
@@ -449,6 +450,7 @@ export function AuthDialog({
   onSubmit,
   open,
   registrationReason,
+  turnstileSiteKey,
 }: {
   allowSignUp: boolean
   error: string
@@ -458,17 +460,42 @@ export function AuthDialog({
   onFormChange: (form: AuthForm) => void
   onModeChange: (mode: AuthMode) => void
   onOpenChange: (open: boolean) => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>
   open: boolean
   registrationReason?: "public-registration" | "first-user" | "disabled"
+  turnstileSiteKey?: string
 }) {
   const isForgotPassword = mode === "forgot-password"
   const isFirstUserSignUp = mode === "sign-up" && registrationReason === "first-user"
+  const [turnstileToken, setTurnstileToken] = useState("")
+  const [turnstileResetSignal, setTurnstileResetSignal] = useState(0)
+
+  function resetTurnstile() {
+    setTurnstileToken("")
+    setTurnstileResetSignal((value) => value + 1)
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    try {
+      await onSubmit(event)
+    } finally {
+      resetTurnstile()
+    }
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) resetTurnstile()
+        onOpenChange(nextOpen)
+      }}
+    >
       <DialogContent className="border-line bg-ink-850 text-fg sm:max-w-md">
-        <form className="flex flex-col gap-5" onSubmit={onSubmit}>
+        <form
+          className="flex flex-col gap-5"
+          onSubmit={(event) => void handleSubmit(event)}
+        >
           <DialogHeader>
             <DialogTitle className="font-display">
               {isFirstUserSignUp
@@ -518,6 +545,21 @@ export function AuthDialog({
                 />
               </Field>
             )}
+            {turnstileSiteKey && (
+              <>
+                <input type="hidden" name="turnstileToken" value={turnstileToken} />
+                <div className="flex min-h-[65px] justify-center">
+                  <TurnstileField
+                    action="auth"
+                    onError={resetTurnstile}
+                    onExpire={resetTurnstile}
+                    onVerify={setTurnstileToken}
+                    resetSignal={turnstileResetSignal}
+                    siteKey={turnstileSiteKey}
+                  />
+                </div>
+              </>
+            )}
             {error && <p className="text-sm text-destructive">{error}</p>}
           </FieldGroup>
           <DialogFooter>
@@ -552,7 +594,8 @@ export function AuthDialog({
                 disabled={
                   !form.email.trim() ||
                   (!isForgotPassword && !form.password) ||
-                  (mode === "sign-up" && !form.name.trim())
+                  (mode === "sign-up" && !form.name.trim()) ||
+                  Boolean(turnstileSiteKey && !turnstileToken)
                 }
               >
                 {mode === "sign-up" ? "注册" : isForgotPassword ? "发送重置邮件" : "登录"}

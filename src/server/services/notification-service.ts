@@ -1,6 +1,6 @@
-import { and, count, desc, eq, inArray, isNull, or } from "drizzle-orm"
+import { and, count, desc, eq, exists, inArray, isNull, or } from "drizzle-orm"
 
-import { notifications, users } from "@/db/schema"
+import { notifications, resourceSubmissions, users } from "@/db/schema"
 import type { Actor, ApiContext, Db } from "@/server/api/types"
 import { enqueueQueueMessage } from "@/server/queues/producer"
 import { newId } from "@/server/utils/id"
@@ -54,7 +54,19 @@ export async function listNotifications(
       and(
         userId ? eq(notifications.userId, userId) : undefined,
         input.vaultId ? eq(notifications.vaultId, input.vaultId) : undefined,
-        inArray(notifications.type, visibleNotificationTypes)
+        inArray(notifications.type, visibleNotificationTypes),
+        exists(
+          db
+            .select({ id: resourceSubmissions.id })
+            .from(resourceSubmissions)
+            .where(
+              and(
+                eq(resourceSubmissions.vaultId, notifications.vaultId),
+                eq(resourceSubmissions.status, "pending"),
+                isNull(resourceSubmissions.deletedAt),
+              ),
+            ),
+        ),
       )
     )
     .orderBy(desc(notifications.createdAt))
@@ -85,7 +97,19 @@ export async function getNotificationSummary(
         eq(notifications.userId, userId),
         input.vaultId ? eq(notifications.vaultId, input.vaultId) : undefined,
         isNull(notifications.readAt),
-        inArray(notifications.type, visibleNotificationTypes)
+        inArray(notifications.type, visibleNotificationTypes),
+        exists(
+          db
+            .select({ id: resourceSubmissions.id })
+            .from(resourceSubmissions)
+            .where(
+              and(
+                eq(resourceSubmissions.vaultId, notifications.vaultId),
+                eq(resourceSubmissions.status, "pending"),
+                isNull(resourceSubmissions.deletedAt),
+              ),
+            ),
+        ),
       )
     )
 

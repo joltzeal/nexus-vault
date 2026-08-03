@@ -6,6 +6,7 @@ export const vaultVisibilityValues = ["public", "private", "password"] as const;
 export const resourceTypeValues = [
 	"magnet",
 	"twitter",
+	"telegram",
 	"baidu_pan",
 	"pan_115",
 	"pan_123",

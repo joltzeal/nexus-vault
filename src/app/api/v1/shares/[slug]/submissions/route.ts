@@ -4,7 +4,10 @@ import { createResourceSubmissionSchema } from "@/server/schemas/submission"
 import { enqueueNotificationTask } from "@/server/services/notification-service"
 import { getShareUnlockCookieName, getUnlockedSharedVaultDetail } from "@/server/services/share-service"
 import { createResourceSubmission } from "@/server/services/submission-service"
-import { verifyTurnstileToken } from "@/server/services/turnstile-service"
+import {
+  isTurnstileEnabled,
+  verifyTurnstileToken,
+} from "@/server/services/turnstile-service"
 
 type Context = { params: Promise<{ slug: string }> }
 
@@ -27,11 +30,14 @@ export async function POST(request: Request, { params }: Context) {
     }
 
     const input = await parseJson(request, createResourceSubmissionSchema)
-    const turnstile = await verifyTurnstileToken(context.env, {
-      token: input.turnstileToken,
-      remoteIp: request.headers.get("CF-Connecting-IP") ?? undefined,
-    })
-    if (!turnstile.success) throw forbidden("请完成人机验证后再提交。")
+    if (isTurnstileEnabled(context.env)) {
+      const turnstile = await verifyTurnstileToken(context.env, {
+        action: "resource_submission",
+        token: input.turnstileToken ?? "",
+        remoteIp: request.headers.get("CF-Connecting-IP") ?? undefined,
+      })
+      if (!turnstile.success) throw forbidden("请完成人机验证后再提交。")
+    }
 
     const result = await createResourceSubmission(
       context.db,

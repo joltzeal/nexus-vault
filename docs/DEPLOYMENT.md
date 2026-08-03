@@ -35,8 +35,9 @@ BETTER_AUTH_SECRET="local-or-dev-secret"
 BETTER_AUTH_URL="http://localhost:3000"
 BETTER_AUTH_TRUSTED_ORIGINS="http://localhost:3000"
 ALLOW_USER_REGISTRATION="true"
-TURNSTILE_SITE_KEY=""
-TURNSTILE_SECRET_KEY=""
+TURNSTILE_SITE_KEY="1x00000000000000000000AA"
+TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
+TURNSTILE_ALLOWED_HOSTNAMES="localhost,127.0.0.1"
 ```
 
 生产环境建议把敏感变量写入 Cloudflare Worker secrets：
@@ -45,6 +46,12 @@ TURNSTILE_SECRET_KEY=""
 pnpm exec wrangler secret put BETTER_AUTH_SECRET --env production
 pnpm exec wrangler secret put BETTER_AUTH_TRUSTED_ORIGINS --env production
 pnpm exec wrangler secret put TURNSTILE_SECRET_KEY --env production
+
+# Set these as production Worker variables in the Cloudflare dashboard:
+# TURNSTILE_SITE_KEY=<production site key>
+# TURNSTILE_ALLOWED_HOSTNAMES=nexus-vault.stacklabs.space
+# The site key is public; the secret key must remain a Worker secret.
+# Do not use the test keys above in production.
 ```
 
 如果没有使用 Hyperdrive，也可以把 `DATABASE_URL` 设置为 Worker secret：

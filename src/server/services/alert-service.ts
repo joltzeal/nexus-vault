@@ -18,11 +18,9 @@ export async function getVaultAlerts(
   const [notificationData, notificationSummary, submissionData] = await Promise.all([
     listNotifications(db, {
       actor: input.actor,
-      vaultId,
     }),
     getNotificationSummary(db, {
       actor: input.actor,
-      vaultId,
     }),
     includeSubmissions
       ? listResourceSubmissions(db, vaultId, {

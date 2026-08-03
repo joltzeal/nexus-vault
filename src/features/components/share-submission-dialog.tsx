@@ -59,7 +59,7 @@ export function ShareSubmissionDialog({
   const cloudDrive = parseCloudDriveLink(form.url, form.extractionCode)
 
   async function handleSubmit() {
-    if (!form.url.trim() || !turnstileToken) return
+    if (!form.url.trim() || (turnstileSiteKey && !turnstileToken)) return
     const url = createCloudDriveUrlWithPassword(form.url, form.extractionCode)
 
     try {
@@ -227,7 +227,14 @@ export function ShareSubmissionDialog({
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               取消
             </Button>
-            <Button onClick={handleSubmit} disabled={isBusy || !form.url.trim() || !turnstileToken}>
+            <Button
+              onClick={handleSubmit}
+              disabled={
+                isBusy ||
+                !form.url.trim() ||
+                Boolean(turnstileSiteKey && !turnstileToken)
+              }
+            >
               提交
             </Button>
           </DialogFooter>

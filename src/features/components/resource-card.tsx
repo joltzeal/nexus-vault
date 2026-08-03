@@ -72,7 +72,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { ButtonGroup } from "@/components/ui/button-group"
-import { ResourceCardMediaCarousel } from "@/features/components/resource-card-media-carousel"
 import { MarkdownContent } from "@/features/components/markdown-content"
 import { ResourceMediaGallery } from "@/features/components/resource-media-gallery"
 import { SpaceIcon } from "@/features/components/space-icon-picker"
@@ -105,6 +104,7 @@ const RESOURCE_ICON_MAP = {
   ed2k: "emule.svg",
   magnet: "magnet.svg",
   quark_pan: "quark-pan.svg",
+  telegram: "telegram.svg",
   thunder: "thunder.svg",
   twitter: "x.com.svg",
 } as const
@@ -749,12 +749,12 @@ export function ResourceCard({
         </div>
       )}
 
-      {mediaVisible && !isResolvingMetadata && (
-        isMasonryView ? (
-          <ResourceCardMediaCarousel media={media} title={title} />
-        ) : (
-          <ResourceMediaGallery media={media} title={title} />
-        )
+      {mediaVisible && media.length > 0 && !isResolvingMetadata && (
+        <ResourceMediaGallery
+          media={media}
+          title={title}
+          variant={isMasonryView ? "carousel" : "scroll"}
+        />
       )}
 
       {showAnnotationActions && annotation?.comment && (
@@ -1349,6 +1349,7 @@ type ResourceIconName = (typeof RESOURCE_ICON_MAP)[keyof typeof RESOURCE_ICON_MA
 function getResourceIconName(resource: Resource): ResourceIconName | undefined {
   if (resource.type === "magnet") return RESOURCE_ICON_MAP.magnet
   if (resource.type === "twitter") return RESOURCE_ICON_MAP.twitter
+  if (resource.type === "telegram") return RESOURCE_ICON_MAP.telegram
   if (resource.type === "baidu_pan") return RESOURCE_ICON_MAP.baidu_pan
   if (resource.type === "quark_pan") return RESOURCE_ICON_MAP.quark_pan
 

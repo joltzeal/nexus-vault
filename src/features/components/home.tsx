@@ -53,8 +53,10 @@ const trustItems = ["私有优先", "密码分享", "成员权限", "可控评�
 
 export function Home({
   registrationMode,
+  turnstileSiteKey,
 }: {
   registrationMode: RegistrationMode
+  turnstileSiteKey?: string
 }) {
   return (
     <div className="min-h-[100dvh] overflow-hidden bg-background text-foreground">
@@ -69,7 +71,11 @@ export function Home({
             </span>
           </div>
 
-          <HomeAuthActions placement="header" registrationMode={registrationMode} />
+          <HomeAuthActions
+            placement="header"
+            registrationMode={registrationMode}
+            turnstileSiteKey={turnstileSiteKey}
+          />
         </header>
 
         <div className="grid flex-1 gap-8 py-12 md:py-16 lg:grid-cols-[1.02fr_0.98fr] lg:items-center">
@@ -84,7 +90,11 @@ export function Home({
             <p className="mt-5 max-w-[610px] text-[15px] leading-7 text-fg-muted md:text-base">
               NexusVault 帮你收纳链接、磁力、网盘、视频和文档资料。每个资源都有清晰归属、访问权限、评论上下文和可分享入口。
             </p>
-            <HomeAuthActions placement="hero" registrationMode={registrationMode} />
+            <HomeAuthActions
+              placement="hero"
+              registrationMode={registrationMode}
+              turnstileSiteKey={turnstileSiteKey}
+            />
 
             <div className="mt-8 grid max-w-[560px] gap-2 sm:grid-cols-2">
               {trustItems.map((item) => (

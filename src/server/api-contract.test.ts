@@ -153,6 +153,41 @@ test("resource input stores clean canonical magnet urls", () => {
   )
 })
 
+test("resource input detects telegram message urls", () => {
+  assert.deepEqual(parseResourceInput({ url: "https://t.me/example_channel/42?single" }), {
+    type: "telegram",
+    url: "https://t.me/example_channel/42",
+    title: "Telegram message",
+    metadata: {
+      chatUsername: "example_channel",
+      internalChatId: undefined,
+      messageId: "42",
+    },
+  })
+
+  assert.deepEqual(parseResourceInput({ url: "https://t.me/c/123456789/987" }), {
+    type: "telegram",
+    url: "https://t.me/c/123456789/987",
+    title: "Telegram message",
+    metadata: {
+      chatUsername: undefined,
+      internalChatId: "123456789",
+      messageId: "987",
+    },
+  })
+
+  assert.deepEqual(parseResourceInput({ url: "https://t.me/s/example_channel/43" }), {
+    type: "telegram",
+    url: "https://t.me/example_channel/43",
+    title: "Telegram message",
+    metadata: {
+      chatUsername: "example_channel",
+      internalChatId: undefined,
+      messageId: "43",
+    },
+  })
+})
+
 test("resource input detects cloud drive share urls and extraction codes", () => {
   const cases = [
     {

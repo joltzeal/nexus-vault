@@ -27,16 +27,28 @@ export type ResourceMetadataSource = {
   }
 }
 
+export type ResourceMediaMetadata = {
+  kind: "image" | "video" | "audio" | "document" | "unknown"
+  provider?: string
+  sourceId?: string
+  sourceUrl?: string
+  url?: string
+  thumbnailUrl?: string
+  mimeType?: string
+  fileName?: string
+  size?: number
+  metadata?: Record<string, unknown>
+}
+
 export type NormalizedResourceMetadata = {
   schemaVersion: 1
   type: ResourceType
   title?: string
   description?: string
-  cover?: string
   size?: number
   fileCount?: number
   fileType?: ResourceFileType
-  screenshots?: string[]
+  media?: ResourceMediaMetadata[]
   tree: ResourceFileTreeNode[]
   identifiers?: Record<string, string>
   source?: ResourceMetadataSource

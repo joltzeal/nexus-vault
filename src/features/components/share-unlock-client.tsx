@@ -3,6 +3,7 @@
 import { LockKeyhole } from "lucide-react"
 import { useState } from "react"
 
+import { TurnstileField } from "@/components/turnstile-field"
 import { Button } from "@/components/ui/button"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -22,6 +23,13 @@ export function ShareUnlockClient({
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [set, setSet] = useState<ResourceSet | null>(null)
+  const [viewer, setViewer] = useState<{
+    id: string
+    email: string
+    name: string | null
+  } | null>(null)
+  const [turnstileToken, setTurnstileToken] = useState("")
+  const [turnstileResetSignal, setTurnstileResetSignal] = useState(0)
 
   async function handleUnlock() {
     if (!password.trim()) return
@@ -42,16 +50,33 @@ export function ShareUnlockClient({
         }
         spaces: Space[]
         resources: Array<Resource & { spaceId: string | null }>
+        actorId?: string
+        actorEmail?: string
+        actorName?: string | null
       }>(`/shares/${slug}/unlock`, {
         method: "POST",
-        body: JSON.stringify({ passwordHash }),
+        body: JSON.stringify({
+          passwordHash,
+          ...(turnstileToken ? { turnstileToken } : {}),
+        }),
       })
 
       setSet(mapVaultDetail(detail))
+      setViewer(
+        detail.actorId && detail.actorEmail
+          ? {
+              id: detail.actorId,
+              email: detail.actorEmail,
+              name: detail.actorName ?? null,
+            }
+          : null,
+      )
     } catch (unlockError) {
       setError(unlockError instanceof Error ? unlockError.message : "密码错误。")
     } finally {
       setIsLoading(false)
+      setTurnstileToken("")
+      setTurnstileResetSignal((value) => value + 1)
     }
   }
 
@@ -61,6 +86,13 @@ export function ShareUnlockClient({
         initialData={{
           sets: [set],
           activeSetId: set.id,
+          ...(viewer
+            ? {
+                actorId: viewer.id,
+                actorEmail: viewer.email,
+                actorName: viewer.name,
+              }
+            : {}),
           mode: "share",
           shareSlug: slug,
           turnstileSiteKey,
@@ -99,7 +131,26 @@ export function ShareUnlockClient({
               />
             </Field>
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button onClick={handleUnlock} disabled={isLoading || !password.trim()}>
+            {turnstileSiteKey && (
+              <div className="flex min-h-[65px] justify-center">
+                <TurnstileField
+                  action="share_unlock"
+                  onError={() => setTurnstileToken("")}
+                  onExpire={() => setTurnstileToken("")}
+                  onVerify={setTurnstileToken}
+                  resetSignal={turnstileResetSignal}
+                  siteKey={turnstileSiteKey}
+                />
+              </div>
+            )}
+            <Button
+              onClick={handleUnlock}
+              disabled={
+                isLoading ||
+                !password.trim() ||
+                Boolean(turnstileSiteKey && !turnstileToken)
+              }
+            >
               解锁
             </Button>
           </FieldGroup>

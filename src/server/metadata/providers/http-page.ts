@@ -1,4 +1,7 @@
-import { createBaseResourceMetadata } from "@/domain/resources/metadata"
+import {
+  createBaseResourceMetadata,
+  type ResourceMediaMetadata,
+} from "@/domain/resources/metadata"
 import {
   isCloudDriveLink,
   parseHttpLink,
@@ -52,6 +55,18 @@ export const httpPageMetadataProvider: MetadataProvider = {
           error instanceof Error ? error.message : "Screenshot capture failed."
       }
     }
+    const media = screenshotUrl
+      ? ([
+          {
+            kind: "image",
+            provider: "browserless",
+            sourceUrl: parsed.url,
+            url: screenshotUrl,
+            thumbnailUrl: screenshotUrl,
+            mimeType: "image/png",
+          },
+        ] satisfies ResourceMediaMetadata[])
+      : undefined
 
     return {
       provider: "http-page",
@@ -63,8 +78,7 @@ export const httpPageMetadataProvider: MetadataProvider = {
           fetchedAt,
         }),
         title,
-        cover: screenshotUrl,
-        screenshots: screenshotUrl ? [screenshotUrl] : [],
+        ...(media ? { media } : {}),
         source: {
           name: "http-page",
           url: parsed.url,

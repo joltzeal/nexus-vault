@@ -1,6 +1,6 @@
 CREATE TYPE "public"."collaborator_role" AS ENUM('editor');--> statement-breakpoint
 CREATE TYPE "public"."metadata_status" AS ENUM('pending', 'processing', 'completed', 'failed');--> statement-breakpoint
-CREATE TYPE "public"."resource_type" AS ENUM('magnet', 'twitter', 'baidu_pan', 'pan_115', 'pan_123', 'quark_pan', 'uc_pan', 'xunlei_pan', 'pikpak', 'onedrive', 'google_drive', 'dropbox', 'alist', 'http', 'youtube', 'other');--> statement-breakpoint
+CREATE TYPE "public"."resource_type" AS ENUM('magnet', 'twitter', 'telegram', 'baidu_pan', 'pan_115', 'pan_123', 'quark_pan', 'uc_pan', 'xunlei_pan', 'pikpak', 'onedrive', 'google_drive', 'dropbox', 'alist', 'ftp', 'http', 'youtube', 'other');--> statement-breakpoint
 CREATE TYPE "public"."submission_status" AS ENUM('pending', 'approved', 'rejected');--> statement-breakpoint
 CREATE TYPE "public"."vault_visibility" AS ENUM('public', 'private', 'password');--> statement-breakpoint
 CREATE TYPE "public"."vault_watch_level" AS ENUM('all', 'updates', 'none');--> statement-breakpoint
@@ -225,6 +225,14 @@ CREATE TABLE "notifications" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "user_integration_settings" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" text NOT NULL,
+	"data_json" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 ALTER TABLE "account" ADD CONSTRAINT "account_userId_user_id_fk" FOREIGN KEY ("userId") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "session" ADD CONSTRAINT "session_userId_user_id_fk" FOREIGN KEY ("userId") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "collaborators" ADD CONSTRAINT "collaborators_vault_id_vaults_id_fk" FOREIGN KEY ("vault_id") REFERENCES "public"."vaults"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -256,6 +264,7 @@ ALTER TABLE "resources" ADD CONSTRAINT "resources_created_by_user_id_fk" FOREIGN
 ALTER TABLE "starred_resources" ADD CONSTRAINT "starred_resources_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "notifications" ADD CONSTRAINT "notifications_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "notifications" ADD CONSTRAINT "notifications_vault_id_vaults_id_fk" FOREIGN KEY ("vault_id") REFERENCES "public"."vaults"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "user_integration_settings" ADD CONSTRAINT "user_integration_settings_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "account_userId_idx" ON "account" USING btree ("userId");--> statement-breakpoint
 CREATE INDEX "session_userId_idx" ON "session" USING btree ("userId");--> statement-breakpoint
 CREATE INDEX "verification_identifier_idx" ON "verification" USING btree ("identifier");--> statement-breakpoint
@@ -283,4 +292,5 @@ CREATE UNIQUE INDEX "starred_resources_user_source_unique" ON "starred_resources
 CREATE INDEX "starred_resources_user_created_idx" ON "starred_resources" USING btree ("user_id","created_at");--> statement-breakpoint
 CREATE INDEX "starred_resources_source_resource_idx" ON "starred_resources" USING btree ("source_resource_id");--> statement-breakpoint
 CREATE INDEX "notifications_user_read_created_idx" ON "notifications" USING btree ("user_id","read_at","created_at");--> statement-breakpoint
-CREATE INDEX "notifications_user_created_idx" ON "notifications" USING btree ("user_id","created_at");
+CREATE INDEX "notifications_user_created_idx" ON "notifications" USING btree ("user_id","created_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "user_integration_settings_user_unique" ON "user_integration_settings" USING btree ("user_id");

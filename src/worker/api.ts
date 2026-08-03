@@ -14,6 +14,7 @@ import {
   getUnlockedSharedVaultDetail,
 } from "@/server/services/share-service"
 import type { QueueMessage } from "@/server/queues/messages"
+import { getTurnstileSiteKey } from "@/server/services/turnstile-service"
 
 import * as healthRoute from "@/app/api/v1/health/route"
 import * as accountIntegrationsRoute from "@/app/api/v1/account/integrations/route"
@@ -86,11 +87,17 @@ api.get("/api/bootstrap", async (c) => {
 
   if (viewer) {
     initialData = await loadDashboardWorkspace(viewer, c.env)
+    initialData.turnstileSiteKey = getTurnstileSiteKey(c.env)
   }
 
   return c.json({
     success: true,
-    data: { registrationMode, viewer, initialData },
+    data: {
+      registrationMode,
+      viewer,
+      initialData,
+      turnstileSiteKey: getTurnstileSiteKey(c.env),
+    },
     error: null,
   })
 })
@@ -99,12 +106,20 @@ api.get("/api/bootstrap/share/:slug", async (c) => {
   const slug = c.req.param("slug")
   const database = await createDbSession(c.env)
   try {
+    const viewer = await resolveViewerFromRequest(c.req.raw, c.env, database.db)
     const share = await getUnlockedSharedVaultDetail(
       database.db,
       c.env,
       slug,
       getShareUnlockToken(c.req.raw, slug),
+      { actor: viewer ?? undefined },
     )
+    const initialData = share?.detail
+      ? mapVaultDetail({
+          ...share.detail,
+          actorRole: share.actorRole,
+        })
+      : null
 
     return c.json({
       success: true,
@@ -113,10 +128,17 @@ api.get("/api/bootstrap/share/:slug", async (c) => {
           ? {
               unavailable: share.unavailable,
               passwordRequired: share.passwordRequired,
-              initialData: share.detail
+              initialData: initialData
                 ? {
-                    sets: [mapVaultDetail(share.detail)],
-                    activeSetId: share.detail.vault.id,
+                    sets: [initialData],
+                    activeSetId: initialData.id,
+                    ...(viewer
+                      ? {
+                          actorId: viewer.id,
+                          actorEmail: viewer.email,
+                          actorName: viewer.name,
+                        }
+                      : {}),
                     mode: "share",
                     shareSlug: slug,
                     turnstileSiteKey: getTurnstileSiteKey(c.env),
@@ -140,7 +162,7 @@ api.get("/api/v1/media/*", async (c) => {
     .map(decodeURIComponent)
     .join("/")
 
-  if (!objectKey.startsWith("screenshots/")) {
+  if (!isPublicMediaObjectKey(objectKey)) {
     return new Response("Media not found.", { status: 404 })
   }
 
@@ -161,6 +183,10 @@ api.get("/api/v1/media/*", async (c) => {
 
   return new Response(object.body, { headers })
 })
+
+function isPublicMediaObjectKey(objectKey: string) {
+  return objectKey.startsWith("screenshots/") || objectKey.startsWith("telegram/")
+}
 
 register("/api/v1/health", healthRoute)
 register("/api/v1/account/integrations", accountIntegrationsRoute)
@@ -254,8 +280,4 @@ function getShareUnlockToken(request: Request, slug: string) {
     ?.slice(prefix.length)
 
   return value ? decodeURIComponent(value) : undefined
-}
-
-function getTurnstileSiteKey(env: CloudflareEnv) {
-  return (env as CloudflareEnv & { TURNSTILE_SITE_KEY?: string }).TURNSTILE_SITE_KEY
 }

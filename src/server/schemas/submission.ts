@@ -10,7 +10,7 @@ export const createResourceSubmissionSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   description: z.string().trim().optional().default(""),
   url: z.string().trim().min(1).max(4096),
-  turnstileToken: z.string().trim().min(1),
+  turnstileToken: z.string().trim().min(1).optional(),
 })
 
 export const reviewResourceSubmissionSchema = z.object({

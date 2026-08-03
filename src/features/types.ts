@@ -3,6 +3,7 @@ import type { NormalizedResourceMetadata } from "@/domain/resources/metadata"
 export type ResourceType =
   | "magnet"
   | "twitter"
+  | "telegram"
   | "baidu_pan"
   | "pan_115"
   | "pan_123"
@@ -213,6 +214,7 @@ export type ApiResponse<T> =
 export const resourceTypes: Array<{ value: ResourceType; label: string }> = [
   { value: "magnet", label: "Magnet" },
   { value: "twitter", label: "X/Twitter" },
+  { value: "telegram", label: "Telegram" },
   { value: "baidu_pan", label: "百度网盘" },
   { value: "pan_115", label: "115 盘" },
   { value: "pan_123", label: "123 云盘" },

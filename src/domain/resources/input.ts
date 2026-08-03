@@ -33,6 +33,13 @@ export type ParsedTwitterLink = {
   url: string
 }
 
+export type ParsedTelegramMessageLink = {
+  chatUsername?: string
+  internalChatId?: string
+  messageId: string
+  url: string
+}
+
 export type ParsedFtpLink = {
   fileExtension?: string
   fileName?: string
@@ -196,6 +203,44 @@ export function parseTwitterLink(url: string): ParsedTwitterLink | null {
   }
 }
 
+export function parseTelegramMessageLink(url: string): ParsedTelegramMessageLink | null {
+  const parsedUrl = parseHttpUrl(url)
+  if (!parsedUrl) return null
+
+  const hostname = normalizeHostname(parsedUrl.hostname)
+  if (hostname !== "t.me" && hostname !== "telegram.me") return null
+
+  const segments = parsedUrl.pathname.split("/").filter(Boolean)
+  if (segments.length < 2) return null
+
+  const isWebPreviewPath = segments[0]?.toLowerCase() === "s"
+  const offset = isWebPreviewPath ? 1 : 0
+  const chatSegment = segments[offset]
+  const messageSegment = segments[offset + 1]
+  if (!chatSegment || !messageSegment || !/^\d+$/.test(messageSegment)) return null
+
+  if (chatSegment.toLowerCase() === "c") {
+    const internalChatId = segments[offset + 1]
+    const privateMessageSegment = segments[offset + 2]
+    if (!internalChatId || !privateMessageSegment) return null
+    if (!/^\d+$/.test(internalChatId) || !/^\d+$/.test(privateMessageSegment)) return null
+
+    return {
+      internalChatId,
+      messageId: privateMessageSegment,
+      url: `https://t.me/c/${internalChatId}/${privateMessageSegment}`,
+    }
+  }
+
+  if (!/^[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(chatSegment)) return null
+
+  return {
+    chatUsername: chatSegment,
+    messageId: messageSegment,
+    url: `https://t.me/${chatSegment}/${messageSegment}`,
+  }
+}
+
 export function parseFtpLink(url: string): ParsedFtpLink | null {
   let parsedUrl: URL
   try {
@@ -290,6 +335,7 @@ export function parseHttpLink(url: string): ParsedHttpLink | null {
 function defaultResourceTitle(type: ResourceType) {
   if (type === "magnet") return "名称未知"
   if (type === "twitter") return "Untitled tweet"
+  if (type === "telegram") return "Telegram message"
   if (type === "ftp") return "FTP link"
   if (isCloudDriveResourceType(type)) return getCloudDriveProviderLabel(type)
   if (type === "http") return "Untitled link"
@@ -408,6 +454,24 @@ export const httpInputParser: ResourceInputParser = {
             ? {
                 tweetId: twitter.tweetId,
                 username: twitter.username,
+              }
+            : {}),
+        },
+      }
+    }
+
+    const telegram = parseTelegramMessageLink(input.url)
+    if (input.type === "telegram" || telegram) {
+      return {
+        type: "telegram",
+        url: telegram?.url ?? input.url.trim(),
+        title: normalizeInputTitle(input.title) || defaultResourceTitle("telegram"),
+        metadata: {
+          ...(telegram
+            ? {
+                chatUsername: telegram.chatUsername,
+                internalChatId: telegram.internalChatId,
+                messageId: telegram.messageId,
               }
             : {}),
         },

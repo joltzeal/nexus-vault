@@ -3,7 +3,10 @@ import { and, eq, isNull } from "drizzle-orm"
 import { shares, vaults } from "@/db/schema"
 import { forbidden, validationFailed } from "@/server/api/errors"
 import type { Actor, Db } from "@/server/api/types"
-import { requireVaultPermission } from "@/server/services/permission-service"
+import {
+  getVaultRoleForActor,
+  requireVaultPermission,
+} from "@/server/services/permission-service"
 import { getVaultOrThrow, readVaultDetail } from "@/server/services/vault-service"
 import { newId, newShareSlug, newToken } from "@/server/utils/id"
 
@@ -178,7 +181,8 @@ export async function getUnlockedSharedVaultDetail(
   db: Db,
   env: CloudflareEnv,
   slug: string,
-  unlockToken?: string
+  unlockToken?: string,
+  input: { actor?: Actor } = {}
 ) {
   const share = await findActiveShareBySlug(db, slug)
 
@@ -187,6 +191,7 @@ export async function getUnlockedSharedVaultDetail(
     return {
       passwordRequired: false as const,
       unavailable: true as const,
+      actorRole: "anonymous" as const,
       detail: null,
     }
   }
@@ -201,6 +206,7 @@ export async function getUnlockedSharedVaultDetail(
       return {
         passwordRequired: true as const,
         unavailable: false as const,
+        actorRole: "anonymous" as const,
         detail: null,
       }
     }
@@ -209,7 +215,8 @@ export async function getUnlockedSharedVaultDetail(
   return {
     passwordRequired: false as const,
     unavailable: false as const,
-    detail: await readVaultDetail(db, share.vaultId),
+    actorRole: await getVaultRoleForActor(db, share.vaultId, input.actor),
+    detail: await readVaultDetail(db, share.vaultId, { actor: input.actor }),
   }
 }
 

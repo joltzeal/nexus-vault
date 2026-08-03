@@ -6,6 +6,7 @@ import { ArrowRight, Fingerprint, Loader2 } from "lucide-react"
 import { authClient } from "@/lib/auth-client"
 import type { RegistrationMode } from "@/auth/registration"
 import { Button } from "@/components/ui/button"
+import { TurnstileField } from "@/components/turnstile-field"
 import {
   Dialog,
   DialogContent,
@@ -23,9 +24,14 @@ type AuthMode = "sign-in" | "sign-up"
 type HomeAuthActionsProps = {
   placement: "header" | "hero"
   registrationMode: RegistrationMode
+  turnstileSiteKey?: string
 }
 
-export function HomeAuthActions({ placement, registrationMode }: HomeAuthActionsProps) {
+export function HomeAuthActions({
+  placement,
+  registrationMode,
+  turnstileSiteKey,
+}: HomeAuthActionsProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<AuthMode>("sign-in")
@@ -34,6 +40,8 @@ export function HomeAuthActions({ placement, registrationMode }: HomeAuthActions
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [turnstileToken, setTurnstileToken] = useState("")
+  const [turnstileResetSignal, setTurnstileResetSignal] = useState(0)
 
   const isSignUp = mode === "sign-up"
   const canSignUp = registrationMode !== "login-only"
@@ -43,11 +51,14 @@ export function HomeAuthActions({ placement, registrationMode }: HomeAuthActions
   function openAuth(nextMode: AuthMode) {
     setMode(nextMode === "sign-up" && !canSignUp ? "sign-in" : nextMode)
     setError("")
+    resetTurnstile()
     setOpen(true)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (turnstileSiteKey && !turnstileToken) return
+
     setIsSubmitting(true)
     setError("")
 
@@ -55,15 +66,20 @@ export function HomeAuthActions({ placement, registrationMode }: HomeAuthActions
       const trimmedEmail = email.trim()
       const trimmedName = name.trim()
 
+      const fetchOptions = turnstileToken
+        ? { headers: { "x-captcha-response": turnstileToken } }
+        : undefined
       const result = isSignUp
         ? await authClient.signUp.email({
             email: trimmedEmail,
             password,
             name: trimmedName || trimmedEmail,
+            fetchOptions,
           })
         : await authClient.signIn.email({
             email: trimmedEmail,
             password,
+            fetchOptions,
           })
 
       if (result.error) {
@@ -76,9 +92,16 @@ export function HomeAuthActions({ placement, registrationMode }: HomeAuthActions
       router.refresh()
     } catch (authError) {
       setError(authError instanceof Error ? authError.message : "认证失败，请稍后再试。")
+      resetTurnstile()
     } finally {
       setIsSubmitting(false)
+      resetTurnstile()
     }
+  }
+
+  function resetTurnstile() {
+    setTurnstileToken("")
+    setTurnstileResetSignal((value) => value + 1)
   }
 
   return (
@@ -142,7 +165,7 @@ export function HomeAuthActions({ placement, registrationMode }: HomeAuthActions
                   autoComplete="name"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
-                  placeholder="Ameno"
+                  placeholder="Username"
                 />
               </div>
             )}
@@ -179,7 +202,20 @@ export function HomeAuthActions({ placement, registrationMode }: HomeAuthActions
               </p>
             )}
 
-            <Button type="submit" disabled={isSubmitting}>
+            {turnstileSiteKey && (
+              <div className="flex min-h-[65px] justify-center">
+                <TurnstileField
+                  action="auth"
+                  onError={resetTurnstile}
+                  onExpire={resetTurnstile}
+                  onVerify={setTurnstileToken}
+                  resetSignal={turnstileResetSignal}
+                  siteKey={turnstileSiteKey}
+                />
+              </div>
+            )}
+
+            <Button type="submit" disabled={isSubmitting || Boolean(turnstileSiteKey && !turnstileToken)}>
               {isSubmitting && <Loader2 className="animate-spin" data-icon="inline-start" />}
               {isSignUp ? "创建账号" : "登录"}
             </Button>

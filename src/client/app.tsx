@@ -10,6 +10,7 @@ import type { ApiResponse, VaultWorkspaceInitialData } from "@/features/types"
 type BootstrapData = {
   registrationMode: RegistrationMode
   initialData: VaultWorkspaceInitialData | null
+  turnstileSiteKey?: string
 }
 
 type ShareBootstrapData = {
@@ -23,7 +24,7 @@ type ShareBootstrapData = {
 
 type AppState =
   | { status: "loading" }
-  | { status: "home"; registrationMode: RegistrationMode }
+  | { status: "home"; registrationMode: RegistrationMode; turnstileSiteKey?: string }
   | { status: "workspace"; initialData: VaultWorkspaceInitialData }
   | { status: "share-unavailable" }
   | { status: "share-password"; slug: string; turnstileSiteKey?: string }
@@ -61,7 +62,14 @@ export function App() {
 
   if (state.status === "loading") return <LoadingScreen />
   if (state.status === "error") return <ErrorScreen message={state.message} />
-  if (state.status === "home") return <Home registrationMode={state.registrationMode} />
+  if (state.status === "home") {
+    return (
+      <Home
+        registrationMode={state.registrationMode}
+        turnstileSiteKey={state.turnstileSiteKey}
+      />
+    )
+  }
   if (state.status === "share-unavailable") return <ShareUnavailableClient />
   if (state.status === "share-password") {
     return <ShareUnlockClient slug={state.slug} turnstileSiteKey={state.turnstileSiteKey} />
@@ -74,7 +82,11 @@ async function loadWorkspaceState(): Promise<AppState> {
   const data = await apiRequest<BootstrapData>("/api/bootstrap")
 
   if (!data.initialData) {
-    return { status: "home", registrationMode: data.registrationMode }
+    return {
+      status: "home",
+      registrationMode: data.registrationMode,
+      turnstileSiteKey: data.turnstileSiteKey,
+    }
   }
 
   if (window.location.pathname !== "/dashboard") {

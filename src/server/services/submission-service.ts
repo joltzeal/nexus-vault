@@ -86,13 +86,22 @@ export async function createResourceSubmission(
           userId: vault.ownerId,
           vaultId,
           type: "resource_submission.created",
-          title: "有新的资源提交",
-          body: parsed.title || parsed.url,
+          title: input.actor?.name?.trim() || input.actor?.email?.trim() || "匿名用户",
+          body: isFallbackSubmissionTitle(parsed.title) ? "提交了一个新资源" : parsed.title,
           requestedAt: new Date().toISOString(),
         }
       : null
 
   return { id: submissionId, status: "pending" as const, notificationTask }
+}
+
+function isFallbackSubmissionTitle(value: string) {
+  return [
+    "名称未知",
+    "untitled resource",
+    "untitled link",
+    "untitled tweet",
+  ].includes(value.trim().toLowerCase())
 }
 
 async function resolveSubmissionMetadata(input: {

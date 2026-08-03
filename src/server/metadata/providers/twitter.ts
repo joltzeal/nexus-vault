@@ -3,7 +3,10 @@ import {
   Scraper,
 } from "@the-convocation/twitter-scraper"
 
-import { createBaseResourceMetadata } from "@/domain/resources/metadata"
+import {
+  createBaseResourceMetadata,
+  type ResourceMediaMetadata,
+} from "@/domain/resources/metadata"
 import { parseTwitterLink } from "@/domain/resources/input"
 
 import type { MetadataProvider } from "../metadata-provider"
@@ -48,6 +51,8 @@ export const twitterMetadataProvider: MetadataProvider = {
         }
       }
 
+      const media = getTweetMedia(tweet)
+
       return {
         provider: "twitter-scraper",
         status: "completed",
@@ -55,6 +60,7 @@ export const twitterMetadataProvider: MetadataProvider = {
           ...baseMetadata,
           title: getTweetTitle(tweet.name, tweet.username),
           description: tweet.text,
+          ...(media ? { media } : {}),
           identifiers: {
             tweetId: tweet.id ?? parsed.tweetId,
           },
@@ -126,6 +132,37 @@ export const twitterMetadataProvider: MetadataProvider = {
       },
     }
   },
+}
+
+function getTweetMedia(tweet: NonNullable<Awaited<ReturnType<typeof fetchTweetWithCookie>>>): ResourceMediaMetadata[] | undefined {
+  const media: ResourceMediaMetadata[] = []
+
+  for (const [index, photo] of tweet.photos.entries()) {
+    if (!photo.url) continue
+    media.push({
+      kind: "image",
+      provider: "twitter",
+      sourceId: `photo:${index}`,
+      sourceUrl: photo.url,
+      url: photo.url,
+      thumbnailUrl: photo.url,
+      ...(photo.alt_text ? { metadata: { altText: photo.alt_text } } : {}),
+    })
+  }
+
+  for (const [index, video] of tweet.videos.entries()) {
+    if (!video.url) continue
+    media.push({
+      kind: "video",
+      provider: "twitter",
+      sourceId: `video:${index}`,
+      sourceUrl: video.url,
+      url: video.url,
+      ...(video.preview ? { thumbnailUrl: video.preview } : {}),
+    })
+  }
+
+  return media.length > 0 ? media : undefined
 }
 
 async function fetchTweetWithCookie(tweetId: string, cookieString: string) {

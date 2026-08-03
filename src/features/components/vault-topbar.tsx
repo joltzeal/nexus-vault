@@ -56,6 +56,7 @@ export function VaultTopbar({
   onAuthOpen,
   onHome,
   onNotificationsOpen,
+  onNotificationClick,
   onOpenConsole,
   onPageChange,
   onSearchSelect,
@@ -71,9 +72,10 @@ export function VaultTopbar({
   isSessionPending: boolean
   notifications: Array<{
     id: string
+    vaultId?: string | null
+    type: string
     title: string
     body: string
-    type: string
     readAt?: string | null
     createdAt: string
   }>
@@ -81,6 +83,15 @@ export function VaultTopbar({
   onAuthOpen: () => void
   onHome: () => void
   onNotificationsOpen: () => void
+  onNotificationClick: (notification: {
+    id: string
+    vaultId?: string | null
+    type: string
+    title: string
+    body: string
+    readAt?: string | null
+    createdAt: string
+  }) => void
   onOpenConsole: () => void
   onPageChange: (page: VaultTopbarPage) => void
   onSearchSelect: (item: VaultSearchItem) => void
@@ -93,6 +104,7 @@ export function VaultTopbar({
 }) {
   const [currentVaultSearchOpen, setCurrentVaultSearchOpen] = useState(false)
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const visibleNotifications = useMemo(
     () => notifications.filter((notification) => notification.type === "resource_submission.created"),
     [notifications]
@@ -197,7 +209,9 @@ export function VaultTopbar({
 
       <div className="ml-auto flex items-center gap-1.5">
         <Popover
+          open={notificationsOpen}
           onOpenChange={(open) => {
+            setNotificationsOpen(open)
             if (open) onNotificationsOpen()
           }}
         >
@@ -218,13 +232,18 @@ export function VaultTopbar({
             <PopoverHeader className="border-b border-line px-3 py-2.5">
               <PopoverTitle>新提交</PopoverTitle>
             </PopoverHeader>
-            <div className="max-h-[360px] overflow-auto p-2">
+            <div className="min-h-0 max-h-[min(420px,calc(100dvh-8rem))] overflow-y-auto overscroll-contain p-2">
               {visibleNotifications.length > 0 ? (
                 <div className="flex flex-col gap-1.5">
                   {visibleNotifications.map((notification) => (
-                    <article
-                      className="rounded-input border border-line bg-ink-800 px-3 py-2"
+                    <button
+                      className="block w-full rounded-input border border-line bg-ink-800 px-3 py-2 text-left transition hover:border-jade-dim hover:bg-ink-750 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jade-dim"
                       key={notification.id}
+                      onClick={() => {
+                        setNotificationsOpen(false)
+                        onNotificationClick(notification)
+                      }}
+                      type="button"
                     >
                       <div className="flex items-start gap-2">
                         {!notification.readAt && (
@@ -242,7 +261,7 @@ export function VaultTopbar({
                           </p>
                         </div>
                       </div>
-                    </article>
+                    </button>
                   ))}
                 </div>
               ) : (

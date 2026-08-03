@@ -1,4 +1,4 @@
-import { parseCloudDriveLink, parseMagnetLink, parseTwitterLink, isCloudDriveResourceType, type ResourceType } from "@/domain/resources/input"
+import { parseCloudDriveLink, parseMagnetLink, parseTelegramMessageLink, parseTwitterLink, isCloudDriveResourceType, type ResourceType } from "@/domain/resources/input"
 
 export type MetadataQueueMessage = {
   kind: "metadata.resolve"
@@ -17,6 +17,7 @@ export function createMetadataQueueMessage(
 ): MetadataQueueMessage {
   const parsedMagnet = type === "magnet" ? parseMagnetLink(url) : null
   const parsedTwitter = type === "twitter" ? parseTwitterLink(url) : null
+  const parsedTelegram = type === "telegram" ? parseTelegramMessageLink(url) : null
   const parsedCloudDrive = isCloudDriveResourceType(type) ? parseCloudDriveLink(url) : null
 
   return {
@@ -28,9 +29,11 @@ export function createMetadataQueueMessage(
       ? `magnet:${parsedMagnet.infoHash}`
       : parsedTwitter
         ? `twitter:${parsedTwitter.tweetId}`
-        : parsedCloudDrive
-          ? `${parsedCloudDrive.provider}:${parsedCloudDrive.url}`
-          : undefined,
+        : parsedTelegram
+          ? `telegram:${parsedTelegram.chatUsername ?? parsedTelegram.internalChatId}:${parsedTelegram.messageId}`
+          : parsedCloudDrive
+            ? `${parsedCloudDrive.provider}:${parsedCloudDrive.url}`
+            : undefined,
     requestedAt: new Date().toISOString(),
   }
 }

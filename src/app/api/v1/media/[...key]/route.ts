@@ -6,7 +6,7 @@ export async function GET(_request: Request, { params }: Context) {
   const { key } = await params
   const objectKey = key.map(decodeURIComponent).join("/")
 
-  if (!objectKey.startsWith("screenshots/")) {
+  if (!objectKey.startsWith("screenshots/") && !objectKey.startsWith("telegram/")) {
     return new Response("Media not found.", { status: 404 })
   }
 

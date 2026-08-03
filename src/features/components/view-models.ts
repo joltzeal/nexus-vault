@@ -18,6 +18,7 @@ import type {
 export type MediaItem = {
   fit?: "cover" | "natural"
   kind: "image" | "video"
+  playback?: "inline" | "external"
   src: string
   preview?: string
   duration?: string
@@ -132,31 +133,7 @@ export function getResourcePillItems(resource: Resource): ResourcePillItem[] {
 
 export function getResourceMedia(resource: Resource): MediaItem[] {
   const metadata = resource.metadata?.data
-  const twitter = getTwitterMetadata(metadata?.extra?.twitter)
-  const twitterPhotos = twitter?.photos?.map((photo) => photo.url) ?? []
-  const twitterVideos: MediaItem[] = []
-  for (const video of twitter?.videos ?? []) {
-    if (!video) continue
-    twitterVideos.push({
-      kind: "video",
-      src: video.url,
-      preview: video.preview,
-    })
-  }
-  if (twitterVideos.length > 0) return twitterVideos
-
-  const images = uniqueImages([metadata?.cover, ...(metadata?.screenshots ?? [])])
-  const imageFit = isWhatsLinkMetadataSource(metadata?.source?.url)
-    ? ("natural" as const)
-    : ("cover" as const)
-
-  return [
-    ...uniqueImages([...twitterPhotos, ...images]).map((src) => ({
-      fit: imageFit,
-      kind: resource.type === "youtube" ? ("video" as const) : ("image" as const),
-      src,
-    })),
-  ]
+  return getNormalizedMedia(metadata?.media, metadata?.source?.url)
 }
 
 export function getResourceFaviconUrl(resource: Resource) {
@@ -192,6 +169,7 @@ export function getMetadataState(status: MetadataStatus) {
 export function getTypePill(type: ResourceType) {
   if (type === "magnet") return { className: "tp-magnet", label: "MAG" }
   if (type === "twitter") return { className: "tp-http", label: "X" }
+  if (type === "telegram") return { className: "tp-http", label: "TG" }
   if (type === "ftp") return { className: "tp-http", label: "FTP" }
   if (type === "baidu_pan") return { className: "tp-drive", label: "BD" }
   if (type === "pan_115") return { className: "tp-drive", label: "115" }
@@ -248,12 +226,6 @@ export function getResourceMeta(resource: Resource) {
     source: metadata?.source?.attribution,
     errorMessage: resource.metadata?.errorMessage,
   }
-}
-
-function uniqueImages(images: Array<string | undefined>) {
-  return images.filter(
-    (image, index, list): image is string => Boolean(image) && list.indexOf(image) === index
-  )
 }
 
 function normalizeDisplayTitle(value?: string | null) {
@@ -353,40 +325,48 @@ function getCloudDrivePills(resource: Resource): ResourcePillItem[] {
   return pills
 }
 
-function getTwitterMetadata(value: unknown) {
-  if (!isRecord(value)) return null
+function getNormalizedMedia(value: unknown, sourceUrl?: string): MediaItem[] {
+  if (!Array.isArray(value)) return []
 
-  return {
-    photos: Array.isArray(value.photos)
-      ? value.photos
-          .map((photo) => {
-            if (!isRecord(photo) || typeof photo.url !== "string") return null
-            return { url: photo.url }
-          })
-          .filter(isTwitterPhoto)
-      : [],
-    videos: Array.isArray(value.videos)
-      ? value.videos
-          .map((video) => {
-            if (!isRecord(video) || typeof video.url !== "string") return null
-            return {
-              url: video.url,
-              preview: typeof video.preview === "string" ? video.preview : undefined,
-            }
-          })
-          .filter(isTwitterVideo)
-      : [],
+  const media: MediaItem[] = []
+  for (const item of value) {
+    if (!isRecord(item)) continue
+
+    const kind = typeof item.kind === "string" ? item.kind : ""
+    const provider = typeof item.provider === "string" ? item.provider : ""
+    const url = typeof item.url === "string" ? item.url.trim() : ""
+    const thumbnailUrl =
+      typeof item.thumbnailUrl === "string"
+        ? item.thumbnailUrl.trim() || undefined
+        : undefined
+
+    if (kind === "video" && url) {
+      media.push({
+        kind: "video",
+        playback: getVideoPlayback(provider),
+        src: url,
+        ...(thumbnailUrl ? { preview: thumbnailUrl } : {}),
+      })
+      continue
+    }
+
+    if (kind === "image") {
+      const imageUrl = url || thumbnailUrl
+      if (!imageUrl) continue
+      media.push({
+        fit: isWhatsLinkMetadataSource(sourceUrl) ? "natural" : "cover",
+        kind: "image",
+        src: imageUrl,
+      })
+    }
   }
+
+  return media
 }
 
-function isTwitterPhoto(value: { url: string } | null): value is { url: string } {
-  return value !== null
-}
-
-function isTwitterVideo(
-  value: { url: string; preview?: string } | null
-): value is { url: string; preview?: string } {
-  return value !== null
+function getVideoPlayback(provider: string): MediaItem["playback"] {
+  if (provider === "telegram") return "inline"
+  return "external"
 }
 
 function isWhatsLinkMetadataSource(value?: string) {

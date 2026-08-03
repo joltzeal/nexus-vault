@@ -1,6 +1,7 @@
 import {
   createBaseResourceMetadata,
   type ResourceFileType,
+  type ResourceMediaMetadata,
 } from "@/domain/resources/metadata"
 import {
   createCanonicalMagnetUrl,
@@ -40,6 +41,7 @@ export const magnetMetadataProvider: MetadataProvider = {
 
     try {
       const whatslink = await fetchWhatsLinkMetadata(parsed.infoHash)
+      const media = getWhatsLinkMedia(whatslink.screenshots)
 
       return {
         provider: "whatslink",
@@ -47,11 +49,10 @@ export const magnetMetadataProvider: MetadataProvider = {
         data: {
           ...baseMetadata,
           title: whatslink.name || fallbackTitle,
-          cover: whatslink.screenshots?.[0],
           size: whatslink.size,
           fileCount: whatslink.count,
           fileType: whatslink.fileType,
-          screenshots: whatslink.screenshots,
+          ...(media ? { media } : {}),
           identifiers: {
             infoHash: parsed.infoHash,
           },
@@ -77,6 +78,19 @@ export const magnetMetadataProvider: MetadataProvider = {
       throw new RetryableMetadataError(message)
     }
   },
+}
+
+function getWhatsLinkMedia(screenshots?: string[]): ResourceMediaMetadata[] | undefined {
+  if (!screenshots?.length) return undefined
+
+  return screenshots.map((url, index) => ({
+    kind: "image",
+    provider: "whatslink",
+    sourceId: `screenshot:${index}`,
+    sourceUrl: url,
+    url,
+    thumbnailUrl: url,
+  }))
 }
 
 type WhatsLinkMetadata = {

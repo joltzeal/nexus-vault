@@ -27,7 +27,9 @@
 	"upload_source_maps": true,
 	"vars": {
 		"NEXTJS_ENV": "development",
-		"ALLOW_USER_REGISTRATION": "true"
+		"ALLOW_USER_REGISTRATION": "true",
+		"TELEGRAM_METADATA_API_URL": "http://localhost:8080",
+		"TELEGRAM_MEDIA_MAX_BYTES": "20971520"
 	},
 	"r2_buckets": [
 		{
@@ -82,7 +84,9 @@
 			},
 			"vars": {
 				"NEXTJS_ENV": "production",
-				"ALLOW_USER_REGISTRATION": "false"
+				"ALLOW_USER_REGISTRATION": "false",
+				"TELEGRAM_METADATA_API_URL": "http://localhost:8080",
+				"TELEGRAM_MEDIA_MAX_BYTES": "20971520"
 			},
 			"assets": {
 				"binding": "ASSETS",

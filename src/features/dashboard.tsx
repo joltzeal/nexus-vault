@@ -1052,6 +1052,11 @@ export function VaultWorkspaceClient({
         body: JSON.stringify({}),
       })
       setSubmissions((current) => current.filter((item) => item.id !== submissionId))
+      await loadVaultPanels(activeSet.id, {
+        includeAlerts: isVaultOwner,
+        includeSettings: true,
+        includeStarredResources: activePage === "star",
+      })
     } catch (error) {
       setApiError(error instanceof Error ? error.message : "Failed to reject submission.")
     }
@@ -1124,7 +1129,7 @@ export function VaultWorkspaceClient({
 
       if (unreadIds.length === 0) return
 
-      await apiRequest(`/vaults/${activeSet.id}/alerts/read`, {
+      await apiRequest("/notifications", {
         method: "PATCH",
         body: JSON.stringify({
           notificationIds: unreadIds,
@@ -1133,6 +1138,27 @@ export function VaultWorkspaceClient({
     } catch (error) {
       setApiError(error instanceof Error ? error.message : "Failed to update notifications.")
     }
+  }
+
+  async function handleNotificationClick(notification: NotificationItem) {
+    if (!notification.vaultId) return
+
+    setActivePage("workspace")
+    const loaded =
+      notification.vaultId === activeSet?.id
+        ? true
+        : await loadVaults(notification.vaultId, {
+            includeOpenedVaultInList: true,
+          })
+    if (!loaded) return
+
+    setSettingsTab("submissions")
+    await loadVaultPanels(notification.vaultId, {
+      includeAlerts: true,
+      includeSettings: true,
+      includeStarredResources: false,
+    })
+    setSettingsOpen(true)
   }
 
   async function handleSearchSelect(item: VaultSearchItem) {
@@ -1317,6 +1343,8 @@ export function VaultWorkspaceClient({
     const email = authForm.email.trim()
     const password = authForm.password
     const name = authForm.name.trim()
+    const formData = new FormData(event.currentTarget)
+    const turnstileToken = String(formData.get("turnstileToken") ?? "").trim()
     if (!email) return
     if (authMode !== "forgot-password" && !password) return
     if (authMode === "sign-up" && !authPolicy.allowSignUp) {
@@ -1324,6 +1352,14 @@ export function VaultWorkspaceClient({
       return
     }
     if (authMode === "sign-up" && !name) return
+    if (initialData.turnstileSiteKey && !turnstileToken) {
+      setAuthError("请完成人机验证。")
+      return
+    }
+
+    const fetchOptions = turnstileToken
+      ? { headers: { "x-captcha-response": turnstileToken } }
+      : undefined
 
     try {
       setAuthError("")
@@ -1331,6 +1367,7 @@ export function VaultWorkspaceClient({
         const result = await authClient.requestPasswordReset({
           email,
           redirectTo: `${window.location.origin}/auth/reset-password`,
+          fetchOptions,
         })
 
         if (result.error) {
@@ -1347,8 +1384,8 @@ export function VaultWorkspaceClient({
 
       const result =
         authMode === "sign-up"
-          ? await authClient.signUp.email({ email, password, name })
-          : await authClient.signIn.email({ email, password })
+          ? await authClient.signUp.email({ email, password, name, fetchOptions })
+          : await authClient.signIn.email({ email, password, fetchOptions })
 
       if (result.error) {
         setAuthError(result.error.message ?? "认证失败，请稍后再试。")
@@ -2086,6 +2123,7 @@ export function VaultWorkspaceClient({
         })()}
         onHome={handleHomeNavigation}
         onNotificationsOpen={() => void handleOpenNotifications()}
+        onNotificationClick={(notification) => void handleNotificationClick(notification)}
         onOpenConsole={handleOpenConsole}
         onPageChange={handleTopbarPageChange}
         onSearchSelect={(item) => void handleSearchSelect(item)}
@@ -2303,6 +2341,7 @@ export function VaultWorkspaceClient({
         onSubmit={handleAuthSubmit}
         open={authDialogOpen}
         registrationReason={authPolicy.reason}
+        turnstileSiteKey={initialData.turnstileSiteKey}
       />
       </SidebarProvider>
     </main>

@@ -70,6 +70,11 @@ export async function resolveResourceMetadata(
     .resolve(resource, {
       twitterRequestProxyUrl: getTwitterRequestProxyUrl(options.env),
       twitterCookieString,
+      telegramMetadataApiUrl: getTelegramMetadataApiUrl(options.env),
+      telegramMetadataApiToken: getTelegramMetadataApiToken(options.env),
+      persistTelegramMedia: options.env
+        ? (input) => persistTelegramMedia(options.env, input)
+        : undefined,
       captureHttpScreenshot: options.env
         ? (input) => captureHttpScreenshot(options.env, input)
         : undefined,
@@ -232,6 +237,14 @@ function getTwitterRequestProxyUrl(env?: CloudflareEnv) {
   return getRuntimeBinding(env, "TWITTER_REQUEST_PROXY_URL")
 }
 
+function getTelegramMetadataApiUrl(env?: CloudflareEnv) {
+  return getRuntimeBinding(env, "TELEGRAM_METADATA_API_URL")
+}
+
+function getTelegramMetadataApiToken(env?: CloudflareEnv) {
+  return getRuntimeBinding(env, "TELEGRAM_METADATA_API_TOKEN")
+}
+
 async function captureHttpScreenshot(
   env: CloudflareEnv | undefined,
   input: {
@@ -295,6 +308,122 @@ async function captureHttpScreenshot(
   })
 
   return `/api/v1/media/${key}`
+}
+
+async function persistTelegramMedia(
+  env: CloudflareEnv | undefined,
+  input: {
+    resourceId: string
+    url: string
+    mediaType: string
+    contentType?: string
+    fileName?: string
+    sourceId?: string
+  }
+) {
+  if (!env?.MEDIA) {
+    throw new Error("R2 MEDIA binding is not configured.")
+  }
+
+  const mediaFetchUrl = getTelegramServiceFetchUrl(env, input.url)
+  const response = await fetch(mediaFetchUrl, {
+    headers: {
+      ...(getTelegramMetadataApiToken(env)
+        ? { authorization: `Bearer ${getTelegramMetadataApiToken(env)}` }
+        : {}),
+    },
+    signal: AbortSignal.timeout(20_000),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Telegram media fetch failed with HTTP ${response.status}.`)
+  }
+
+  const contentLength = Number.parseInt(response.headers.get("content-length") ?? "", 10)
+  const maxBytes = getTelegramMediaMaxBytes(env)
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new Error(`Telegram media is larger than ${maxBytes} bytes.`)
+  }
+
+  const media = await response.arrayBuffer()
+  if (media.byteLength === 0) {
+    throw new Error("Telegram media fetch returned an empty response.")
+  }
+  if (media.byteLength > maxBytes) {
+    throw new Error(`Telegram media is larger than ${maxBytes} bytes.`)
+  }
+
+  const contentType =
+    response.headers.get("content-type") ??
+    input.contentType ??
+    "application/octet-stream"
+  const key = `telegram/${input.resourceId}/${Date.now()}-${crypto.randomUUID()}-${createSafeMediaFileName(
+    input.mediaType,
+    input.fileName,
+    contentType,
+  )}`
+  await env.MEDIA.put(key, media, {
+    httpMetadata: {
+      contentType,
+      cacheControl: "public, max-age=31536000, immutable",
+    },
+    customMetadata: {
+      resourceId: input.resourceId,
+      sourceUrl: mediaFetchUrl.slice(0, 512),
+      sourceId: input.sourceId?.slice(0, 128) ?? "",
+      mediaType: input.mediaType.slice(0, 64),
+    },
+  })
+
+  return `/api/v1/media/${key}`
+}
+
+function getTelegramServiceFetchUrl(env: CloudflareEnv | undefined, value: string) {
+  const endpoint = getTelegramMetadataApiUrl(env)
+  if (!endpoint) return value
+
+  try {
+    const mediaUrl = new URL(value)
+    const serviceUrl = new URL(endpoint)
+    serviceUrl.pathname = mediaUrl.pathname
+    serviceUrl.search = mediaUrl.search
+    serviceUrl.hash = mediaUrl.hash
+    return serviceUrl.toString()
+  } catch {
+    return value
+  }
+}
+
+function getTelegramMediaMaxBytes(env?: CloudflareEnv) {
+  const value = getRuntimeBinding(env, "TELEGRAM_MEDIA_MAX_BYTES")
+  if (!value) return 20 * 1024 * 1024
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 20 * 1024 * 1024
+}
+
+function createSafeMediaFileName(
+  mediaType: string,
+  fileName: string | undefined,
+  contentType: string,
+) {
+  const safeName = fileName
+    ?.split(/[\\/]/)
+    .pop()
+    ?.replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, 80)
+  if (safeName) return safeName
+
+  return `${mediaType.replace(/[^a-zA-Z0-9_-]/g, "-")}.${getMediaExtension(contentType)}`
+}
+
+function getMediaExtension(contentType: string) {
+  const normalized = contentType.split(";")[0]?.trim().toLowerCase()
+  if (normalized === "image/jpeg") return "jpg"
+  if (normalized === "image/png") return "png"
+  if (normalized === "image/webp") return "webp"
+  if (normalized === "image/gif") return "gif"
+  return "bin"
 }
 
 function getRuntimeBinding(env: CloudflareEnv | undefined, name: string) {

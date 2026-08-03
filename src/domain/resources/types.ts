@@ -1,6 +1,7 @@
 export type ResourceType =
   | "magnet"
   | "twitter"
+  | "telegram"
   | "baidu_pan"
   | "pan_115"
   | "pan_123"

@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth/minimal";
 import { APIError } from "better-auth/api";
+import { captcha } from "better-auth/plugins";
 import { withCloudflare } from "better-auth-cloudflare";
 import { sql } from "drizzle-orm";
 import type { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
@@ -14,13 +15,19 @@ import {
 	splitAuthOrigins,
 	type AuthRuntimeEnv,
 } from "@/auth/config";
+import {
+	getTurnstileAllowedHostnames,
+	type TurnstileEnv,
+} from "@/server/services/turnstile-service";
 
-type RuntimeEnv = AuthRuntimeEnv & RegistrationEnv;
+type RuntimeEnv = AuthRuntimeEnv & RegistrationEnv & TurnstileEnv;
 type PostgresDb = ReturnType<typeof drizzlePostgres>;
 const BCRYPT_COST = 12;
 const MAX_PASSWORD_BYTES = 72;
 
 export function getAuthOptions(env: RuntimeEnv, db?: Db) {
+	const turnstileSecret = env.TURNSTILE_SECRET_KEY?.trim();
+
 	return {
 		appName: "NexusVault",
 		baseURL: getAuthBaseUrl(env),
@@ -48,6 +55,18 @@ export function getAuthOptions(env: RuntimeEnv, db?: Db) {
 				},
 			},
 		},
+		...(turnstileSecret
+			? {
+					plugins: [
+						captcha({
+							provider: "cloudflare-turnstile",
+							secretKey: turnstileSecret,
+							expectedAction: "auth",
+							allowedHostnames: getTurnstileAllowedHostnames(env),
+						}),
+					],
+				}
+			: {}),
 		trustedOrigins: splitAuthOrigins(env.BETTER_AUTH_TRUSTED_ORIGINS),
 		...(db
 			? {
