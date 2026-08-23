@@ -14,15 +14,30 @@ type TelegramMetadataApiResponse = {
 
 type TelegramMessageMetadata = {
   url?: string
+  authorAvatarUrl?: string | null
+  authorId?: string | null
   chatTitle?: string
   chatUsername?: string | null
+  chatAvatarUrl?: string | null
+  chatType?: "channel" | "group" | "private" | null
   internalChatId?: string | null
   messageId?: string | number
   text?: string | null
   date?: string | null
   authorName?: string | null
+  authorUsername?: string | null
+  editedAt?: string | null
+  views?: number | null
+  forwards?: number | null
+  replies?: number | null
+  reactions?: TelegramReactionMetadata[]
   permalink?: string | null
   media?: TelegramMediaMetadata[]
+}
+
+type TelegramReactionMetadata = {
+  emoji?: string
+  count?: number
 }
 
 type TelegramMediaMetadata = {
@@ -34,6 +49,9 @@ type TelegramMediaMetadata = {
   mimeType?: string | null
   fileName?: string | null
   size?: number | null
+  width?: number | null
+  height?: number | null
+  duration?: number | null
 }
 
 export const telegramMetadataProvider: MetadataProvider = {
@@ -67,6 +85,14 @@ export const telegramMetadataProvider: MetadataProvider = {
             name: "telegram",
             url: parsed.url,
           },
+          preview: {
+            kind: "telegram_message",
+            data: {
+              chatUsername: parsed.chatUsername,
+              messageId: parsed.messageId,
+              url: parsed.url,
+            },
+          },
         },
         errorMessage: "TELEGRAM_METADATA_API_URL is not configured.",
       }
@@ -90,12 +116,42 @@ export const telegramMetadataProvider: MetadataProvider = {
             name: "telegram",
             url: parsed.url,
           },
+          preview: {
+            kind: "telegram_message",
+            data: {
+              chatUsername: parsed.chatUsername,
+              messageId: parsed.messageId,
+              url: parsed.url,
+            },
+          },
         },
         errorMessage: apiResult.error || "Telegram metadata service returned no metadata.",
       }
     }
 
     const metadata = apiResult.metadata
+    const chatAvatarSource = normalizeString(metadata.chatAvatarUrl)
+    const authorAvatarSource = normalizeString(metadata.authorAvatarUrl)
+    const chatAvatarUrl = await persistTelegramAvatar({
+      persist: options?.persistTelegramMedia,
+      resourceId: resource.id,
+      sourceId:
+        normalizeString(metadata.internalChatId) ??
+        normalizeString(metadata.chatUsername) ??
+        parsed.internalChatId ??
+        parsed.chatUsername,
+      url: chatAvatarSource,
+      mediaType: "chat-avatar",
+    })
+    const authorAvatarUrl = authorAvatarSource && authorAvatarSource === chatAvatarSource
+      ? chatAvatarUrl
+      : await persistTelegramAvatar({
+          persist: options?.persistTelegramMedia,
+          resourceId: resource.id,
+          sourceId: normalizeString(metadata.authorId),
+          url: authorAvatarSource,
+          mediaType: "author-avatar",
+        })
     const media = await persistTelegramMedia(
       Array.isArray(metadata.media) ? metadata.media.filter(isTelegramMedia) : [],
       {
@@ -105,6 +161,8 @@ export const telegramMetadataProvider: MetadataProvider = {
     )
     const title = getTelegramTitle(metadata, parsed)
     const description = normalizeString(metadata.text)
+    const reactions = normalizeReactions(metadata.reactions)
+    const chatType = normalizeChatType(metadata.chatType)
 
     return {
       provider: "telegram",
@@ -124,13 +182,46 @@ export const telegramMetadataProvider: MetadataProvider = {
         },
         extra: {
           telegram: {
+            authorAvatarUrl,
+            authorId: normalizeString(metadata.authorId),
+            authorName: normalizeString(metadata.authorName),
+            authorUsername: normalizeString(metadata.authorUsername),
+            chatAvatarUrl,
             chatTitle: normalizeString(metadata.chatTitle),
+            chatType,
             chatUsername: normalizeString(metadata.chatUsername) ?? parsed.chatUsername,
+            date: normalizeString(metadata.date),
+            editedAt: normalizeString(metadata.editedAt),
+            forwards: normalizeNumber(metadata.forwards),
             internalChatId: normalizeString(metadata.internalChatId) ?? parsed.internalChatId,
             messageId: normalizeString(metadata.messageId) ?? parsed.messageId,
-            authorName: normalizeString(metadata.authorName),
-            date: normalizeString(metadata.date),
             media,
+            reactions,
+            replies: normalizeNumber(metadata.replies),
+            views: normalizeNumber(metadata.views),
+          },
+        },
+        preview: {
+          kind: "telegram_message",
+          data: {
+            authorAvatarUrl,
+            authorId: normalizeString(metadata.authorId),
+            authorName: normalizeString(metadata.authorName),
+            authorUsername: normalizeString(metadata.authorUsername),
+            avatarUrl: chatAvatarUrl,
+            chatTitle: normalizeString(metadata.chatTitle),
+            chatType,
+            chatUsername: normalizeString(metadata.chatUsername) ?? parsed.chatUsername,
+            date: normalizeString(metadata.date),
+            editedAt: normalizeString(metadata.editedAt),
+            forwards: normalizeNumber(metadata.forwards),
+            media: getNormalizedResourceMedia(media),
+            messageId: normalizeString(metadata.messageId) ?? parsed.messageId,
+            reactions,
+            replies: normalizeNumber(metadata.replies),
+            text: description,
+            url: normalizeString(metadata.permalink) || normalizeString(metadata.url) || parsed.url,
+            views: normalizeNumber(metadata.views),
           },
         },
       },
@@ -163,6 +254,15 @@ function getNormalizedResourceMedia(media: TelegramMediaMetadata[]): ResourceMed
         ? { fileName: normalizeString(item.fileName) }
         : {}),
       ...(typeof item.size === "number" ? { size: item.size } : {}),
+      ...(typeof item.width === "number" && item.width > 0
+        ? { width: item.width }
+        : {}),
+      ...(typeof item.height === "number" && item.height > 0
+        ? { height: item.height }
+        : {}),
+      ...(typeof item.duration === "number" && item.duration >= 0
+        ? { duration: item.duration }
+        : {}),
     })
   }
 
@@ -296,6 +396,25 @@ async function persistTelegramMedia(
   return persisted
 }
 
+async function persistTelegramAvatar(input: {
+  persist?: Parameters<typeof persistTelegramMedia>[1]["persist"]
+  resourceId: string
+  sourceId?: string
+  url?: string
+  mediaType: "author-avatar" | "chat-avatar"
+}) {
+  if (!input.persist || !input.url) return undefined
+
+  return persistTelegramMediaItem(input.persist, {
+    resourceId: input.resourceId,
+    url: input.url,
+    mediaType: input.mediaType,
+    contentType: "image/jpeg",
+    fileName: `${input.mediaType}.jpg`,
+    sourceId: input.sourceId,
+  })
+}
+
 async function persistTelegramMediaItem(
   persist: NonNullable<Parameters<typeof persistTelegramMedia>[1]["persist"]>,
   input: {
@@ -366,6 +485,29 @@ function normalizeString(value: unknown) {
   if (typeof value !== "string") return undefined
   const normalized = value.trim()
   return normalized || undefined
+}
+
+function normalizeNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined
+}
+
+function normalizeChatType(value: unknown) {
+  return value === "channel" || value === "group" || value === "private"
+    ? value
+    : undefined
+}
+
+function normalizeReactions(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return []
+    const reaction = entry as TelegramReactionMetadata
+    const emoji = normalizeString(reaction.emoji)
+    const count = normalizeNumber(reaction.count)
+    return emoji && typeof count === "number" ? [{ emoji, count }] : []
+  })
 }
 
 function formatBeijingTime(value: string | undefined) {

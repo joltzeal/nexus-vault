@@ -4,6 +4,8 @@ export const resourceTypeSchema = z.enum([
   "magnet",
   "twitter",
   "telegram",
+  "douyin",
+  "wechat_mp",
   "baidu_pan",
   "pan_115",
   "pan_123",
@@ -18,6 +20,7 @@ export const resourceTypeSchema = z.enum([
   "ftp",
   "http",
   "youtube",
+  "local_media",
   "other",
 ])
 
@@ -28,6 +31,7 @@ export const createResourceSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   description: z.string().trim().optional().default(""),
   url: z.string().trim().min(1).max(4096),
+  referer: z.string().trim().max(4096).optional(),
 })
 
 export const createResourceWithVaultSchema = createResourceSchema.extend({
@@ -41,6 +45,7 @@ export const updateResourceSchema = z
     title: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().optional(),
     url: z.string().trim().min(1).max(2048).optional(),
+    referer: z.string().trim().max(4096).optional(),
     position: z.number().int().min(0).optional(),
   })
   .refine((input) => Object.keys(input).length > 0, {

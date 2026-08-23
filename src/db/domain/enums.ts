@@ -7,6 +7,8 @@ export const resourceTypeValues = [
 	"magnet",
 	"twitter",
 	"telegram",
+	"douyin",
+	"wechat_mp",
 	"baidu_pan",
 	"pan_115",
 	"pan_123",
@@ -21,6 +23,7 @@ export const resourceTypeValues = [
 	"ftp",
 	"http",
 	"youtube",
+	"local_media",
 	"other",
 ] as const;
 export const metadataStatusValues = ["pending", "processing", "completed", "failed"] as const;

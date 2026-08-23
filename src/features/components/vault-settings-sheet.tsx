@@ -553,6 +553,7 @@ function SubmissionsPanel({
           title: item.title,
           type: item.type,
           url: item.url,
+          referer: item.referer,
           description: item.description,
           metadataStatus: metadata ? "completed" : "pending",
           metadata: metadata

@@ -1,0 +1,182 @@
+:root {
+  color-scheme: dark;
+  --ink-900: #0c1116;
+  --ink-850: #0f161d;
+  --ink-800: #131c24;
+  --ink-750: #18222c;
+  --line: #1b2731;
+  --line-soft: #16212a;
+  --fg: #e6edf3;
+  --fg-muted: #9bb0c0;
+  --fg-dim: #5f7585;
+  --jade: #3fd8b0;
+  --jade-bright: #5ff0c8;
+  --jade-glow: rgba(63, 216, 176, 0.14);
+  --rose: #f0697a;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--ink-900);
+  color: var(--fg);
+  margin: 0;
+  min-width: 340px;
+}
+
+button,
+a {
+  font: inherit;
+}
+
+.popup-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  width: 360px;
+}
+
+.popup-header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.popup-header img {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  height: 36px;
+  width: 36px;
+}
+
+.popup-header h1 {
+  font-size: 16px;
+  line-height: 20px;
+  margin: 0;
+}
+
+.popup-header p {
+  color: var(--fg-dim);
+  font-size: 12px;
+  margin: 2px 0 0;
+}
+
+.panel {
+  background: var(--ink-850);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 20px;
+  padding: 12px;
+}
+
+.panel p {
+  margin: 0 0 10px;
+}
+
+.panel.muted {
+  color: var(--fg-dim);
+}
+
+.panel.error {
+  color: var(--rose);
+}
+
+button {
+  background: var(--jade);
+  border: 0;
+  border-radius: 6px;
+  color: #04140f;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+  height: 32px;
+  padding: 0 12px;
+}
+
+button:hover {
+  background: var(--jade-bright);
+}
+
+.account-card {
+  align-items: center;
+  background: var(--ink-850);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.account-card > img,
+.account-card > span {
+  border-radius: 8px;
+  flex: 0 0 34px;
+  height: 34px;
+  width: 34px;
+}
+
+.account-card > img {
+  object-fit: cover;
+}
+
+.account-card > span {
+  align-items: center;
+  background: var(--jade-glow);
+  color: var(--jade);
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 700;
+  justify-content: center;
+}
+
+.account-card div {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-card strong {
+  color: var(--fg);
+  display: block;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-card p {
+  color: var(--fg-dim);
+  font-size: 12px;
+  margin: 2px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-card button {
+  background: transparent;
+  color: var(--jade);
+  height: 28px;
+  padding: 0 8px;
+}
+
+.account-card button:hover {
+  background: var(--jade-glow);
+}
+
+footer {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 10px;
+}
+
+footer a {
+  color: var(--jade);
+  font-size: 12px;
+  text-decoration: none;
+}

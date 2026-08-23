@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Nexus Vault icon" shape-rendering="geometricPrecision">
+  <rect width="512" height="512" rx="96" fill="#0c1116"/>
+
+  <g fill="none" stroke="#3fd8b0" stroke-width="34" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M124 336 188 222h62l64 114-46 80h-58l-64-114Z"/>
+    <path d="M268 225 326 167h58l44 71-100 174h-58l-52-91 22-39"/>
+    <path d="M214 319h48l31 55-31 55h-48l-31-55 31-55Z"/>
+  </g>
+</svg>

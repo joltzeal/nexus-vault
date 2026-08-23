@@ -33,6 +33,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { getInitials } from "@/features/components/view-models"
+import { cn } from "@/lib/utils"
 
 export type VaultSearchItem = {
   id: string
@@ -51,6 +52,7 @@ export function VaultTopbar({
   currentUserName,
   isSignedIn,
   isSessionPending,
+  mobileSidebarEnabled = false,
   notifications,
   activePage,
   onAuthOpen,
@@ -70,6 +72,7 @@ export function VaultTopbar({
   currentUserName?: string | null
   isSignedIn: boolean
   isSessionPending: boolean
+  mobileSidebarEnabled?: boolean
   notifications: Array<{
     id: string
     vaultId?: string | null
@@ -124,7 +127,12 @@ export function VaultTopbar({
   }, [searchEnabled])
 
   return (
-    <header className="col-span-full flex h-[52px] items-center gap-4 border-b border-line bg-ink-850/70 px-4 backdrop-blur-xl">
+    <header
+      className={cn(
+        "col-span-full flex h-[52px] items-center gap-1.5 border-b border-line bg-ink-850/70 px-3 backdrop-blur-xl sm:gap-4 sm:px-4",
+        mobileSidebarEnabled && "pl-12 sm:pl-4"
+      )}
+    >
       <button
         className="flex items-center gap-2 rounded-input pr-1 font-display text-[15px] font-semibold transition hover:text-jade"
         onClick={onHome}
@@ -133,11 +141,15 @@ export function VaultTopbar({
         <span className="grid size-6 place-items-center rounded-[7px] bg-linear-to-br from-jade to-[#2a9c93] text-[13px] font-bold text-[#04140f] shadow-[0_0_0_1px_rgba(63,216,176,.4),0_4px_14px_-4px_var(--jade)]">
           N
         </span>
-        <span>Nexus<span className="text-jade">Vault</span></span>
+        <span className="hidden min-[420px]:inline">Nexus<span className="text-jade">Vault</span></span>
       </button>
 
       <Button
-        className={activePage === "star" ? "border-jade-dim bg-[var(--jade-glow)] text-jade" : ""}
+        aria-label="收藏资源"
+        className={cn(
+          "size-8 p-0 sm:h-7 sm:w-auto sm:px-2.5",
+          activePage === "star" && "border-jade-dim bg-[var(--jade-glow)] text-jade"
+        )}
         disabled={!isSignedIn}
         onClick={() => onPageChange(activePage === "star" ? "workspace" : "star")}
         size="sm"
@@ -145,11 +157,16 @@ export function VaultTopbar({
         variant="outline"
       >
         <Star data-icon="inline-start" />
-        Star
+        <span className="hidden sm:inline">Star</span>
+        <span className="sr-only sm:hidden">收藏资源</span>
       </Button>
 
       <Button
-        className={activePage === "watch-later" ? "border-jade-dim bg-[var(--jade-glow)] text-jade" : ""}
+        aria-label="稍后查看"
+        className={cn(
+          "size-8 p-0 sm:h-7 sm:w-auto sm:px-2.5",
+          activePage === "watch-later" && "border-jade-dim bg-[var(--jade-glow)] text-jade"
+        )}
         onClick={() =>
           onPageChange(activePage === "watch-later" ? "workspace" : "watch-later")
         }
@@ -158,14 +175,15 @@ export function VaultTopbar({
         variant="outline"
       >
         <Clock3 data-icon="inline-start" />
-        Watch Later
+        <span className="hidden sm:inline">Watch Later</span>
+        <span className="sr-only sm:hidden">稍后查看</span>
       </Button>
 
       {searchEnabled && (
         <>
           <Button
             aria-label="全局搜索"
-            className="ml-1 md:hidden"
+            className="ml-0 md:hidden"
             onClick={() => setGlobalSearchOpen(true)}
             size="icon"
             type="button"
@@ -207,7 +225,7 @@ export function VaultTopbar({
         </>
       )}
 
-      <div className="ml-auto flex items-center gap-1.5">
+      <div className="ml-auto flex min-w-0 items-center gap-0.5 sm:gap-1.5">
         <Popover
           open={notificationsOpen}
           onOpenChange={(open) => {
@@ -228,7 +246,7 @@ export function VaultTopbar({
             </Button>
             }
           />
-          <PopoverContent align="end" className="w-[340px] gap-0 border-line bg-ink-850 p-0 text-fg">
+          <PopoverContent align="end" className="w-[min(340px,calc(100vw-1.5rem))] gap-0 border-line bg-ink-850 p-0 text-fg">
             <PopoverHeader className="border-b border-line px-3 py-2.5">
               <PopoverTitle>新提交</PopoverTitle>
             </PopoverHeader>
@@ -273,14 +291,31 @@ export function VaultTopbar({
           </PopoverContent>
         </Popover>
         {isSignedIn ? (
-          <Button size="sm" variant="outline" onClick={onSignOut}>
+          <Button
+            aria-label="退出"
+            className="size-8 p-0 sm:h-7 sm:w-auto sm:px-2.5"
+            onClick={onSignOut}
+            size="sm"
+            title="退出"
+            variant="outline"
+          >
             <LogOut data-icon="inline-start" />
-            退出
+            <span className="hidden sm:inline">退出</span>
+            <span className="sr-only sm:hidden">退出</span>
           </Button>
         ) : showAuthEntry ? (
-          <Button size="sm" variant="outline" onClick={onAuthOpen} disabled={isSessionPending}>
+          <Button
+            aria-label="登录"
+            className="size-8 p-0 sm:h-7 sm:w-auto sm:px-2.5"
+            disabled={isSessionPending}
+            onClick={onAuthOpen}
+            size="sm"
+            title="登录"
+            variant="outline"
+          >
             <LogIn data-icon="inline-start" />
-            登录
+            <span className="hidden sm:inline">登录</span>
+            <span className="sr-only sm:hidden">登录</span>
           </Button>
         ) : null}
         {isSignedIn && (

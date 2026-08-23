@@ -1,10 +1,11 @@
 "use client"
 
+import type { ReactNode } from "react"
 import { toast as toastManager } from "@/components/ui/toast"
 
 type ToastOptions = {
   id?: string
-  description?: string
+  description?: ReactNode
   duration?: number
 }
 
@@ -28,5 +29,8 @@ export const toast = {
   },
   info(title: string, options?: ToastOptions) {
     return showToast("info", title, options)
+  },
+  dismiss(id?: string) {
+    toastManager.close(id)
   },
 }

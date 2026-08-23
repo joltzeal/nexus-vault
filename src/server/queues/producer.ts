@@ -5,6 +5,7 @@ export function enqueueQueueMessage(
   c: ApiContext,
   message: QueueMessage,
   options: {
+    delaySeconds?: number
     label: string
   }
 ) {
@@ -18,6 +19,7 @@ export async function sendQueueMessage(
   c: ApiContext,
   message: QueueMessage,
   options: {
+    delaySeconds?: number
     label: string
   }
 ) {
@@ -28,6 +30,7 @@ export async function sendQueueMessageToEnv(
   env: Partial<CloudflareEnv> | undefined,
   message: QueueMessage,
   options: {
+    delaySeconds?: number
     label: string
   }
 ) {
@@ -35,7 +38,10 @@ export async function sendQueueMessageToEnv(
   if (!queue) return false
 
   try {
-    await queue.send(message)
+    await queue.send(
+      message,
+      options.delaySeconds ? { delaySeconds: options.delaySeconds } : undefined,
+    )
     return true
   } catch (error) {
     console.error(`${options.label} queue enqueue failed`, {

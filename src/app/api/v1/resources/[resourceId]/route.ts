@@ -20,7 +20,10 @@ export async function PATCH(request: Request, { params }: Context) {
 
 export async function DELETE(request: Request, { params }: Context) {
   const { resourceId } = await params
-  return handleApiRequest(request, {}, async ({ actor, db }) =>
-    ok(await archiveResource(db, resourceId, { actor: requireActor(actor) })),
+  return handleApiRequest(request, {}, async ({ actor, db, env }) =>
+    ok(await archiveResource(db, resourceId, {
+      actor: requireActor(actor),
+      media: env.MEDIA,
+    })),
   )
 }

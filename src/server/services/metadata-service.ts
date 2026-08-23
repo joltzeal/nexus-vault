@@ -2,7 +2,11 @@ import { and, eq, inArray, lt } from "drizzle-orm"
 
 import { createDbSession } from "@/db"
 import { resourceMetadata, resources } from "@/db/schema"
-import { createBaseResourceMetadata } from "@/domain/resources/metadata"
+import { LOCAL_MEDIA_PROVIDER } from "@/domain/media-storage"
+import {
+  createBaseResourceMetadata,
+  normalizeResourceMetadata,
+} from "@/domain/resources/metadata"
 import type { Actor, ApiContext, Db } from "@/server/api/types"
 import {
   createMetadataQueueMessage,
@@ -22,18 +26,30 @@ import {
   getResourceOrThrow,
   requireResourceMutationPermission,
 } from "@/server/services/resource-service"
+import { conflict } from "@/server/api/errors"
 import { getUserXComCookieString } from "@/server/services/account-integration-service"
+import {
+  createResourceAiSummaryQueueMessage,
+  markResourceAiSummaryPending,
+  processResourceAiSummaryMessage,
+  shouldGenerateResourceAiSummary,
+} from "@/server/services/resource-ai-summary-service"
 
-const STALE_METADATA_RETRY_AFTER_MS = 2 * 60 * 1000
+const STALE_METADATA_RETRY_AFTER_MS = 5 * 60 * 1000
 const STALE_METADATA_RETRY_LIMIT = 25
 
 export function enqueueMetadataTask(
   c: ApiContext,
   message: MetadataQueueMessage
 ) {
+  if (shouldResolveMetadataInline(c.env)) {
+    c.executionCtx.waitUntil(resolveInlineMetadata(c.env, message.resourceId))
+    return
+  }
+
   const queued = enqueueQueueMessage(c, message, { label: "Metadata" })
 
-  if (!queued || shouldResolveMetadataInline(c.env)) {
+  if (!queued) {
     c.executionCtx.waitUntil(
       resolveInlineMetadata(c.env, message.resourceId)
     )
@@ -45,13 +61,25 @@ export async function resolveResourceMetadata(
   resourceId: string,
   options: {
     actor?: Actor
-    env?: CloudflareEnv
+    env: CloudflareEnv
     retryTransient?: boolean
-  } = {}
+  }
 ) {
   const resource = await getResourceOrThrow(db, resourceId)
   if (options.actor) {
     await requireResourceMutationPermission(db, resource, options.actor)
+  }
+  const [currentMetadata] = await db
+    .select({
+      dataJson: resourceMetadata.dataJson,
+      provider: resourceMetadata.provider,
+    })
+    .from(resourceMetadata)
+    .where(eq(resourceMetadata.resourceId, resourceId))
+    .limit(1)
+
+  if (currentMetadata?.provider === LOCAL_MEDIA_PROVIDER || !resource.url) {
+    throw conflict("本地上传媒体不需要重新获取 metadata。")
   }
 
   await db
@@ -62,22 +90,21 @@ export async function resolveResourceMetadata(
     })
     .where(eq(resources.id, resourceId))
 
-  const provider = getMetadataProvider(resource)
+  const metadataResource = { ...resource, url: resource.url }
+  const provider = getMetadataProvider(metadataResource)
   const twitterCookieString = resource.type === "twitter" && resource.createdBy
     ? await getUserXComCookieString(db, resource.createdBy)
     : undefined
   const result = await provider
-    .resolve(resource, {
-      twitterRequestProxyUrl: getTwitterRequestProxyUrl(options.env),
+    .resolve(metadataResource, {
+      retryTransient: options.retryTransient,
       twitterCookieString,
+      githubToken: getRuntimeBinding(options.env, "GITHUB_TOKEN"),
+      tikhubApiToken: getTikhubApiToken(options.env),
       telegramMetadataApiUrl: getTelegramMetadataApiUrl(options.env),
       telegramMetadataApiToken: getTelegramMetadataApiToken(options.env),
-      persistTelegramMedia: options.env
-        ? (input) => persistTelegramMedia(options.env, input)
-        : undefined,
-      captureHttpScreenshot: options.env
-        ? (input) => captureHttpScreenshot(options.env, input)
-        : undefined,
+      persistTelegramMedia: (input) => persistTelegramMedia(options.env, input),
+      captureHttpScreenshot: (input) => captureHttpScreenshot(options.env, input),
     })
     .catch((error: unknown) => {
       if (options.retryTransient && isRetryableMetadataError(error)) {
@@ -95,14 +122,30 @@ export async function resolveResourceMetadata(
           error instanceof Error ? error.message : "Metadata provider failed.",
       }
     })
-  const nextResourceTitle = shouldBackfillResourceTitle(resource.title, result.data.title)
-    ? result.data.title
+  const previousMetadata = normalizeResourceMetadata(currentMetadata?.dataJson)
+  const previousAiSummary = getPersistedAiSummaryText(previousMetadata?.extra?.aiSummary)
+  const aiSummaryRequested = shouldGenerateResourceAiSummary({
+    currentDescription:
+      previousAiSummary && previousAiSummary === resource.description.trim()
+        ? ""
+        : resource.description,
+    data: result.data,
+    env: options.env,
+    provider: result.provider,
+    status: result.status,
+    type: resource.type,
+  })
+  const resolvedData = aiSummaryRequested
+    ? markResourceAiSummaryPending(result.data, options.env)
+    : result.data
+  const nextResourceTitle = shouldBackfillResourceTitle(resource.title, resolvedData.title)
+    ? resolvedData.title
     : undefined
   const nextResourceDescription = shouldBackfillResourceDescription(
     resource.description,
-    result.data.description
+    resolvedData.description
   )
-    ? result.data.description
+    ? resolvedData.description
     : undefined
 
   await db.transaction(async (tx) => {
@@ -120,10 +163,31 @@ export async function resolveResourceMetadata(
       resourceId,
       provider: result.provider,
       status: result.status,
-      dataJson: result.data as unknown as Record<string, unknown>,
+      dataJson: resolvedData as unknown as Record<string, unknown>,
       errorMessage: result.errorMessage,
     })
   })
+
+  if (aiSummaryRequested) {
+    const message = createResourceAiSummaryQueueMessage(resourceId, resource.vaultId)
+    if (shouldResolveMetadataInline(options.env)) {
+      await processResourceAiSummaryMessage(db, message, {
+        env: options.env,
+        retryTransient: false,
+      })
+    } else {
+      const queued = await sendQueueMessageToEnv(options.env, message, {
+        delaySeconds: 2,
+        label: "AI summary",
+      })
+      if (!queued && options.env) {
+        await processResourceAiSummaryMessage(db, message, {
+          env: options.env,
+          retryTransient: false,
+        })
+      }
+    }
+  }
 
   if (resource.createdBy && result.status === "failed") {
     await processNotificationMessage(db, {
@@ -140,7 +204,7 @@ export async function resolveResourceMetadata(
   return {
     status: result.status,
     provider: result.provider,
-    data: result.data,
+    data: resolvedData,
   }
 }
 
@@ -148,13 +212,14 @@ export async function processMetadataMessage(
   db: Db,
   message: MetadataQueueMessage,
   options: {
-    env?: CloudflareEnv
-  } = {}
+    env: CloudflareEnv
+    retryTransient?: boolean
+  }
 ) {
   if (message.kind !== "metadata.resolve") return
   await resolveResourceMetadata(db, message.resourceId, {
     ...options,
-    retryTransient: true,
+    retryTransient: options.retryTransient ?? true,
   })
 }
 
@@ -179,6 +244,8 @@ export async function enqueueStaleMetadataTasks(db: Db, env: CloudflareEnv) {
     .limit(STALE_METADATA_RETRY_LIMIT)
 
   for (const resource of staleResources) {
+    if (!resource.url) continue
+
     await db.transaction(async (tx) => {
       await tx
         .update(resources)
@@ -233,27 +300,27 @@ function shouldResolveMetadataInline(env: CloudflareEnv) {
   )
 }
 
-function getTwitterRequestProxyUrl(env?: CloudflareEnv) {
-  return getRuntimeBinding(env, "TWITTER_REQUEST_PROXY_URL")
-}
-
-function getTelegramMetadataApiUrl(env?: CloudflareEnv) {
+function getTelegramMetadataApiUrl(env: CloudflareEnv) {
   return getRuntimeBinding(env, "TELEGRAM_METADATA_API_URL")
 }
 
-function getTelegramMetadataApiToken(env?: CloudflareEnv) {
+function getTelegramMetadataApiToken(env: CloudflareEnv) {
   return getRuntimeBinding(env, "TELEGRAM_METADATA_API_TOKEN")
 }
 
+function getTikhubApiToken(env: CloudflareEnv) {
+  return getRuntimeBinding(env, "TIKHUB_API_TOKEN")
+}
+
 async function captureHttpScreenshot(
-  env: CloudflareEnv | undefined,
+  env: CloudflareEnv,
   input: {
     resourceId: string
     title: string
     url: string
   }
 ) {
-  if (!env?.MEDIA) {
+  if (!env.MEDIA) {
     throw new Error("R2 MEDIA binding is not configured.")
   }
 
@@ -276,8 +343,13 @@ async function captureHttpScreenshot(
     body: JSON.stringify({
       url: input.url,
       options: {
-        fullPage: true,
+        fullPage: false,
         type: "png",
+      },
+      viewport: {
+        width: 1920,
+        height: 1080,
+        deviceScaleFactor: 1,
       },
       waitForTimeout: 5000,
       // blockAds: true,
@@ -311,7 +383,7 @@ async function captureHttpScreenshot(
 }
 
 async function persistTelegramMedia(
-  env: CloudflareEnv | undefined,
+  env: CloudflareEnv,
   input: {
     resourceId: string
     url: string
@@ -321,7 +393,7 @@ async function persistTelegramMedia(
     sourceId?: string
   }
 ) {
-  if (!env?.MEDIA) {
+  if (!env.MEDIA) {
     throw new Error("R2 MEDIA binding is not configured.")
   }
 
@@ -378,7 +450,7 @@ async function persistTelegramMedia(
   return `/api/v1/media/${key}`
 }
 
-function getTelegramServiceFetchUrl(env: CloudflareEnv | undefined, value: string) {
+function getTelegramServiceFetchUrl(env: CloudflareEnv, value: string) {
   const endpoint = getTelegramMetadataApiUrl(env)
   if (!endpoint) return value
 
@@ -394,7 +466,7 @@ function getTelegramServiceFetchUrl(env: CloudflareEnv | undefined, value: strin
   }
 }
 
-function getTelegramMediaMaxBytes(env?: CloudflareEnv) {
+function getTelegramMediaMaxBytes(env: CloudflareEnv) {
   const value = getRuntimeBinding(env, "TELEGRAM_MEDIA_MAX_BYTES")
   if (!value) return 20 * 1024 * 1024
   const parsed = Number.parseInt(value, 10)
@@ -426,9 +498,9 @@ function getMediaExtension(contentType: string) {
   return "bin"
 }
 
-function getRuntimeBinding(env: CloudflareEnv | undefined, name: string) {
-  const bindings = env as (CloudflareEnv & Record<string, string | undefined>) | undefined
-  return bindings?.[name]?.trim() || undefined
+function getRuntimeBinding(env: CloudflareEnv, name: string) {
+  const bindings = env as CloudflareEnv & Record<string, string | undefined>
+  return bindings[name]?.trim() || undefined
 }
 
 function shouldBackfillResourceTitle(currentTitle: string, metadataTitle?: string) {
@@ -439,7 +511,7 @@ function shouldBackfillResourceTitle(currentTitle: string, metadataTitle?: strin
   return (
     normalizedNext.length > 0 &&
     normalizedNext !== normalizedCurrent &&
-    ["名称未知", "untitled resource", "untitled link", "untitled tweet"].includes(
+    ["名称未知", "untitled resource", "untitled link", "untitled tweet", "抖音视频"].includes(
       normalizedCurrent
     )
   )
@@ -450,4 +522,10 @@ function shouldBackfillResourceDescription(
   metadataDescription?: string
 ) {
   return !currentDescription.trim() && Boolean(metadataDescription?.trim())
+}
+
+function getPersistedAiSummaryText(value: unknown) {
+  if (!value || typeof value !== "object") return ""
+  const text = (value as Record<string, unknown>).text
+  return typeof text === "string" ? text.trim() : ""
 }

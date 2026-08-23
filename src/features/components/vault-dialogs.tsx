@@ -1,8 +1,18 @@
 "use client"
 
-import type { FormEvent } from "react"
-import { useEffect, useState } from "react"
-import { Check, RefreshCcw } from "lucide-react"
+import type { DragEvent, FormEvent } from "react"
+import { useEffect, useRef, useState } from "react"
+import {
+  Archive,
+  Check,
+  FileAudio,
+  GripVertical,
+  ImagePlus,
+  Link2,
+  RefreshCcw,
+  Upload,
+  X,
+} from "lucide-react"
 import {
   getCloudDriveProviderLabel,
   parseMagnetLink,
@@ -30,6 +40,9 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Progress } from "@/components/ui/progress"
+import { Sortable, SortableItem, SortableItemHandle } from "@/components/reui/sortable"
 import { TurnstileField } from "@/components/turnstile-field"
 import { SpaceIconPicker } from "@/features/components/space-icon-picker"
 import type {
@@ -307,22 +320,93 @@ export function CreateSpaceDialog({
   )
 }
 
+type ResourceUploadFile = {
+  file: File
+  id: string
+  kind: "image" | "video" | "audio" | "archive"
+  previewUrl?: string
+  progress: number
+  status: "ready" | "uploading" | "error"
+}
+
+const MAX_RESOURCE_MEDIA_FILES = 20
+const MAX_RESOURCE_MEDIA_UPLOAD_BYTES = 1024 * 1024 * 1024
+const RESOURCE_MEDIA_ACCEPT = [
+  "image/*",
+  "video/*",
+  "audio/*",
+  ".avif,.bmp,.gif,.heic,.heif,.jpeg,.jpg,.png,.tif,.tiff,.webp",
+  ".avi,.m4v,.mkv,.mov,.mp4,.mpeg,.mpg,.webm",
+  ".aac,.flac,.m4a,.mp3,.oga,.ogg,.opus,.wav",
+  ".7z,.bz2,.gz,.iso,.rar,.tar,.tbz,.tgz,.txz,.xz,.zip",
+].join(",")
+
+const ARCHIVE_FILE_EXTENSIONS = new Set([
+  "7z",
+  "bz2",
+  "gz",
+  "iso",
+  "rar",
+  "tar",
+  "tbz",
+  "tgz",
+  "txz",
+  "xz",
+  "zip",
+])
+
+const IMAGE_FILE_EXTENSIONS = new Set([
+  "avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "tif", "tiff", "webp",
+])
+const VIDEO_FILE_EXTENSIONS = new Set([
+  "avi", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "webm",
+])
+const AUDIO_FILE_EXTENSIONS = new Set([
+  "aac", "flac", "m4a", "mp3", "oga", "ogg", "opus", "wav",
+])
+
 export function CreateResourceDialog({
+  allowMediaUpload = false,
   form,
+  isSubmitting,
   onFormChange,
+  onMediaSubmit,
   onOpenChange,
   onSubmit,
   open,
   spaces,
 }: {
+  allowMediaUpload?: boolean
   form: ResourceForm
+  isSubmitting: boolean
   onFormChange: (form: ResourceForm) => void
+  onMediaSubmit?: (
+    files: File[],
+  ) => void
   onOpenChange: (open: boolean) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   open: boolean
   spaces: Space[]
 }) {
+  const [mode, setMode] = useState<"link" | "media">("link")
+  const [mediaFiles, setMediaFiles] = useState<ResourceUploadFile[]>([])
+  const [mediaError, setMediaError] = useState("")
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const cloudDrive = parseCloudDriveLink(form.url, form.extractionCode)
+  const canUploadMedia = allowMediaUpload && Boolean(onMediaSubmit)
+  const isMediaMode = canUploadMedia && mode === "media"
+  const isBusy = isSubmitting
+
+  useEffect(() => {
+    if (open) return
+    setMode("link")
+    setMediaError("")
+    setMediaFiles((current) => {
+      current.forEach((item) => item.previewUrl && URL.revokeObjectURL(item.previewUrl))
+      return []
+    })
+  }, [open])
 
   function handleResourceUrlChange(url: string) {
     const currentCloudDrive = parseCloudDriveLink(form.url)
@@ -342,44 +426,256 @@ export function CreateResourceDialog({
     })
   }
 
+  function addMediaFiles(files: FileList | File[]) {
+    const selectedFiles = Array.from(files)
+    if (selectedFiles.length === 0) return
+
+    setMediaFiles((current) => {
+      const remainingSlots = MAX_RESOURCE_MEDIA_FILES - current.length
+      const candidates = selectedFiles.slice(0, Math.max(0, remainingSlots))
+      const nextFiles: ResourceUploadFile[] = []
+      const rejected: string[] = []
+      let totalSize = current.reduce((sum, item) => sum + item.file.size, 0)
+
+      for (const file of candidates) {
+        if (file.size <= 0) {
+          rejected.push(`${file.name || "文件"} 为空`)
+          continue
+        }
+        if (file.size > MAX_RESOURCE_MEDIA_UPLOAD_BYTES) {
+          rejected.push(`${file.name} 超过 1 GB 限制`)
+          continue
+        }
+        if (totalSize + file.size > MAX_RESOURCE_MEDIA_UPLOAD_BYTES) {
+          rejected.push("所选文件总大小不能超过 1 GB")
+          break
+        }
+
+        const kind = getResourceUploadKind(file)
+        if (!kind) {
+          rejected.push(`${file.name} 不是支持的媒体或压缩文件`)
+          continue
+        }
+
+        totalSize += file.size
+        nextFiles.push({
+          file,
+          id: crypto.randomUUID(),
+          kind,
+          previewUrl: kind === "archive" ? undefined : URL.createObjectURL(file),
+          progress: 0,
+          status: "ready",
+        })
+      }
+
+      if (selectedFiles.length > candidates.length) {
+        rejected.push(`一次最多添加 ${MAX_RESOURCE_MEDIA_FILES} 个文件`)
+      }
+      setMediaError(rejected.join("；"))
+      return [...current, ...nextFiles]
+    })
+  }
+
+  function removeMediaFile(id: string) {
+    if (isBusy) return
+    setMediaFiles((current) => {
+      const item = current.find((candidate) => candidate.id === id)
+      if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl)
+      return current.filter((candidate) => candidate.id !== id)
+    })
+  }
+
+  function handleMediaDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    setIsDraggingFiles(false)
+    addMediaFiles(event.dataTransfer.files)
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (!isMediaMode) {
+      onSubmit(event)
+      return
+    }
+
+    event.preventDefault()
+    if (mediaFiles.length === 0) return
+
+    setMediaError("")
+    onMediaSubmit?.(mediaFiles.map((item) => item.file))
+    onOpenChange(false)
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(720px,calc(100dvh-2rem))] overflow-hidden border-line bg-ink-850 text-fg sm:max-w-lg">
-        <form className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col gap-5" onSubmit={onSubmit}>
-          <DialogHeader>
+      <DialogContent
+        className="h-[min(720px,calc(100dvh-2rem))] max-h-[min(720px,calc(100dvh-2rem))] overflow-hidden border-line bg-ink-850 text-fg sm:max-w-lg"
+      >
+        <form className="flex h-full min-h-0 flex-col gap-5" onSubmit={handleSubmit}>
+          <DialogHeader className="shrink-0">
             <DialogTitle className="font-display">添加资源</DialogTitle>
-            <DialogDescription>添加链接后会自动补全展示信息。</DialogDescription>
+            <DialogDescription>
+              {isMediaMode ? "添加本地媒体资源。" : "添加链接后会自动补全展示信息。"}
+            </DialogDescription>
           </DialogHeader>
-          <FieldGroup className="min-h-0 overflow-y-auto pr-1">
-            <Field>
-              <FieldLabel htmlFor="resource-url">链接（必填）</FieldLabel>
-              <Input
-                className="mono"
-                id="resource-url"
-                placeholder="magnet:?xt=urn:btih:... 或 https://..."
-                value={form.url}
-                onChange={(event) => handleResourceUrlChange(event.target.value)}
-              />
-            </Field>
-            {cloudDrive && (
+          {canUploadMedia && (
+            <Tabs
+              className="shrink-0"
+              value={mode}
+              onValueChange={(value) => setMode(value as "link" | "media")}
+            >
+              <TabsList className="w-full border border-line-soft bg-ink-900/80">
+                <TabsTrigger value="link">
+                  <Link2 data-icon="inline-start" />
+                  链接
+                </TabsTrigger>
+                <TabsTrigger value="media">
+                  <ImagePlus data-icon="inline-start" />
+                  上传媒体
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
+          <FieldGroup className="min-h-0 flex-1 overflow-y-auto pr-1">
+            {isMediaMode ? (
               <Field>
-                <FieldLabel htmlFor="resource-extraction-code">
-                  {getCloudDriveProviderLabel(cloudDrive.provider)}提取码
-                </FieldLabel>
-                <Input
-                  className="mono"
-                  id="resource-extraction-code"
-                  placeholder="没有提取码可留空"
-                  value={form.extractionCode}
-                  onChange={(event) =>
-                    onFormChange({ ...form, extractionCode: event.target.value })
-                  }
+                <FieldLabel>媒体文件</FieldLabel>
+                <input
+                  accept={RESOURCE_MEDIA_ACCEPT}
+                  className="sr-only"
+                  disabled={isBusy}
+                  multiple
+                  onChange={(event) => {
+                    addMediaFiles(event.target.files ?? [])
+                    event.target.value = ""
+                  }}
+                  ref={fileInputRef}
+                  type="file"
                 />
+                {mediaFiles.length > 0 && (
+                  <Sortable
+                    className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3"
+                    getItemValue={(item) => item.id}
+                    onValueChange={setMediaFiles}
+                    strategy="grid"
+                    value={mediaFiles}
+                  >
+                    {mediaFiles.map((item) => (
+                      <SortableItem key={item.id} value={item.id} disabled={isBusy}>
+                        <div className="group relative overflow-hidden rounded-input border border-line-soft bg-ink-900">
+                          <ResourceUploadPreview item={item} />
+                          <div className="absolute left-1.5 top-1.5 flex gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100">
+                            <SortableItemHandle>
+                              <Button
+                                aria-label={`拖动排序 ${item.file.name}`}
+                                className="size-7 bg-ink-950/80 text-fg hover:bg-ink-800"
+                                disabled={isBusy}
+                                size="icon"
+                                title="拖动排序"
+                                type="button"
+                                variant="ghost"
+                              >
+                                <GripVertical className="size-3.5" />
+                              </Button>
+                            </SortableItemHandle>
+                            <Button
+                              aria-label={`移除 ${item.file.name}`}
+                              className="size-7 bg-ink-950/80 text-fg hover:bg-rose/20 hover:text-rose"
+                              disabled={isBusy}
+                              onClick={() => removeMediaFile(item.id)}
+                              size="icon"
+                              title="移除文件"
+                              type="button"
+                              variant="ghost"
+                            >
+                              <X className="size-3.5" />
+                            </Button>
+                          </div>
+                          <div className="min-w-0 border-t border-line-soft px-2 py-1.5">
+                            <p className="truncate text-xs text-fg" title={item.file.name}>
+                              {item.file.name}
+                            </p>
+                            <p className="mono text-[10px] text-fg-dim">
+                              {formatFileSize(item.file.size)}
+                              {item.status === "uploading" && ` · 上传 ${Math.round(item.progress)}%`}
+                              {item.status === "error" && " · 上传失败"}
+                            </p>
+                            {item.status === "uploading" && (
+                              <Progress className="mt-1" value={item.progress} />
+                            )}
+                          </div>
+                        </div>
+                      </SortableItem>
+                    ))}
+                  </Sortable>
+                )}
+                <div
+                  className={cn(
+                    "mt-2 flex min-h-28 flex-col items-center justify-center gap-2 rounded-input border border-dashed px-4 py-5 text-center transition",
+                    isDraggingFiles
+                      ? "border-jade bg-jade/10"
+                      : "border-line-soft bg-ink-900/50 hover:border-fg-dim"
+                  )}
+                  onDragEnter={(event) => {
+                    event.preventDefault()
+                    setIsDraggingFiles(true)
+                  }}
+                  onDragLeave={(event) => {
+                    if (event.currentTarget === event.target) setIsDraggingFiles(false)
+                  }}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={handleMediaDrop}
+                >
+                  <Upload className="size-5 text-fg-dim" />
+                  <Button
+                    disabled={isBusy || mediaFiles.length >= MAX_RESOURCE_MEDIA_FILES}
+                    onClick={() => fileInputRef.current?.click()}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    选择文件
+                  </Button>
+                  <p className="text-xs text-fg-muted">可拖放图片、视频、音频或压缩文件</p>
+                  <p className="text-[11px] text-fg-dim">最多 20 个文件，总大小不超过 1 GB</p>
+                </div>
+                {mediaError && <p className="mt-2 text-xs text-rose">{mediaError}</p>}
               </Field>
+            ) : (
+              <>
+                <Field>
+                  <FieldLabel htmlFor="resource-url">链接（必填）</FieldLabel>
+                  <Input
+                    className="mono"
+                    disabled={isBusy}
+                    id="resource-url"
+                    placeholder="magnet:?xt=urn:btih:... 或 https://..."
+                    value={form.url}
+                    onChange={(event) => handleResourceUrlChange(event.target.value)}
+                  />
+                </Field>
+                {cloudDrive && (
+                  <Field>
+                    <FieldLabel htmlFor="resource-extraction-code">
+                      {getCloudDriveProviderLabel(cloudDrive.provider)}提取码
+                    </FieldLabel>
+                    <Input
+                      className="mono"
+                      disabled={isBusy}
+                      id="resource-extraction-code"
+                      placeholder="没有提取码可留空"
+                      value={form.extractionCode}
+                      onChange={(event) =>
+                        onFormChange({ ...form, extractionCode: event.target.value })
+                      }
+                    />
+                  </Field>
+                )}
+              </>
             )}
             <Field>
               <FieldLabel>Space</FieldLabel>
               <Select
+                disabled={isBusy}
                 value={form.spaceId || spaces[0]?.id || ""}
                 onValueChange={(value) => onFormChange({ ...form, spaceId: value ?? "" })}
               >
@@ -400,36 +696,165 @@ export function CreateResourceDialog({
             <Field>
               <FieldLabel htmlFor="resource-title">标题</FieldLabel>
               <Input
+                disabled={isBusy}
                 id="resource-title"
-                placeholder="留空时由 metadata 管道补全"
+                placeholder={isMediaMode ? "留空时使用文件名" : "留空时由 metadata 管道补全"}
                 value={form.title}
                 onChange={(event) => onFormChange({ ...form, title: event.target.value })}
               />
             </Field>
             <Field>
+              <FieldLabel htmlFor="resource-referer">Referer</FieldLabel>
+              <Input
+                disabled={isBusy}
+                id="resource-referer"
+                placeholder="可选，资源来源链接"
+                value={form.referer}
+                onChange={(event) => onFormChange({ ...form, referer: event.target.value })}
+              />
+            </Field>
+            <Field>
               <FieldLabel htmlFor="resource-description">描述</FieldLabel>
-              <Textarea
-                className="field-sizing-fixed max-h-[15rem] overflow-y-auto resize-y"
-                id="resource-description"
-                placeholder="补充版本、来源或注意事项。"
+                <Textarea
+                  className="field-sizing-fixed max-h-[15rem] overflow-y-auto resize-y"
+                  disabled={isBusy}
+                  id="resource-description"
+                  placeholder="补充版本、来源或注意事项。"
                 rows={10}
                 value={form.description}
                 onChange={(event) => onFormChange({ ...form, description: event.target.value })}
               />
             </Field>
           </FieldGroup>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <DialogFooter className="shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isBusy}
+              onClick={() => onOpenChange(false)}
+            >
               取消
             </Button>
-            <Button type="submit" disabled={!form.url.trim()}>
-              添加
+            <Button
+              type="submit"
+              disabled={isBusy || (isMediaMode ? mediaFiles.length === 0 : !form.url.trim())}
+              aria-busy={isBusy}
+            >
+              {isBusy && <Spinner data-icon="inline-start" />}
+              {isBusy ? (isMediaMode ? "上传中" : "添加中") : isMediaMode ? "上传" : "添加"}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
   )
+}
+
+function ResourceUploadPreview({ item }: { item: ResourceUploadFile }) {
+  if (item.kind === "image" && item.previewUrl) {
+    return <img alt="" className="aspect-[4/3] w-full object-cover" src={item.previewUrl} />
+  }
+  if (item.kind === "video" && item.previewUrl) {
+    return <video className="aspect-[4/3] w-full object-cover" muted preload="metadata" src={item.previewUrl} />
+  }
+  if (item.kind === "audio" && item.previewUrl) {
+    return (
+      <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 bg-ink-800 px-3">
+        <FileAudio className="size-8 text-jade" />
+        <audio className="h-8 w-full" controls preload="metadata" src={item.previewUrl} />
+      </div>
+    )
+  }
+  return (
+    <div className="flex aspect-[4/3] items-center justify-center bg-ink-800">
+      <Archive className="size-9 text-fg-dim" />
+    </div>
+  )
+}
+
+function getResourceUploadKind(file: File): ResourceUploadFile["kind"] | null {
+  const mimeType = file.type.toLowerCase()
+  if (mimeType.startsWith("image/")) return "image"
+  if (mimeType.startsWith("video/")) return "video"
+  if (mimeType.startsWith("audio/")) return "audio"
+
+  const extension = file.name.match(/\.([a-z0-9]{1,12})$/i)?.[1]?.toLowerCase()
+  if (!extension) return null
+  if (IMAGE_FILE_EXTENSIONS.has(extension)) return "image"
+  if (VIDEO_FILE_EXTENSIONS.has(extension)) return "video"
+  if (AUDIO_FILE_EXTENSIONS.has(extension)) return "audio"
+  return ARCHIVE_FILE_EXTENSIONS.has(extension) ? "archive" : null
+}
+
+export async function createVideoThumbnail(file: File): Promise<File | undefined> {
+  const objectUrl = URL.createObjectURL(file)
+  const video = document.createElement("video")
+
+  try {
+    video.muted = true
+    video.playsInline = true
+    video.preload = "metadata"
+    video.src = objectUrl
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      await waitForVideoEvent(video, "loadeddata")
+    }
+
+    if (Number.isFinite(video.duration) && video.duration > 0) {
+      video.currentTime = Math.min(1, video.duration / 2)
+      await waitForVideoEvent(video, "seeked")
+    }
+
+    const sourceWidth = video.videoWidth
+    const sourceHeight = video.videoHeight
+    if (sourceWidth <= 0 || sourceHeight <= 0) return undefined
+
+    const scale = Math.min(1, 1280 / sourceWidth, 720 / sourceHeight)
+    const canvas = document.createElement("canvas")
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale))
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale))
+    const context = canvas.getContext("2d")
+    if (!context) return undefined
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.82)
+    )
+    if (!blob) return undefined
+
+    const name = file.name.replace(/\.[^.]+$/, "") || "video"
+    return new File([blob], `${name}.thumbnail.jpg`, { type: "image/jpeg" })
+  } catch {
+    return undefined
+  } finally {
+    video.removeAttribute("src")
+    video.load()
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
+function waitForVideoEvent(video: HTMLVideoElement, eventName: "loadeddata" | "seeked") {
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      video.removeEventListener(eventName, onSuccess)
+      video.removeEventListener("error", onError)
+    }
+    const onSuccess = () => {
+      cleanup()
+      resolve()
+    }
+    const onError = () => {
+      cleanup()
+      reject(new Error("Unable to read video frame."))
+    }
+
+    video.addEventListener(eventName, onSuccess, { once: true })
+    video.addEventListener("error", onError, { once: true })
+  })
+}
+
+function formatFileSize(value: number) {
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function isFallbackResourceTitle(value: string) {

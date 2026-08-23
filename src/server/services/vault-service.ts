@@ -1,7 +1,6 @@
 import { and, asc, count, desc, eq, inArray, isNull, like, or } from "drizzle-orm"
 
 import {
-  collaborators,
   resourceAnnotations,
   resourceMetadata,
   resourceReadLater,
@@ -63,12 +62,6 @@ export async function listVaults(
     actor: Actor
   }
 ) {
-  const editorVaultIds = await listEditorVaultIdsForActor(db, input.actor)
-  const accessFilter =
-    editorVaultIds.length > 0
-      ? or(eq(vaults.ownerId, input.actor.id), inArray(vaults.id, editorVaultIds))
-      : eq(vaults.ownerId, input.actor.id)
-
   const rows = await db
     .select({
       id: vaults.id,
@@ -90,7 +83,7 @@ export async function listVaults(
     .where(
       and(
         isNull(vaults.deletedAt),
-        accessFilter,
+        eq(vaults.ownerId, input.actor.id),
         input.query
           ? or(
               like(vaults.title, `%${input.query}%`),
@@ -121,22 +114,6 @@ export async function listVaults(
     ...vault,
     resourceCount: resourceCountByVaultId.get(vault.id) ?? 0,
   }))
-}
-
-async function listEditorVaultIdsForActor(db: Db, actor: Actor) {
-  const rows = await db
-    .select({ vaultId: collaborators.vaultId })
-    .from(collaborators)
-    .innerJoin(users, eq(collaborators.userId, users.id))
-    .where(
-      and(
-        eq(collaborators.role, "editor"),
-        or(eq(collaborators.userId, actor.id), eq(users.email, actor.email))
-      )
-    )
-    .limit(100)
-
-  return rows.map((row) => row.vaultId)
 }
 
 export async function createVault(
@@ -309,7 +286,8 @@ export async function exportVault(
       type: resource.type,
       title: resource.title,
       description: resource.description,
-      url: resource.url,
+      url: resource.url ?? "",
+      referer: resource.referer,
       metadataStatus: resource.metadataStatus,
       position: resource.position,
       createdAt: resource.createdAt,
@@ -393,6 +371,7 @@ export async function importVault(
       title: resource.title,
       description: resource.description,
       url: resource.url,
+      referer: resource.referer ?? null,
       dedupeKey: getImportResourceDedupeKey(resource.type, resource.url),
       metadataStatus: resource.metadataStatus,
       position: resource.position,
@@ -613,6 +592,7 @@ export async function readVaultDetail(
       title: resources.title,
       description: resources.description,
       url: resources.url,
+      referer: resources.referer,
       metadataStatus: resources.metadataStatus,
       position: resources.position,
       createdBy: resources.createdBy,
@@ -693,6 +673,7 @@ export async function readVaultDetail(
       title: resource.title,
       description: resource.description,
       url: resource.url,
+      referer: resource.referer,
       metadataStatus: resource.metadataStatus,
       position: resource.position,
       createdBy: resource.createdBy,

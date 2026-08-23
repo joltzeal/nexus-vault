@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, sql } from "drizzle-orm"
 
 import { createDbSession } from "@/db"
 import { resourceMetadata, resources } from "@/db/schema"
@@ -10,7 +10,7 @@ const DEFAULT_DAILY_CHECK_LIMIT = 1000
 const CHECK_STALE_AFTER_MS = 20 * 60 * 60 * 1000
 const QUEUE_BATCH_SIZE = 100
 
-export type CloudDriveCheckProvider = Extract<ResourceType, "baidu_pan">
+export type CloudDriveCheckProvider = Extract<ResourceType, "baidu_pan" | "xunlei_pan">
 
 export type CloudDriveCheckQueueMessage = {
   kind: "cloud-drive.check"
@@ -27,7 +27,7 @@ export function isCloudDriveCheckQueueMessage(
 
   return (
     message.kind === "cloud-drive.check" &&
-    message.provider === "baidu_pan" &&
+    (message.provider === "baidu_pan" || message.provider === "xunlei_pan") &&
     typeof message.resourceId === "string" &&
     typeof message.vaultId === "string" &&
     typeof message.requestedAt === "string"
@@ -44,7 +44,7 @@ export async function enqueueDailyCloudDriveCheckTasks(
   )
   const messages = resourcesToCheck.map((resource) =>
     createCloudDriveCheckQueueMessage({
-      provider: "baidu_pan",
+      provider: resource.type as CloudDriveCheckProvider,
       resourceId: resource.id,
       vaultId: resource.vaultId,
     })
@@ -62,8 +62,8 @@ export async function processCloudDriveCheckMessage(
   db: Db,
   message: CloudDriveCheckQueueMessage,
   options: {
-    env?: CloudflareEnv
-  } = {}
+    env: CloudflareEnv
+  }
 ) {
   if (await shouldSkipCloudDriveCheck(db, message.resourceId, message.provider)) {
     return { skipped: true }
@@ -107,12 +107,13 @@ async function getCloudDriveResourcesToCheck(db: Db, limit: number) {
     .select({
       id: resources.id,
       vaultId: resources.vaultId,
+      type: resources.type,
     })
     .from(resources)
     .leftJoin(resourceMetadata, eq(resourceMetadata.resourceId, resources.id))
     .where(
       and(
-        eq(resources.type, "baidu_pan"),
+        inArray(resources.type, ["baidu_pan", "xunlei_pan"]),
         sql`coalesce(${cloudDriveAvailabilityStatusSql()}, '') <> 'unavailable'`,
         sql`(${checkedAt} is null or ${checkedAt} < ${cutoffIso})`
       )

@@ -8,14 +8,17 @@ import {
   parseResourceInput,
 } from "@/domain/resources/input"
 import { toast } from "@/lib/toast"
+import { Progress } from "@/components/ui/progress"
 
 import { apiRequest } from "@/features/api-client"
+import { uploadLocalMediaMultipart } from "@/features/local-media-multipart"
 import { getVaultAccess, getWorkspaceViewer } from "@/features/dashboard-access"
 import {
   AuthDialog,
   CreateResourceDialog,
   CreateSetDialog,
   CreateSpaceDialog,
+  createVideoThumbnail,
 } from "@/features/components/vault-dialogs"
 import {
   ResourceDetailsSheet,
@@ -25,6 +28,7 @@ import { ShareSubmissionDialog } from "@/features/components/share-submission-di
 import {
   SidebarInset,
   SidebarProvider,
+  SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { StarPage } from "@/features/components/star-page"
 import {
@@ -88,7 +92,49 @@ type ResourceMetadataStatusItem = {
   metadata?: ResourceMetadataEnvelope | null
 }
 
+type LocalMediaUpload = {
+  completedBytes: number
+  phase: "preparing" | "uploading" | "syncing"
+  resourceId: string
+  totalBytes: number
+}
+
+function MediaUploadProgress({
+  count,
+  phase,
+  progress,
+}: {
+  count: number
+  phase: LocalMediaUpload["phase"]
+  progress: number
+}) {
+  const phaseLabel =
+    phase === "preparing"
+      ? "正在准备视频预览图"
+      : phase === "syncing"
+        ? "上传完成，正在同步资源"
+        : "正在上传，可继续浏览其他资源"
+
+  return (
+    <div className="mt-1.5 space-y-1.5">
+      <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        <span className="min-w-0 truncate">{phaseLabel}</span>
+        <span className="shrink-0 tabular-nums">{progress}%</span>
+      </div>
+      <Progress
+        aria-label={`${count} 个媒体资源上传进度`}
+        className="gap-0 [&_[data-slot=progress-track]]:bg-ink-700 [&_[data-slot=progress-indicator]]:bg-jade"
+        value={progress}
+      />
+    </div>
+  )
+}
+
 const LOCAL_NSFW_STORAGE_KEY = "nexus-vault:nsfw-enabled"
+
+function getDashboardVaultPath(vaultId?: string) {
+  return vaultId ? `/dashboard/${encodeURIComponent(vaultId)}` : "/dashboard"
+}
 
 export function VaultWorkspaceClient({
   initialData,
@@ -97,7 +143,9 @@ export function VaultWorkspaceClient({
 }) {
   const router = useRouter()
   const [sets, setSets] = useState<ResourceSet[]>(initialData.sets)
-  const [externalActiveSet, setExternalActiveSet] = useState<ResourceSet | null>(null)
+  const [externalActiveSet, setExternalActiveSet] = useState<ResourceSet | null>(
+    initialData.externalActiveSet ?? null,
+  )
   const [activeSetId, setActiveSetId] = useState(initialData.activeSetId)
   const [activePage, setActivePage] = useState<VaultTopbarPage>(() => {
     if (initialData.mode === "share") return "workspace"
@@ -119,7 +167,9 @@ export function VaultWorkspaceClient({
   const [resourceDetailsOpen, setResourceDetailsOpen] = useState(false)
   const [loadingVaultId, setLoadingVaultId] = useState("")
   const [selectedResourceId, setSelectedResourceId] = useState(
-    initialData.sets.find((set) => set.id === initialData.activeSetId)?.resources[0]?.id ?? ""
+    initialData.sets.find((set) => set.id === initialData.activeSetId)?.resources[0]?.id ??
+      initialData.externalActiveSet?.resources[0]?.id ??
+      ""
   )
   const [isLoading, setIsLoading] = useState(false)
   const [isImportingVault, setIsImportingVault] = useState(false)
@@ -147,8 +197,13 @@ export function VaultWorkspaceClient({
   const [workspaceSearchTarget, setWorkspaceSearchTarget] =
     useState<VaultDocumentSearchTarget>()
   const [localNsfwEnabled, setLocalNsfwEnabled] = useState<boolean | null>(null)
+  const [isResourceSubmitting, setIsResourceSubmitting] = useState(false)
+  const [localMediaUploadResourceIds, setLocalMediaUploadResourceIds] = useState<string[]>([])
+  const [localMediaUploads, setLocalMediaUploads] = useState<LocalMediaUpload[]>([])
   const toastedMetadataFailureIds = useRef<Set<string>>(new Set())
   const metadataRefreshInFlight = useRef(false)
+  const createResourceInFlight = useRef(false)
+  const localMediaUploadInFlight = useRef(new Set<string>())
   const importVaultInFlight = useRef(false)
   const saveVaultInFlight = useRef(false)
   const vaultLoadRequestId = useRef(0)
@@ -163,6 +218,8 @@ export function VaultWorkspaceClient({
     (externalActiveSet?.id === activeSetId ? externalActiveSet : null) ??
     sets[0]
   const isShareMode = initialData.mode === "share"
+  const allowResourceMediaUpload =
+    initialData.allowResourceMediaUpload === true && !isShareMode
   const mediaVisible = activeSet
     ? localNsfwEnabled === null
       ? !activeSet.nsfwEnabled
@@ -172,10 +229,14 @@ export function VaultWorkspaceClient({
     activeSet?.resources
       .filter(
         (resource) =>
-          resource.metadataStatus === "pending" || resource.metadataStatus === "processing"
+          resource.metadataStatus === "pending" ||
+          resource.metadataStatus === "processing" ||
+          isResourceAiSummaryResolving(resource)
       )
       .map((resource) => resource.id)
       .join("|") ?? ""
+  const hasResolvingAiSummary =
+    activeSet?.resources.some(isResourceAiSummaryResolving) ?? false
 
   const filteredResources = useMemo(() => {
     return activeSet?.resources ?? []
@@ -191,6 +252,44 @@ export function VaultWorkspaceClient({
         : undefined,
     [activeSet, filteredResources]
   )
+  const localMediaUploadSummary = useMemo(() => {
+    const totalBytes = localMediaUploads.reduce((sum, upload) => sum + upload.totalBytes, 0)
+    const completedBytes = localMediaUploads.reduce(
+      (sum, upload) => sum + Math.min(upload.completedBytes, upload.totalBytes),
+      0
+    )
+    const progress = totalBytes > 0 ? Math.floor((completedBytes / totalBytes) * 100) : 0
+    const phase: LocalMediaUpload["phase"] = localMediaUploads.some((upload) => upload.phase === "uploading")
+      ? "uploading"
+      : localMediaUploads.some((upload) => upload.phase === "preparing")
+        ? "preparing"
+        : "syncing"
+
+    return { count: localMediaUploads.length, phase, progress }
+  }, [localMediaUploads])
+
+  useEffect(() => {
+    const toastId = "local-media-uploads"
+    if (localMediaUploadSummary.count === 0) {
+      toast.dismiss(toastId)
+      return
+    }
+
+    toast.info(
+      localMediaUploadSummary.count === 1 ? "正在上传媒体" : `正在上传 ${localMediaUploadSummary.count} 个媒体资源`,
+      {
+        id: toastId,
+        description: (
+          <MediaUploadProgress
+            count={localMediaUploadSummary.count}
+            phase={localMediaUploadSummary.phase}
+            progress={localMediaUploadSummary.progress}
+          />
+        ),
+        duration: 0,
+      }
+    )
+  }, [localMediaUploadSummary])
   const currentVaultSearchItems = useMemo(
     () => getCurrentVaultSearchItems(activeSet),
     [activeSet],
@@ -317,14 +416,17 @@ export function VaultWorkspaceClient({
         })
     }
 
-    const timeoutId = window.setTimeout(refreshResolvingResources, 1200)
-    const intervalId = window.setInterval(refreshResolvingResources, 5000)
+    const timeoutId = window.setTimeout(refreshResolvingResources, 300)
+    const intervalId = window.setInterval(
+      refreshResolvingResources,
+      hasResolvingAiSummary ? 1500 : 2000,
+    )
 
     return () => {
       window.clearTimeout(timeoutId)
       window.clearInterval(intervalId)
     }
-  }, [activeSet?.id, resolvingResourceIds])
+  }, [activeSet?.id, hasResolvingAiSummary, resolvingResourceIds])
 
   async function loadVaults(
     nextActiveSetId?: string,
@@ -436,6 +538,9 @@ export function VaultWorkspaceClient({
         )
       }
       setActiveSetId(hydratedSet.id)
+      if (!isShareMode) {
+        window.history.replaceState(null, "", getDashboardVaultPath(hydratedSet.id))
+      }
       setSelectedResourceId((currentResourceId) =>
         hydratedSet.resources.some((resource) => resource.id === currentResourceId)
           ? currentResourceId
@@ -1163,7 +1268,7 @@ export function VaultWorkspaceClient({
 
   async function handleSearchSelect(item: VaultSearchItem) {
     setActivePage("workspace")
-    window.history.replaceState(null, "", "/")
+    window.history.replaceState(null, "", getDashboardVaultPath(item.vaultId))
     setResourceDetailsOpen(false)
 
     if (item.vaultId !== activeSet?.id) {
@@ -1539,6 +1644,7 @@ export function VaultWorkspaceClient({
   async function handleCreateResource(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!activeSet) return
+    if (createResourceInFlight.current) return
 
     const title = resourceForm.title.trim()
     const url = createCloudDriveUrlWithPassword(
@@ -1549,6 +1655,9 @@ export function VaultWorkspaceClient({
     const description = resourceForm.description.trim()
     const targetSpaceId = resourceForm.spaceId || activeSet.spaces[0]?.id || ""
 
+    createResourceInFlight.current = true
+    setIsResourceSubmitting(true)
+
     try {
       setApiError("")
       const created = await apiRequest<{ id: string }>(`/vaults/${activeSet.id}/resources`, {
@@ -1558,6 +1667,7 @@ export function VaultWorkspaceClient({
           ...(title ? { title } : {}),
           url,
           description,
+          referer: resourceForm.referer.trim() || undefined,
         }),
       })
       const parsedResource = parseResourceInput({
@@ -1577,6 +1687,7 @@ export function VaultWorkspaceClient({
         title: parsedResource.title,
         type: parsedResource.type,
         url: parsedResource.url,
+        referer: resourceForm.referer.trim() || null,
         description,
         metadataStatus: "pending",
         metadata: null,
@@ -1620,6 +1731,110 @@ export function VaultWorkspaceClient({
       const message = error instanceof Error ? error.message : "Failed to create resource."
       setApiError(message)
       toast.error(message)
+    } finally {
+      createResourceInFlight.current = false
+      setIsResourceSubmitting(false)
+    }
+  }
+
+  function handleCreateUploadedMedia(files: File[]) {
+    if (!activeSet || files.length === 0) return
+
+    const vaultId = activeSet.id
+    const targetSpaceId = resourceForm.spaceId || activeSet.spaces[0]?.id || ""
+    const form = {
+      description: resourceForm.description.trim(),
+      referer: resourceForm.referer.trim(),
+      title: resourceForm.title.trim(),
+    }
+    const uploadId = `create:${crypto.randomUUID()}`
+    setLocalMediaUploads((current) => [
+      ...current,
+      {
+        resourceId: uploadId,
+        phase: "preparing",
+        completedBytes: 0,
+        totalBytes: Math.max(files.reduce((sum, file) => sum + file.size, 0), 1),
+      },
+    ])
+    setResourceForm(emptyResourceForm)
+    setResourceDialogOpen(false)
+    void createUploadedMediaInBackground(vaultId, targetSpaceId, form, files, uploadId)
+  }
+
+  async function createUploadedMediaInBackground(
+    vaultId: string,
+    targetSpaceId: string,
+    form: { description: string; referer: string; title: string },
+    files: File[],
+    uploadId: string,
+  ) {
+    let lastProgress = -1
+    try {
+      setApiError("")
+      const thumbnails = await Promise.all(files.map((file) =>
+        file.type.startsWith("video/") ? createVideoThumbnail(file) : undefined
+      ))
+      const uploaded = await uploadLocalMediaMultipart({
+        files,
+        thumbnails,
+        preparePath: `/vaults/${vaultId}/resources/local-media/multipart`,
+        onProgress: (value, uploadedBytes, totalBytes) => {
+          const progress = Math.floor(value)
+          if (progress !== 100 && progress - lastProgress < 2) return
+          lastProgress = progress
+          setLocalMediaUploads((current) => current.map((upload) =>
+            upload.resourceId === uploadId
+              ? {
+                  ...upload,
+                  phase: "uploading",
+                  completedBytes: uploadedBytes,
+                  totalBytes: totalBytes || upload.totalBytes,
+                }
+              : upload
+          ))
+        },
+      })
+      setLocalMediaUploads((current) => current.map((upload) =>
+        upload.resourceId === uploadId
+          ? { ...upload, phase: "syncing", completedBytes: upload.totalBytes }
+          : upload
+      ))
+      let created: { id: string }
+      try {
+        created = await apiRequest<{ id: string }>(
+          `/vaults/${vaultId}/resources/local-media`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              resourceId: uploaded.resourceId,
+              files: uploaded.files,
+              ...(targetSpaceId ? { spaceId: targetSpaceId } : {}),
+              ...(form.title ? { title: form.title } : {}),
+              ...(form.description
+                ? { description: form.description }
+                : {}),
+              ...(form.referer
+                ? { referer: form.referer }
+                : {}),
+            }),
+          },
+        )
+      } catch (error) {
+        await uploaded.cleanup()
+        throw error
+      }
+
+      setSelectedResourceId(created.id)
+      await refreshVaultDetail(vaultId)
+      setSelectedResourceId(created.id)
+      scrollToWorkspaceTarget(`resource-${created.id}`)
+      toast.success("媒体已上传")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to upload resource media."
+      toast.error("媒体上传失败", { description: message })
+    } finally {
+      setLocalMediaUploads((current) => current.filter((upload) => upload.resourceId !== uploadId))
     }
   }
 
@@ -1715,6 +1930,7 @@ export function VaultWorkspaceClient({
 
     const previousSets = sets
     const resourceId = selectedResource.id
+    const isLocalMediaResource = selectedResource.type === "local_media"
     setIsLoading(true)
     setApiError("")
 
@@ -1729,10 +1945,12 @@ export function VaultWorkspaceClient({
                       ...resource,
                       title: form.title,
                       description: form.description,
-                      url: form.url,
+                      url: isLocalMediaResource ? resource.url : form.url,
+                      referer: form.referer || null,
                       spaceId: form.spaceId,
-                      metadataStatus:
-                        form.url !== resource.url ? ("pending" as const) : resource.metadataStatus,
+                      metadataStatus: !isLocalMediaResource && form.url !== resource.url
+                        ? ("pending" as const)
+                        : resource.metadataStatus,
                     }
                   : resource
               ),
@@ -1747,7 +1965,8 @@ export function VaultWorkspaceClient({
         body: JSON.stringify({
           title: form.title,
           description: form.description,
-          url: form.url,
+          ...(isLocalMediaResource ? {} : { url: form.url }),
+          referer: form.referer,
           spaceId: form.spaceId,
         }),
       })
@@ -1761,6 +1980,112 @@ export function VaultWorkspaceClient({
       toast.error(message)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  function handleUpdateLocalMedia(
+    form: ResourceDetailsForm,
+    input: { files: File[]; order: string[] }
+  ) {
+    if (!activeSet || !selectedResource) return
+
+    const vaultId = activeSet.id
+    const resourceId = selectedResource.id
+    if (localMediaUploadInFlight.current.has(resourceId)) return
+
+    localMediaUploadInFlight.current.add(resourceId)
+    setLocalMediaUploadResourceIds((current) => [...current, resourceId])
+    setLocalMediaUploads((current) => [
+      ...current,
+      {
+        resourceId,
+        phase: "preparing",
+        completedBytes: 0,
+        totalBytes: Math.max(
+          input.files.reduce((sum, file) => sum + file.size, 0),
+          1
+        ),
+      },
+    ])
+    setResourceDetailsOpen(false)
+    void updateLocalMediaInBackground(vaultId, resourceId, form, input)
+  }
+
+  async function updateLocalMediaInBackground(
+    vaultId: string,
+    resourceId: string,
+    form: ResourceDetailsForm,
+    input: { files: File[]; order: string[] }
+  ) {
+    let lastProgress = -1
+
+    try {
+      const thumbnails = await Promise.all(input.files.map((file) =>
+        file.type.startsWith("video/") ? createVideoThumbnail(file) : undefined
+      ))
+      const uploaded = input.files.length > 0
+        ? await uploadLocalMediaMultipart({
+            files: input.files,
+            thumbnails,
+            preparePath: `/resources/${resourceId}/local-media/multipart`,
+            onProgress: (value, uploadedBytes, totalBytes) => {
+              const progress = Math.floor(value)
+              if (progress !== 100 && progress - lastProgress < 2) return
+              lastProgress = progress
+              setLocalMediaUploads((current) => current.map((upload) =>
+                upload.resourceId === resourceId
+                  ? {
+                      ...upload,
+                      phase: "uploading",
+                      completedBytes: uploadedBytes,
+                      totalBytes: totalBytes || upload.totalBytes,
+                    }
+                  : upload
+              ))
+            },
+          })
+        : { cleanup: async () => {}, files: [] }
+
+      setLocalMediaUploads((current) => current.map((upload) =>
+        upload.resourceId === resourceId
+          ? {
+              ...upload,
+              phase: "syncing",
+              completedBytes: upload.totalBytes,
+            }
+          : upload
+      ))
+
+      try {
+        await apiRequest(`/resources/${resourceId}/local-media`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            title: form.title,
+            description: form.description,
+            referer: form.referer,
+            spaceId: form.spaceId,
+            order: input.order,
+            files: uploaded.files,
+          }),
+        })
+      } catch (error) {
+        await uploaded.cleanup()
+        throw error
+      }
+
+      await refreshVaultDetail(vaultId)
+      setSelectedResourceId(resourceId)
+      toast.success("媒体已更新", {
+        description: "资源列表已刷新。",
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update resource media."
+      setApiError(message)
+      toast.error("媒体更新失败", { description: message })
+    } finally {
+      localMediaUploadInFlight.current.delete(resourceId)
+      setLocalMediaUploadResourceIds((current) => current.filter((id) => id !== resourceId))
+      setLocalMediaUploads((current) => current.filter((upload) => upload.resourceId !== resourceId))
     }
   }
 
@@ -2102,7 +2427,10 @@ export function VaultWorkspaceClient({
     }
 
     setActivePage(page)
-    const nextUrl = page === "workspace" ? "/" : `/?page=${page}`
+    const nextUrl =
+      page === "workspace"
+        ? getDashboardVaultPath(activeSet?.id)
+        : `/dashboard?page=${page}`
     window.history.replaceState(null, "", nextUrl)
   }
 
@@ -2113,6 +2441,7 @@ export function VaultWorkspaceClient({
         currentUserName={currentUserName}
         isSignedIn={Boolean(currentUser)}
         isSessionPending={false}
+        mobileSidebarEnabled={!isShareMode}
         notifications={notifications}
         onAuthOpen={() => void (async () => {
           const policy = await loadAuthPolicy()
@@ -2142,32 +2471,39 @@ export function VaultWorkspaceClient({
         } as React.CSSProperties}
       >
       {!isShareMode && (
-        <VaultSidebar
-          activeSetId={activeSetId}
-          disabled={!currentUser || isLoading}
-          isImporting={isImportingVault}
-          mediaVisible={mediaVisible}
-          onMediaVisibleChange={handleMediaVisibleChange}
-          onCreateVault={openCreateVaultDialog}
-          onImportVault={(file) => void handleImportVault(file)}
-          onSelectStarredVault={(id) => void handleOpenStarredVault(id)}
-          onSelectVault={(id) => {
-            setActivePage("workspace")
-            void loadVaults(id)
-          }}
-          onSignOut={() => void handleSignOut()}
-          sets={sets}
-          starredVaults={starredVaults}
-          user={
-            currentUser
-              ? {
-                  email: currentUser.email,
-                  image: currentUserImage,
-                  name: currentUserName || "Nexus user",
-                }
-              : undefined
-          }
-        />
+        <>
+          <SidebarTrigger
+            className="fixed left-2 top-2 z-40 size-8 border border-line-soft bg-ink-800/90 text-fg-dim shadow-sm backdrop-blur transition hover:border-jade-dim hover:bg-ink-750 hover:text-jade md:hidden"
+            title="打开 Vault 导航"
+            type="button"
+          />
+          <VaultSidebar
+            activeSetId={activeSetId}
+            disabled={!currentUser || isLoading}
+            isImporting={isImportingVault}
+            mediaVisible={mediaVisible}
+            onMediaVisibleChange={handleMediaVisibleChange}
+            onCreateVault={openCreateVaultDialog}
+            onImportVault={(file) => void handleImportVault(file)}
+            onSelectStarredVault={(id) => void handleOpenStarredVault(id)}
+            onSelectVault={(id) => {
+              setActivePage("workspace")
+              void loadVaults(id)
+            }}
+            onSignOut={() => void handleSignOut()}
+            sets={sets}
+            starredVaults={starredVaults}
+            user={
+              currentUser
+                ? {
+                    email: currentUser.email,
+                    image: currentUserImage,
+                    name: currentUserName || "Nexus user",
+                  }
+                : undefined
+            }
+          />
+        </>
       )}
       <SidebarInset className="h-full min-h-0 overflow-hidden bg-background">
         <div className="h-full min-h-0 overflow-hidden">
@@ -2282,9 +2618,13 @@ export function VaultWorkspaceClient({
 
       <ResourceDetailsSheet
         canEdit={Boolean(currentUser) && canEditSelectedResource}
-        isBusy={isLoading}
+        isBusy={
+          isLoading ||
+          (selectedResource ? localMediaUploadResourceIds.includes(selectedResource.id) : false)
+        }
         onOpenChange={setResourceDetailsOpen}
         onSave={handleUpdateResource}
+        onSaveLocalMedia={handleUpdateLocalMedia}
         open={resourceDetailsOpen}
         resource={selectedResource}
         spaces={activeSet?.spaces ?? []}
@@ -2322,8 +2662,11 @@ export function VaultWorkspaceClient({
         open={spaceDialogOpen}
       />
       <CreateResourceDialog
+        allowMediaUpload={allowResourceMediaUpload}
         form={resourceForm}
+        isSubmitting={isResourceSubmitting}
         onFormChange={setResourceForm}
+        onMediaSubmit={handleCreateUploadedMedia}
         onOpenChange={setResourceDialogOpen}
         onSubmit={handleCreateResource}
         open={resourceDialogOpen}
@@ -2375,6 +2718,20 @@ function applyResourceAnnotationPatch(
 
 function isResourceResolving(status: Resource["metadataStatus"]) {
   return status === "pending" || status === "processing"
+}
+
+function isResourceAiSummaryResolving(resource: Resource) {
+  const value = resource.metadata?.data?.extra?.aiSummary
+  if (!value || typeof value !== "object") return false
+  const state = value as Record<string, unknown>
+  const status = state.status
+  if (status !== "pending" && status !== "processing") return false
+
+  const timestamp = [state.startedAt, state.requestedAt, resource.metadata?.updatedAt]
+    .find((item): item is string => typeof item === "string" && item.length > 0)
+  if (!timestamp) return true
+  const startedAt = Date.parse(timestamp)
+  return !Number.isFinite(startedAt) || Date.now() - startedAt < 2 * 60 * 1000
 }
 
 function mergeVaultListWithExisting(

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 
 import type { RegistrationMode } from "@/auth/registration"
 import { Home } from "@/features/components/home"
@@ -30,9 +30,32 @@ type AppState =
   | { status: "share-password"; slug: string; turnstileSiteKey?: string }
   | { status: "error"; message: string }
 
+const ResourceCardShowcase = import.meta.env.DEV
+  ? lazy(async () => {
+      const module = await import("@/features/components/resource-card-showcase")
+      return { default: module.ResourceCardShowcase }
+    })
+  : null
+
 export function App() {
+  if (
+    ResourceCardShowcase &&
+    /^\/ui\/resource-cards\/?$/.test(window.location.pathname)
+  ) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <ResourceCardShowcase />
+      </Suspense>
+    )
+  }
+
+  return <Application />
+}
+
+function Application() {
   const [state, setState] = useState<AppState>({ status: "loading" })
   const shareSlug = useMemo(() => getShareSlug(window.location.pathname), [])
+  const dashboardVaultId = useMemo(() => getDashboardVaultId(window.location.pathname), [])
 
   useEffect(() => {
     let cancelled = false
@@ -41,7 +64,7 @@ export function App() {
       try {
         const nextState = shareSlug
           ? await loadShareState(shareSlug)
-          : await loadWorkspaceState()
+          : await loadWorkspaceState(dashboardVaultId)
         if (!cancelled) setState(nextState)
       } catch (error) {
         if (!cancelled) {
@@ -58,7 +81,7 @@ export function App() {
     return () => {
       cancelled = true
     }
-  }, [shareSlug])
+  }, [dashboardVaultId, shareSlug])
 
   if (state.status === "loading") return <LoadingScreen />
   if (state.status === "error") return <ErrorScreen message={state.message} />
@@ -78,8 +101,10 @@ export function App() {
   return <VaultWorkspaceClient initialData={state.initialData} />
 }
 
-async function loadWorkspaceState(): Promise<AppState> {
-  const data = await apiRequest<BootstrapData>("/api/bootstrap")
+async function loadWorkspaceState(vaultId: string | null): Promise<AppState> {
+  const bootstrapUrl = new URL("/api/bootstrap", window.location.origin)
+  if (vaultId) bootstrapUrl.searchParams.set("vaultId", vaultId)
+  const data = await apiRequest<BootstrapData>(`${bootstrapUrl.pathname}${bootstrapUrl.search}`)
 
   if (!data.initialData) {
     return {
@@ -89,8 +114,9 @@ async function loadWorkspaceState(): Promise<AppState> {
     }
   }
 
-  if (window.location.pathname !== "/dashboard") {
-    window.history.replaceState(null, "", "/dashboard")
+  const dashboardPath = getDashboardPath(vaultId)
+  if (window.location.pathname !== dashboardPath) {
+    window.history.replaceState(null, "", dashboardPath)
   }
 
   return { status: "workspace", initialData: data.initialData }
@@ -131,6 +157,15 @@ async function apiRequest<T>(path: string): Promise<T> {
 function getShareSlug(pathname: string) {
   const match = /^\/s\/([^/]+)\/?$/.exec(pathname)
   return match ? decodeURIComponent(match[1]) : null
+}
+
+function getDashboardVaultId(pathname: string) {
+  const match = /^\/dashboard\/([^/]+)\/?$/.exec(pathname)
+  return match ? decodeURIComponent(match[1]) : null
+}
+
+function getDashboardPath(vaultId: string | null) {
+  return vaultId ? `/dashboard/${encodeURIComponent(vaultId)}` : "/dashboard"
 }
 
 function LoadingScreen() {

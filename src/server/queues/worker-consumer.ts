@@ -2,6 +2,8 @@ import { createDbSession } from "@/db"
 import { isQueueMessage, type QueueMessage } from "@/server/queues/messages"
 import { processQueueMessage } from "@/server/queues/consumer"
 
+const MAX_TRANSIENT_QUEUE_ATTEMPTS = 3
+
 export async function consumeQueueBatch(
   batch: MessageBatch<unknown>,
   env: CloudflareEnv
@@ -35,7 +37,10 @@ async function processQueueMessageSafely(
   queue: string
 ) {
   try {
-    await processQueueMessage(db, body, { env })
+    await processQueueMessage(db, body, {
+      env,
+      retryTransient: message.attempts < MAX_TRANSIENT_QUEUE_ATTEMPTS,
+    })
     message.ack()
   } catch (error) {
     console.error("Queue message failed", {

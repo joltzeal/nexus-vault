@@ -81,6 +81,7 @@ export const vaultExportSchema = z.object({
       title: z.string().trim().min(1).max(200),
       description: z.string().optional().default(""),
       url: z.string().trim().min(1).max(4096),
+      referer: z.string().max(4096).nullable().optional(),
       metadataStatus: metadataStatusSchema.optional().default("completed"),
       position: z.number().int().min(0).optional().default(0),
       createdAt: z.string().optional(),

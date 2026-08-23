@@ -7,6 +7,7 @@ import { conflict, forbidden, notFound } from "@/server/api/errors"
 import type { Actor, Db } from "@/server/api/types"
 import { createMetadataQueueMessage } from "@/server/metadata"
 import { getMetadataProvider } from "@/server/metadata/metadata-provider"
+import { getUserXComCookieString } from "@/server/services/account-integration-service"
 import { ensureEditorCollaborator } from "@/server/services/collaborator-service"
 import type { NotificationQueueMessage } from "@/server/services/notification-service"
 import { requireVaultPermission } from "@/server/services/permission-service"
@@ -30,6 +31,7 @@ export async function createResourceSubmission(
     title?: string
     description: string
     url: string
+    referer?: string
     actor?: Actor
     env?: CloudflareEnv
   }
@@ -50,6 +52,9 @@ export async function createResourceSubmission(
   const dedupeKey = getDuplicateResourceKey(parsed.url)
   await ensureResourceUrlNotDuplicate(db, vaultId, dedupeKey)
   const submitterId = input.actor ? await ensureActorUser(db, input.actor) : null
+  const twitterCookieString = parsed.type === "twitter" && submitterId
+    ? await getUserXComCookieString(db, submitterId)
+    : undefined
   const submissionId = newId()
   const now = new Date().toISOString()
   const metadata = await resolveSubmissionMetadata({
@@ -63,6 +68,7 @@ export async function createResourceSubmission(
     url: parsed.url,
     now,
     env: input.env,
+    twitterCookieString,
   })
 
   await db.insert(resourceSubmissions).values({
@@ -76,6 +82,7 @@ export async function createResourceSubmission(
     title: parsed.title,
     description: input.description,
     url: parsed.url,
+    referer: input.referer || null,
     metadataJson: metadata as unknown as Record<string, unknown>,
   })
 
@@ -101,6 +108,7 @@ function isFallbackSubmissionTitle(value: string) {
     "untitled resource",
     "untitled link",
     "untitled tweet",
+    "抖音视频",
   ].includes(value.trim().toLowerCase())
 }
 
@@ -115,6 +123,7 @@ async function resolveSubmissionMetadata(input: {
   url: string
   now: string
   env?: CloudflareEnv
+  twitterCookieString?: string
 }) {
   const resource = {
     id: input.id,
@@ -137,7 +146,8 @@ async function resolveSubmissionMetadata(input: {
     .resolve(resource, {
       fetchHttpPage: false,
       probeCloudDriveAvailability: false,
-      twitterRequestProxyUrl: getRuntimeBinding(input.env, "TWITTER_REQUEST_PROXY_URL"),
+      twitterCookieString: input.twitterCookieString,
+      githubToken: getRuntimeBinding(input.env, "GITHUB_TOKEN"),
     })
     .catch(() => ({
       provider: provider.name,
@@ -183,6 +193,7 @@ export async function listResourceSubmissions(
       title: resourceSubmissions.title,
       description: resourceSubmissions.description,
       url: resourceSubmissions.url,
+      referer: resourceSubmissions.referer,
       metadataJson: resourceSubmissions.metadataJson,
       reviewNote: resourceSubmissions.reviewNote,
       reviewedAt: resourceSubmissions.reviewedAt,
@@ -246,6 +257,7 @@ export async function approveResourceSubmission(
       title: submission.title,
       description: submission.description,
       url: submission.url,
+      referer: submission.referer,
       dedupeKey,
       metadataStatus: "pending",
       createdBy: submission.submitterId,
@@ -335,6 +347,7 @@ async function getSubmissionInVaultOrThrow(db: Db, vaultId: string, submissionId
       title: resourceSubmissions.title,
       description: resourceSubmissions.description,
       url: resourceSubmissions.url,
+      referer: resourceSubmissions.referer,
       metadataJson: resourceSubmissions.metadataJson,
     })
     .from(resourceSubmissions)

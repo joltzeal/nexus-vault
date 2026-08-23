@@ -1,7 +1,7 @@
 "use client"
 
 import { LinkIcon, Send } from "lucide-react"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { toast } from "@/lib/toast"
 import {
   createCloudDriveUrlWithPassword,
@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { Spinner } from "@/components/ui/spinner"
 import { apiRequest } from "@/features/api-client"
 import type { Space } from "@/features/types"
 
@@ -47,6 +48,7 @@ export function ShareSubmissionDialog({
 }) {
   const [open, setOpen] = useState(false)
   const [isBusy, setIsBusy] = useState(false)
+  const submitLock = useRef(false)
   const [turnstileToken, setTurnstileToken] = useState("")
   const [turnstileResetSignal, setTurnstileResetSignal] = useState(0)
   const [form, setForm] = useState({
@@ -54,22 +56,27 @@ export function ShareSubmissionDialog({
     url: "",
     extractionCode: "",
     title: "",
+    referer: "",
     description: "",
   })
   const cloudDrive = parseCloudDriveLink(form.url, form.extractionCode)
 
   async function handleSubmit() {
     if (!form.url.trim() || (turnstileSiteKey && !turnstileToken)) return
+    if (submitLock.current || isBusy) return
     const url = createCloudDriveUrlWithPassword(form.url, form.extractionCode)
 
+    submitLock.current = true
+    setIsBusy(true)
+
     try {
-      setIsBusy(true)
       await apiRequest(`/shares/${slug}/submissions`, {
         method: "POST",
         body: JSON.stringify({
           ...(form.spaceId ? { spaceId: form.spaceId } : {}),
           ...(form.title.trim() ? { title: form.title.trim() } : {}),
           url,
+          ...(form.referer.trim() ? { referer: form.referer.trim() } : {}),
           description: form.description.trim(),
           turnstileToken,
         }),
@@ -79,6 +86,7 @@ export function ShareSubmissionDialog({
         url: "",
         extractionCode: "",
         title: "",
+        referer: "",
         description: "",
       }))
       resetTurnstile()
@@ -88,6 +96,7 @@ export function ShareSubmissionDialog({
       toast.error(error instanceof Error ? error.message : "提交失败。")
       resetTurnstile()
     } finally {
+      submitLock.current = false
       setIsBusy(false)
     }
   }
@@ -113,7 +122,12 @@ export function ShareSubmissionDialog({
 
   return (
     <section className="mb-4 rounded-card border border-jade-dim bg-[var(--jade-glow)] p-4">
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => {
+          if (!isBusy) setOpen(nextOpen)
+        }}
+      >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <div className="grid size-10 shrink-0 place-items-center rounded-card border border-jade-dim bg-ink-900/80 text-jade">
@@ -200,6 +214,16 @@ export function ShareSubmissionDialog({
               />
             </Field>
             <Field>
+              <FieldLabel htmlFor="submission-referer">Referer</FieldLabel>
+              <Input
+                id="submission-referer"
+                value={form.referer}
+                onChange={(event) =>
+                  setForm((value) => ({ ...value, referer: event.target.value }))
+                }
+              />
+            </Field>
+            <Field>
               <FieldLabel htmlFor="submission-description">补充说明</FieldLabel>
               <Textarea
                 id="submission-description"
@@ -224,7 +248,12 @@ export function ShareSubmissionDialog({
             </div>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isBusy}
+              onClick={() => setOpen(false)}
+            >
               取消
             </Button>
             <Button
@@ -234,8 +263,10 @@ export function ShareSubmissionDialog({
                 !form.url.trim() ||
                 Boolean(turnstileSiteKey && !turnstileToken)
               }
+              aria-busy={isBusy}
             >
-              提交
+              {isBusy && <Spinner data-icon="inline-start" />}
+              {isBusy ? "提交中" : "提交"}
             </Button>
           </DialogFooter>
         </DialogContent>

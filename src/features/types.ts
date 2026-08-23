@@ -4,6 +4,8 @@ export type ResourceType =
   | "magnet"
   | "twitter"
   | "telegram"
+  | "douyin"
+  | "wechat_mp"
   | "baidu_pan"
   | "pan_115"
   | "pan_123"
@@ -18,6 +20,7 @@ export type ResourceType =
   | "ftp"
   | "http"
   | "youtube"
+  | "local_media"
   | "other"
 
 export type Visibility = "public" | "private" | "password"
@@ -52,7 +55,8 @@ export type Resource = {
   spaceId: string
   title: string
   type: ResourceType
-  url: string
+  url: string | null
+  referer?: string | null
   description: string
   metadataStatus: MetadataStatus
   metadata?: ResourceMetadataEnvelope | null
@@ -114,6 +118,7 @@ export type ResourceForm = {
   title: string
   spaceId: string
   url: string
+  referer: string
   extractionCode: string
   description: string
 }
@@ -135,10 +140,12 @@ export type AuthForm = {
 export type VaultWorkspaceInitialData = {
   sets: ResourceSet[]
   activeSetId: string
+  externalActiveSet?: ResourceSet
   actorId?: string
   actorEmail?: string
   actorName?: string | null
   error?: string
+  allowResourceMediaUpload?: boolean
   shareSlug?: string
   turnstileSiteKey?: string
   mode?: "workspace" | "share"
@@ -157,6 +164,7 @@ export type ResourceSubmissionItem = {
   title: string
   description: string
   url: string
+  referer?: string | null
   metadataJson: unknown
   reviewNote: string
   reviewedAt?: string | null
@@ -175,7 +183,7 @@ export type StarredResourceItem = {
   type: ResourceType
   title: string
   description: string
-  url: string
+  url: string | null
   metadataStatus: MetadataStatus
   metadataProvider?: string | null
   metadataDataJson: unknown
@@ -215,6 +223,8 @@ export const resourceTypes: Array<{ value: ResourceType; label: string }> = [
   { value: "magnet", label: "Magnet" },
   { value: "twitter", label: "X/Twitter" },
   { value: "telegram", label: "Telegram" },
+  { value: "douyin", label: "抖音" },
+  { value: "wechat_mp", label: "微信公众号" },
   { value: "baidu_pan", label: "百度网盘" },
   { value: "pan_115", label: "115 盘" },
   { value: "pan_123", label: "123 云盘" },
@@ -229,6 +239,7 @@ export const resourceTypes: Array<{ value: ResourceType; label: string }> = [
   { value: "ftp", label: "FTP" },
   { value: "http", label: "Website" },
   { value: "youtube", label: "YouTube" },
+  { value: "local_media", label: "本地媒体" },
   { value: "other", label: "Other" },
 ]
 
@@ -249,6 +260,7 @@ export const emptyResourceForm: ResourceForm = {
   title: "",
   spaceId: "",
   url: "",
+  referer: "",
   extractionCode: "",
   description: "",
 }

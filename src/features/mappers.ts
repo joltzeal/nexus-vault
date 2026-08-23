@@ -72,7 +72,8 @@ export function mapVaultDetail(detail: {
     spaceId: string | null
     title: string
     type: ResourceType
-    url: string
+    url: string | null
+    referer?: string | null
     description: string
     metadataStatus: MetadataStatus
     metadata?: ResourceMetadataEnvelope | null

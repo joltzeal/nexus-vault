@@ -33,11 +33,43 @@ export type ParsedTwitterLink = {
   url: string
 }
 
+export type ParsedTwitterProfileLink = {
+  username: string
+  url: string
+}
+
+export type ParsedGitHubLink =
+  | { kind: "user"; login: string; url: string }
+  | { kind: "repository"; owner: string; repository: string; url: string }
+  | {
+      kind: "release"
+      owner: string
+      repository: string
+      tag?: string
+      url: string
+    }
+
 export type ParsedTelegramMessageLink = {
   chatUsername?: string
   internalChatId?: string
   messageId: string
   url: string
+}
+
+export type ParsedWechatMpArticleLink = {
+  articleToken?: string
+  biz?: string
+  idx?: string
+  mid?: string
+  sn?: string
+  url: string
+}
+
+export type ParsedDouyinLink = {
+  host: string
+  shareCode?: string
+  url: string
+  videoId?: string
 }
 
 export type ParsedFtpLink = {
@@ -86,7 +118,7 @@ export interface ResourceInputParser {
 export function parseResourceInput(
   input: ResourceInputParserInput,
 ): ParsedResourceInput {
-  const url = input.url.trim()
+  const url = normalizeResourceInputUrl(input.url)
   const parser = getResourceInputParser({
     type: input.type,
     url,
@@ -99,7 +131,8 @@ export function parseResourceInput(
 }
 
 export function inferResourceType(url: string): ResourceType {
-  return getResourceInputParser({ url }).parse({ url }).type
+  const normalizedUrl = normalizeResourceInputUrl(url)
+  return getResourceInputParser({ url: normalizedUrl }).parse({ url: normalizedUrl }).type
 }
 
 export function parseMagnetLink(url: string) {
@@ -187,7 +220,7 @@ export function parseTwitterLink(url: string): ParsedTwitterLink | null {
   if (!parsedUrl) return null
 
   const hostname = normalizeHostname(parsedUrl.hostname)
-  if (hostname !== "x.com") return null
+  if (!isTwitterHost(hostname)) return null
 
   const segments = parsedUrl.pathname.split("/").filter(Boolean)
   const statusIndex = segments.findIndex((segment) =>
@@ -200,6 +233,65 @@ export function parseTwitterLink(url: string): ParsedTwitterLink | null {
     tweetId,
     username: statusIndex > 0 ? segments[statusIndex - 1] : undefined,
     url: `https://x.com/${segments.slice(0, statusIndex + 2).join("/")}`,
+  }
+}
+
+export function parseTwitterProfileLink(url: string): ParsedTwitterProfileLink | null {
+  const parsedUrl = parseHttpUrl(url)
+  if (!parsedUrl || !isTwitterHost(normalizeHostname(parsedUrl.hostname))) return null
+
+  const segments = parsedUrl.pathname.split("/").filter(Boolean)
+  if (segments.length !== 1) return null
+  const username = segments[0]
+  if (!username || !/^[a-zA-Z0-9_]{1,15}$/.test(username)) return null
+  if (TWITTER_RESERVED_PATHS.has(username.toLowerCase())) return null
+
+  return {
+    username,
+    url: `https://x.com/${username}`,
+  }
+}
+
+export function parseGitHubLink(url: string): ParsedGitHubLink | null {
+  const parsedUrl = parseHttpUrl(url)
+  if (!parsedUrl || normalizeHostname(parsedUrl.hostname) !== "github.com") return null
+
+  const segments = parsedUrl.pathname.split("/").filter(Boolean)
+  if (segments.length === 0) return null
+  const [owner, repository, third, fourth] = segments
+  if (!owner || !/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(owner)) return null
+
+  if (!repository) {
+    return { kind: "user", login: owner, url: `https://github.com/${owner}` }
+  }
+
+  if (third?.toLowerCase() === "releases") {
+    if (fourth?.toLowerCase() === "latest") {
+      return {
+        kind: "release",
+        owner,
+        repository,
+        url: `https://github.com/${owner}/${repository}/releases/latest`,
+      }
+    }
+    if (fourth?.toLowerCase() === "tag" && segments[4]) {
+      const tag = decodePathPart(segments[4])
+      return {
+        kind: "release",
+        owner,
+        repository,
+        tag,
+        url: `https://github.com/${owner}/${repository}/releases/tag/${encodeURIComponent(tag)}`,
+      }
+    }
+  }
+
+  if (segments.length !== 2) return null
+  return {
+    kind: "repository",
+    owner,
+    repository,
+    url: `https://github.com/${owner}/${repository}`,
   }
 }
 
@@ -238,6 +330,62 @@ export function parseTelegramMessageLink(url: string): ParsedTelegramMessageLink
     chatUsername: chatSegment,
     messageId: messageSegment,
     url: `https://t.me/${chatSegment}/${messageSegment}`,
+  }
+}
+
+export function parseWechatMpArticleLink(url: string): ParsedWechatMpArticleLink | null {
+  const parsedUrl = parseHttpUrl(url)
+  if (!parsedUrl) return null
+
+  const host = normalizeHostname(parsedUrl.hostname)
+  if (!isWechatMpHost(host)) return null
+
+  const segments = parsedUrl.pathname.split("/").filter(Boolean)
+  const firstSegment = segments[0]?.toLowerCase()
+  if (firstSegment !== "s") return null
+
+  const articleToken = segments[1] ? decodePathPart(segments[1]) : undefined
+  const biz = parsedUrl.searchParams.get("__biz")?.trim() || undefined
+  const mid = parsedUrl.searchParams.get("mid")?.trim() || undefined
+  const idx = parsedUrl.searchParams.get("idx")?.trim() || undefined
+  const sn = parsedUrl.searchParams.get("sn")?.trim() || undefined
+
+  if (!articleToken && (!biz || !mid || !idx || !sn)) return null
+
+  const canonical = articleToken
+    ? `https://mp.weixin.qq.com/s/${encodeURIComponent(articleToken)}`
+    : createWechatMpQueryUrl({ biz, idx, mid, sn })
+
+  return {
+    ...(articleToken ? { articleToken } : {}),
+    ...(biz ? { biz } : {}),
+    ...(idx ? { idx } : {}),
+    ...(mid ? { mid } : {}),
+    ...(sn ? { sn } : {}),
+    url: canonical,
+  }
+}
+
+export function parseDouyinLink(url: string): ParsedDouyinLink | null {
+  const parsedUrl = parseHttpUrl(url)
+  if (!parsedUrl) return null
+
+  const host = normalizeHostname(parsedUrl.hostname)
+  if (!isDouyinHost(host)) return null
+
+  const segments = parsedUrl.pathname.split("/").filter(Boolean)
+  const contentSegmentIndex = segments.findIndex((segment) =>
+    ["video", "note"].includes(segment.toLowerCase())
+  )
+  const videoId =
+    contentSegmentIndex >= 0 ? segments[contentSegmentIndex + 1] : undefined
+  const shareCode = host === "v.douyin.com" ? segments[0] : undefined
+
+  return {
+    host,
+    ...(shareCode ? { shareCode } : {}),
+    url: videoId ? `https://www.douyin.com/video/${videoId}` : parsedUrl.toString(),
+    ...(videoId ? { videoId } : {}),
   }
 }
 
@@ -336,6 +484,8 @@ function defaultResourceTitle(type: ResourceType) {
   if (type === "magnet") return "名称未知"
   if (type === "twitter") return "Untitled tweet"
   if (type === "telegram") return "Telegram message"
+  if (type === "douyin") return "抖音视频"
+  if (type === "wechat_mp") return "微信公众号文章"
   if (type === "ftp") return "FTP link"
   if (isCloudDriveResourceType(type)) return getCloudDriveProviderLabel(type)
   if (type === "http") return "Untitled link"
@@ -438,24 +588,76 @@ export const httpInputParser: ResourceInputParser = {
     return (
       input.type === "http" ||
       input.type === "twitter" ||
+      input.type === "douyin" ||
+      input.type === "wechat_mp" ||
       Boolean(input.type && isCloudDriveResourceType(input.type)) ||
       parseHttpLink(input.url) !== null
     )
   },
   parse(input) {
+    const douyin = parseDouyinLink(input.url)
+    if (input.type === "douyin" || douyin) {
+      return {
+        type: "douyin",
+        url: douyin?.url ?? input.url.trim(),
+        title: normalizeInputTitle(input.title) || defaultResourceTitle("douyin"),
+        metadata: {
+          ...(douyin
+            ? {
+                host: douyin.host,
+                shareCode: douyin.shareCode,
+                videoId: douyin.videoId,
+              }
+            : {}),
+        },
+      }
+    }
+
     const twitter = parseTwitterLink(input.url)
-    if (input.type === "twitter" || twitter) {
+    const twitterProfile = parseTwitterProfileLink(input.url)
+    if (input.type === "twitter" || twitter || twitterProfile) {
       return {
         type: "twitter",
-        url: twitter?.url ?? input.url.trim(),
+        url: twitter?.url ?? twitterProfile?.url ?? input.url.trim(),
         title: normalizeInputTitle(input.title) || defaultResourceTitle("twitter"),
         metadata: {
           ...(twitter
             ? {
+                previewKind: "x_post",
                 tweetId: twitter.tweetId,
                 username: twitter.username,
               }
             : {}),
+          ...(twitterProfile
+            ? {
+                previewKind: "x_profile",
+                username: twitterProfile.username,
+              }
+            : {}),
+        },
+      }
+    }
+
+    const github = parseGitHubLink(input.url)
+    if (github) {
+      return {
+        type: "http",
+        url: github.url,
+        title: normalizeInputTitle(input.title) || defaultResourceTitle("http"),
+        metadata: {
+          previewKind:
+            github.kind === "user"
+              ? "github_user"
+              : github.kind === "repository"
+                ? "github_repository"
+                : "github_release",
+          ...(github.kind === "user"
+            ? { login: github.login }
+            : {
+                owner: github.owner,
+                repository: github.repository,
+                ...(github.kind === "release" && github.tag ? { tag: github.tag } : {}),
+              }),
         },
       }
     }
@@ -472,6 +674,27 @@ export const httpInputParser: ResourceInputParser = {
                 chatUsername: telegram.chatUsername,
                 internalChatId: telegram.internalChatId,
                 messageId: telegram.messageId,
+              }
+            : {}),
+        },
+      }
+    }
+
+    const wechatMp = parseWechatMpArticleLink(input.url)
+    if (input.type === "wechat_mp" || wechatMp) {
+      return {
+        type: "wechat_mp",
+        url: wechatMp?.url ?? input.url.trim(),
+        title: normalizeInputTitle(input.title) || defaultResourceTitle("wechat_mp"),
+        metadata: {
+          ...(wechatMp
+            ? {
+                articleToken: wechatMp.articleToken,
+                biz: wechatMp.biz,
+                idx: wechatMp.idx,
+                mid: wechatMp.mid,
+                previewKind: "wechat_mp_article",
+                sn: wechatMp.sn,
               }
             : {}),
         },
@@ -692,6 +915,69 @@ function parseHttpUrl(value: string) {
 
 function normalizeHostname(hostname: string) {
   return hostname.toLowerCase().replace(/^www\./, "")
+}
+
+const TWITTER_RESERVED_PATHS = new Set([
+  "home",
+  "explore",
+  "search",
+  "settings",
+  "notifications",
+  "messages",
+  "i",
+  "intent",
+  "compose",
+  "login",
+  "signup",
+])
+
+function isTwitterHost(hostname: string) {
+  return hostname === "x.com" || hostname === "twitter.com" || hostname.endsWith(".x.com") || hostname.endsWith(".twitter.com")
+}
+
+function decodePathPart(value: string) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+function normalizeResourceInputUrl(value: string) {
+  const trimmed = value.trim()
+  return extractFirstHttpUrl(trimmed) ?? trimmed
+}
+
+function extractFirstHttpUrl(value: string) {
+  const match = value.match(/https?:\/\/[^\s<>"'，。！？、]+/i)
+  if (!match) return null
+
+  return match[0].replace(/[),.;!?，。！？、]+$/g, "")
+}
+
+function isDouyinHost(host: string) {
+  return host === "douyin.com" ||
+    host.endsWith(".douyin.com") ||
+    host === "iesdouyin.com" ||
+    host.endsWith(".iesdouyin.com")
+}
+
+function isWechatMpHost(host: string) {
+  return host === "mp.weixin.qq.com"
+}
+
+function createWechatMpQueryUrl(input: {
+  biz?: string
+  idx?: string
+  mid?: string
+  sn?: string
+}) {
+  const url = new URL("https://mp.weixin.qq.com/s")
+  if (input.biz) url.searchParams.set("__biz", input.biz)
+  if (input.mid) url.searchParams.set("mid", input.mid)
+  if (input.idx) url.searchParams.set("idx", input.idx)
+  if (input.sn) url.searchParams.set("sn", input.sn)
+  return url.toString()
 }
 
 type CloudDriveConfig = {

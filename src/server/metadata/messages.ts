@@ -1,4 +1,4 @@
-import { parseCloudDriveLink, parseMagnetLink, parseTelegramMessageLink, parseTwitterLink, isCloudDriveResourceType, type ResourceType } from "@/domain/resources/input"
+import { parseCloudDriveLink, parseDouyinLink, parseMagnetLink, parseTelegramMessageLink, parseTwitterLink, parseWechatMpArticleLink, isCloudDriveResourceType, type ResourceType } from "@/domain/resources/input"
 
 export type MetadataQueueMessage = {
   kind: "metadata.resolve"
@@ -18,6 +18,8 @@ export function createMetadataQueueMessage(
   const parsedMagnet = type === "magnet" ? parseMagnetLink(url) : null
   const parsedTwitter = type === "twitter" ? parseTwitterLink(url) : null
   const parsedTelegram = type === "telegram" ? parseTelegramMessageLink(url) : null
+  const parsedDouyin = type === "douyin" ? parseDouyinLink(url) : null
+  const parsedWechatMp = type === "wechat_mp" ? parseWechatMpArticleLink(url) : null
   const parsedCloudDrive = isCloudDriveResourceType(type) ? parseCloudDriveLink(url) : null
 
   return {
@@ -31,9 +33,13 @@ export function createMetadataQueueMessage(
         ? `twitter:${parsedTwitter.tweetId}`
         : parsedTelegram
           ? `telegram:${parsedTelegram.chatUsername ?? parsedTelegram.internalChatId}:${parsedTelegram.messageId}`
-          : parsedCloudDrive
-            ? `${parsedCloudDrive.provider}:${parsedCloudDrive.url}`
-            : undefined,
+          : parsedDouyin
+            ? `douyin:${parsedDouyin.videoId ?? parsedDouyin.shareCode ?? parsedDouyin.url}`
+            : parsedWechatMp
+              ? `wechat_mp:${parsedWechatMp.articleToken ?? `${parsedWechatMp.biz}:${parsedWechatMp.mid}:${parsedWechatMp.idx}:${parsedWechatMp.sn}`}`
+              : parsedCloudDrive
+                ? `${parsedCloudDrive.provider}:${parsedCloudDrive.url}`
+                : undefined,
     requestedAt: new Date().toISOString(),
   }
 }

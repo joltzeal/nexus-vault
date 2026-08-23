@@ -1,6 +1,6 @@
 CREATE TYPE "public"."collaborator_role" AS ENUM('editor');--> statement-breakpoint
 CREATE TYPE "public"."metadata_status" AS ENUM('pending', 'processing', 'completed', 'failed');--> statement-breakpoint
-CREATE TYPE "public"."resource_type" AS ENUM('magnet', 'twitter', 'telegram', 'baidu_pan', 'pan_115', 'pan_123', 'quark_pan', 'uc_pan', 'xunlei_pan', 'pikpak', 'onedrive', 'google_drive', 'dropbox', 'alist', 'ftp', 'http', 'youtube', 'other');--> statement-breakpoint
+CREATE TYPE "public"."resource_type" AS ENUM('magnet', 'twitter', 'telegram', 'douyin', 'baidu_pan', 'pan_115', 'pan_123', 'quark_pan', 'uc_pan', 'xunlei_pan', 'pikpak', 'onedrive', 'google_drive', 'dropbox', 'alist', 'ftp', 'http', 'youtube', 'other');--> statement-breakpoint
 CREATE TYPE "public"."submission_status" AS ENUM('pending', 'approved', 'rejected');--> statement-breakpoint
 CREATE TYPE "public"."vault_visibility" AS ENUM('public', 'private', 'password');--> statement-breakpoint
 CREATE TYPE "public"."vault_watch_level" AS ENUM('all', 'updates', 'none');--> statement-breakpoint

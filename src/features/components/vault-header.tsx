@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import {
-  ChevronDown,
   Ellipsis,
   Eye,
   EyeOff,
@@ -29,6 +28,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ButtonGroup } from "@/components/ui/button-group"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -96,15 +96,15 @@ export function VaultHeader({
           />
         </Link>
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2.5">
-                <div className="flex min-w-0 max-w-full flex-1 items-baseline gap-2">
-                  <h1 className="min-w-0 truncate font-display text-[21px] font-semibold">
+                <div className="flex min-w-0 max-w-full flex-1 items-center gap-2">
+                  <h1 className="min-w-0 truncate font-display text-[22px] items-end  font-semibold">
                     {set?.name ?? "创建第一个 Vault"}
                   </h1>
                   {set && (
-                    <span className="max-w-[180px] shrink-0 truncate whitespace-nowrap text-fg-dim">
+                      <span className="max-w-[180px] shrink-0 truncate whitespace-nowrap text-fg-dim">
                       by {set.ownerName}
                     </span>
                   )}
@@ -149,30 +149,41 @@ export function VaultHeader({
                     <FolderPlus data-icon="inline-start" />
                     Space
                   </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                      <Button size="sm" variant="outline" disabled={!set}>
-                        管理
-                        <ChevronDown data-icon="inline-end" />
-                      </Button>
-                      }
-                    />
-                    <DropdownMenuContent align="end" className="min-w-40 border-line bg-ink-850 text-fg">
-                      <DropdownMenuItem onClick={() => onOpenSettings("members")}>
-                        <Users />
-                        协作
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onOpenSettings("share")}>
-                        <Share2 />
-                        分享
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onOpenSettings("submissions")}>
-                        <Inbox />
-                        收集{pendingSubmissionCount > 0 ? ` ${pendingSubmissionCount}` : ""}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <ButtonGroup>
+                    <Button
+                      aria-label="协作"
+                      disabled={!set}
+                      onClick={() => onOpenSettings("members")}
+                      size="sm"
+                      title="协作"
+                      variant="outline"
+                    >
+                      <Users />
+                      协作
+                    </Button>
+                    <Button
+                      aria-label="分享"
+                      disabled={!set}
+                      onClick={() => onOpenSettings("share")}
+                      size="sm"
+                      title="分享"
+                      variant="outline"
+                    >
+                      <Share2 />
+                      分享
+                    </Button>
+                    <Button
+                      aria-label="收集"
+                      disabled={!set}
+                      onClick={() => onOpenSettings("submissions")}
+                      size="sm"
+                      title="收集"
+                      variant="outline"
+                    >
+                      <Inbox />
+                      收集{pendingSubmissionCount > 0 ? ` ${pendingSubmissionCount}` : ""}
+                    </Button>
+                  </ButtonGroup>
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={

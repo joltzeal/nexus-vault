@@ -8,6 +8,27 @@
       "when": 1785752555051,
       "tag": "0000_mean_scrambler",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785865050572,
+      "tag": "0001_smooth_jackpot",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785947641207,
+      "tag": "0002_legal_changeling",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787280000000,
+      "tag": "0003_wechat_mp",
+      "breakpoints": true
     }
   ]
 }

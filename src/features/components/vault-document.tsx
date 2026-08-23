@@ -19,6 +19,9 @@ import type {
 } from "@/features/types"
 import { getSortedSpaces, groupResourcesBySpace } from "./view-models"
 
+const LOCAL_RESOURCE_VIEW_MODE_PREFIX = "nexus-vault:resource-view-mode"
+const LOCAL_ACTIVE_SPACE_PREFIX = "nexus-vault:active-space"
+
 export type VaultDocumentSearchTarget = {
   requestId: number
   vaultId: string
@@ -139,6 +142,12 @@ export function VaultDocument({
   const [selectionSpaceId, setSelectionSpaceId] = useState("")
   const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(new Set())
   const [viewMode, setViewMode] = useState<VaultResourceViewMode>("list")
+  const viewModeStorageKey = `${LOCAL_RESOURCE_VIEW_MODE_PREFIX}:${currentUserId ?? "guest"}`
+  const activeSpaceStorageKey = activeSet?.id
+    ? `${LOCAL_ACTIVE_SPACE_PREFIX}:${currentUserId ?? "guest"}:${activeSet.id}`
+    : ""
+  const restoredSpacePreference = useRef("")
+  const restoredViewModePreference = useRef("")
   const spaces = useMemo(() => getSortedSpaces(activeSet), [activeSet])
   const allSpacesCollapsed =
     spaces.length > 0 && spaces.every((space) => collapsedSpaceIds.has(space.id))
@@ -157,8 +166,74 @@ export function VaultDocument({
     selectionSpaceId || selectedResources[0]?.spaceId || ""
 
   useEffect(() => {
-    setActiveSpaceId((current) => current || spaces[0]?.id || "")
-  }, [spaces])
+    if (restoredViewModePreference.current !== viewModeStorageKey) {
+      let storedViewMode: string | null = null
+      try {
+        storedViewMode = window.localStorage.getItem(viewModeStorageKey)
+      } catch (error) {
+        console.warn("Failed to read the resource view mode preference.", error)
+      }
+
+      if (storedViewMode === "list" || storedViewMode === "masonry") {
+        setViewMode(storedViewMode)
+      }
+      restoredViewModePreference.current = viewModeStorageKey
+      return
+    }
+
+    try {
+      window.localStorage.setItem(viewModeStorageKey, viewMode)
+    } catch (error) {
+      console.warn("Failed to save the resource view mode preference.", error)
+    }
+  }, [viewMode, viewModeStorageKey])
+
+  useEffect(() => {
+    if (!activeSet?.id || !activeSpaceStorageKey) {
+      setActiveSpaceId("")
+      return
+    }
+
+    const activeSpaceIsValid = spaces.some((space) => space.id === activeSpaceId)
+    if (
+      restoredSpacePreference.current !== activeSpaceStorageKey ||
+      (spaces.length > 0 && !activeSpaceIsValid)
+    ) {
+      let storedSpaceId: string | null = null
+      try {
+        storedSpaceId = window.localStorage.getItem(activeSpaceStorageKey)
+      } catch (error) {
+        console.warn("Failed to read the active space preference.", error)
+      }
+
+      const nextSpaceId =
+        storedSpaceId && spaces.some((space) => space.id === storedSpaceId)
+          ? storedSpaceId
+          : spaces[0]?.id ?? ""
+      restoredSpacePreference.current = activeSpaceStorageKey
+      setActiveSpaceId(nextSpaceId)
+
+      if (nextSpaceId) {
+        const animationFrame = window.requestAnimationFrame(() => {
+          const root = mainRef.current
+          const element = root?.querySelector<HTMLElement>(`#${CSS.escape(nextSpaceId)}`)
+          if (!root || !element) return
+          root.scrollTo({ top: element.offsetTop - 8 })
+        })
+
+        return () => window.cancelAnimationFrame(animationFrame)
+      }
+      return
+    }
+
+    if (!activeSpaceId) return
+
+    try {
+      window.localStorage.setItem(activeSpaceStorageKey, activeSpaceId)
+    } catch (error) {
+      console.warn("Failed to save the active space preference.", error)
+    }
+  }, [activeSet?.id, activeSpaceId, activeSpaceStorageKey, spaces])
 
   useEffect(() => {
     setSelectedResourceIds((current) => {

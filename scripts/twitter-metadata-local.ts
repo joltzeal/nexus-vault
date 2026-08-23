@@ -5,7 +5,6 @@ import { getMetadataProvider } from "@/server/metadata/metadata-provider"
 
 type CliInput = {
   cookieString?: string
-  proxyUrl?: string
   url?: string
 }
 
@@ -49,11 +48,6 @@ async function main() {
     input.cookieString?.trim() ||
     process.env.X_COM_COOKIE_STRING?.trim() ||
     undefined
-  const proxyUrl =
-    input.proxyUrl?.trim() ||
-    process.env.TWITTER_REQUEST_PROXY_URL?.trim() ||
-    undefined
-
   console.log("Resource:", {
     provider: provider.name,
     type: resource.type,
@@ -69,7 +63,6 @@ async function main() {
 
   const result = await provider.resolve(resource, {
     twitterCookieString: cookieString,
-    twitterRequestProxyUrl: proxyUrl,
   })
 
   console.log(JSON.stringify(result, null, 2))
@@ -82,11 +75,6 @@ function parseCliInput(args: string[]): CliInput {
     const arg = args[index]
     if (arg === "--cookie") {
       input.cookieString = args[index + 1]
-      index += 1
-      continue
-    }
-    if (arg === "--proxy") {
-      input.proxyUrl = args[index + 1]
       index += 1
       continue
     }

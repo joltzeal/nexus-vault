@@ -1,12 +1,18 @@
 import type { NormalizedResourceMetadata } from "@/domain/resources/metadata"
 import type { ResourceType } from "@/domain/resources/types"
 import { cloudDriveMetadataProvider } from "./providers/cloud-drive"
+import { douyinMetadataProvider } from "./providers/douyin"
+import { douyinTiktokDownloadApiMetadataProvider } from "./providers/douyin-tiktok-download-api"
 import { httpPageMetadataProvider } from "./providers/http-page"
+import { githubMetadataProvider } from "./providers/github"
 import { localLinkMetadataProvider } from "./providers/local-link"
 import { magnetMetadataProvider } from "./providers/magnet"
 import { placeholderMetadataProvider } from "./providers/placeholder"
+import { snapdouyinMetadataProvider } from "./providers/snapdouyin"
+import { xunleiMetadataProvider } from "./providers/xunlei"
 import { telegramMetadataProvider } from "./providers/telegram"
 import { twitterMetadataProvider } from "./providers/twitter"
+import { wechatMpMetadataProvider } from "./providers/wechat-mp"
 
 export type MetadataProviderResource = {
   id: string
@@ -26,8 +32,10 @@ export type MetadataResult = {
 export type MetadataResolveOptions = {
   fetchHttpPage?: boolean
   probeCloudDriveAvailability?: boolean
-  twitterRequestProxyUrl?: string
+  retryTransient?: boolean
   twitterCookieString?: string
+  githubToken?: string
+  tikhubApiToken?: string
   telegramMetadataApiUrl?: string
   telegramMetadataApiToken?: string
   persistTelegramMedia?: (input: {
@@ -66,9 +74,13 @@ export function isRetryableMetadataError(error: unknown) {
 }
 
 const metadataProviders: MetadataProvider[] = [
+  douyinTiktokDownloadApiMetadataProvider,
   magnetMetadataProvider,
   twitterMetadataProvider,
   telegramMetadataProvider,
+  wechatMpMetadataProvider,
+  githubMetadataProvider,
+  xunleiMetadataProvider,
   cloudDriveMetadataProvider,
   httpPageMetadataProvider,
   localLinkMetadataProvider,
@@ -84,10 +96,16 @@ export function getMetadataProvider(resource: Pick<MetadataProviderResource, "ty
 
 export {
   cloudDriveMetadataProvider,
+  douyinTiktokDownloadApiMetadataProvider,
+  douyinMetadataProvider,
+  githubMetadataProvider,
   httpPageMetadataProvider,
   localLinkMetadataProvider,
   magnetMetadataProvider,
   placeholderMetadataProvider,
+  snapdouyinMetadataProvider,
   telegramMetadataProvider,
   twitterMetadataProvider,
+  wechatMpMetadataProvider,
+  xunleiMetadataProvider,
 }

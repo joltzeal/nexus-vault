@@ -15,6 +15,9 @@ import {
 } from "@/server/services/share-service"
 import type { QueueMessage } from "@/server/queues/messages"
 import { getTurnstileSiteKey } from "@/server/services/turnstile-service"
+import { isPublicMediaObjectKey } from "@/domain/media-storage"
+import { getMediaProxyResponse } from "@/server/media-response"
+import { isResourceMediaUploadEnabled } from "@/server/services/resource-media-upload-service"
 
 import * as healthRoute from "@/app/api/v1/health/route"
 import * as accountIntegrationsRoute from "@/app/api/v1/account/integrations/route"
@@ -25,7 +28,12 @@ import * as notificationSummaryRoute from "@/app/api/v1/notifications/summary/ro
 import * as resourceReadLaterRoute from "@/app/api/v1/resource-read-later/route"
 import * as resourceStarsRoute from "@/app/api/v1/resource-stars/route"
 import * as resourcesRoute from "@/app/api/v1/resources/route"
+import * as socialVideoMediaRoute from "@/app/api/v1/social-video/media/route"
 import * as resourceRoute from "@/app/api/v1/resources/[resourceId]/route"
+import * as resourceMediaDownloadRoute from "@/app/api/v1/resources/[resourceId]/media/[mediaIndex]/download/route"
+import * as resourceLocalMediaRoute from "@/app/api/v1/resources/[resourceId]/local-media/route"
+import * as resourceLocalMediaMultipartRoute from "@/app/api/v1/resources/[resourceId]/local-media/multipart/route"
+import * as localMediaMultipartRoute from "@/app/api/v1/local-media/multipart/route"
 import * as resourceAnnotationRoute from "@/app/api/v1/resources/[resourceId]/annotation/route"
 import * as resourceMetadataResolveRoute from "@/app/api/v1/resources/[resourceId]/metadata/resolve/route"
 import * as resourceReadLaterToggleRoute from "@/app/api/v1/resources/[resourceId]/read-later/route"
@@ -45,6 +53,8 @@ import * as vaultCollaboratorRoute from "@/app/api/v1/vaults/[vaultId]/collabora
 import * as vaultExportRoute from "@/app/api/v1/vaults/[vaultId]/export/route"
 import * as vaultForkRoute from "@/app/api/v1/vaults/[vaultId]/fork/route"
 import * as vaultResourcesRoute from "@/app/api/v1/vaults/[vaultId]/resources/route"
+import * as vaultLocalMediaRoute from "@/app/api/v1/vaults/[vaultId]/resources/local-media/route"
+import * as vaultLocalMediaMultipartRoute from "@/app/api/v1/vaults/[vaultId]/resources/local-media/multipart/route"
 import * as vaultResourceMetadataStatusRoute from "@/app/api/v1/vaults/[vaultId]/resources/metadata-status/route"
 import * as vaultResourcesReorderRoute from "@/app/api/v1/vaults/[vaultId]/resources/reorder/route"
 import * as vaultShareRoute from "@/app/api/v1/vaults/[vaultId]/share/route"
@@ -72,7 +82,12 @@ type NextRouteModule = Partial<
 export const api = new Hono<HonoEnv>()
 
 api.all("/api/auth/*", async (c) => {
-  const session = await createAuthSession(c.env as never)
+	// The native client has no web Turnstile widget; keep this exemption scoped
+	// to the auth handler and require the explicit iOS client marker.
+	const isNativeIOSClient = c.req.header("x-nexus-vault-client") === "ios"
+	const session = await createAuthSession(c.env as never, {
+		skipCaptcha: isNativeIOSClient,
+	})
   try {
     return await session.auth.handler(c.req.raw)
   } finally {
@@ -86,7 +101,10 @@ api.get("/api/bootstrap", async (c) => {
   let initialData: VaultWorkspaceInitialData | null = null
 
   if (viewer) {
-    initialData = await loadDashboardWorkspace(viewer, c.env)
+    initialData = await loadDashboardWorkspace(viewer, c.env, {
+      vaultId: c.req.query("vaultId")?.trim() || undefined,
+    })
+    initialData.allowResourceMediaUpload = isResourceMediaUploadEnabled(c.env)
     initialData.turnstileSiteKey = getTurnstileSiteKey(c.env)
   }
 
@@ -166,27 +184,8 @@ api.get("/api/v1/media/*", async (c) => {
     return new Response("Media not found.", { status: 404 })
   }
 
-  const object = await c.env.MEDIA.get(objectKey)
-  if (!object) return new Response("Media not found.", { status: 404 })
-
-  const headers = new Headers({
-    "cache-control": object.httpMetadata?.cacheControl ?? "public, max-age=31536000, immutable",
-    etag: object.httpEtag,
-  })
-  const metadata = object.httpMetadata
-
-  if (metadata?.contentType) headers.set("content-type", metadata.contentType)
-  if (metadata?.contentLanguage) headers.set("content-language", metadata.contentLanguage)
-  if (metadata?.contentDisposition) headers.set("content-disposition", metadata.contentDisposition)
-  if (metadata?.contentEncoding) headers.set("content-encoding", metadata.contentEncoding)
-  if (metadata?.cacheExpiry) headers.set("expires", metadata.cacheExpiry.toUTCString())
-
-  return new Response(object.body, { headers })
+  return getMediaProxyResponse(c.req.raw, c.env.MEDIA, objectKey)
 })
-
-function isPublicMediaObjectKey(objectKey: string) {
-  return objectKey.startsWith("screenshots/") || objectKey.startsWith("telegram/")
-}
 
 register("/api/v1/health", healthRoute)
 register("/api/v1/account/integrations", accountIntegrationsRoute)
@@ -196,10 +195,15 @@ register("/api/v1/notifications/:notificationId/read", notificationReadRoute)
 register("/api/v1/notifications/summary", notificationSummaryRoute)
 register("/api/v1/resource-read-later", resourceReadLaterRoute)
 register("/api/v1/resource-stars", resourceStarsRoute)
+register("/api/v1/social-video/media", socialVideoMediaRoute)
 register("/api/v1/resources", resourcesRoute)
 register("/api/v1/resources/transfer", resourcesTransferRoute)
 register("/api/v1/resources/transfer-targets", resourceTransferTargetsRoute)
 register("/api/v1/resources/:resourceId", resourceRoute)
+register("/api/v1/resources/:resourceId/media/:mediaIndex/download", resourceMediaDownloadRoute)
+register("/api/v1/resources/:resourceId/local-media", resourceLocalMediaRoute)
+register("/api/v1/resources/:resourceId/local-media/multipart", resourceLocalMediaMultipartRoute)
+register("/api/v1/local-media/multipart", localMediaMultipartRoute)
 register("/api/v1/resources/:resourceId/annotation", resourceAnnotationRoute)
 register("/api/v1/resources/:resourceId/metadata/resolve", resourceMetadataResolveRoute)
 register("/api/v1/resources/:resourceId/read-later", resourceReadLaterToggleRoute)
@@ -218,6 +222,8 @@ register("/api/v1/vaults/:vaultId/collaborators/:collaboratorId", vaultCollabora
 register("/api/v1/vaults/:vaultId/export", vaultExportRoute)
 register("/api/v1/vaults/:vaultId/fork", vaultForkRoute)
 register("/api/v1/vaults/:vaultId/resources", vaultResourcesRoute)
+register("/api/v1/vaults/:vaultId/resources/local-media", vaultLocalMediaRoute)
+register("/api/v1/vaults/:vaultId/resources/local-media/multipart", vaultLocalMediaMultipartRoute)
 register("/api/v1/vaults/:vaultId/resources/metadata-status", vaultResourceMetadataStatusRoute)
 register("/api/v1/vaults/:vaultId/resources/reorder", vaultResourcesReorderRoute)
 register("/api/v1/vaults/:vaultId/share", vaultShareRoute)

@@ -1,0 +1,108 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:where(.dark, [data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  color-scheme: dark;
+
+  --ink-900: #0c1116;
+  --ink-850: #0f161d;
+  --ink-800: #131c24;
+  --ink-750: #18222c;
+  --ink-700: #1f2c38;
+  --line: #1b2731;
+  --line-soft: #16212a;
+
+  --fg: #e6edf3;
+  --fg-muted: #9bb0c0;
+  --fg-dim: #5f7585;
+  --fg-faint: #3f5260;
+
+  --jade: #3fd8b0;
+  --jade-bright: #5ff0c8;
+  --jade-dim: #1f3d37;
+  --jade-glow: rgba(63, 216, 176, 0.14);
+  --jade-ink: #04140f;
+
+  --amber: #e8b34a;
+  --rose: #f0697a;
+  --violet: #9b8cff;
+  --sky: #5cb9f0;
+
+  --background: var(--ink-900);
+  --foreground: var(--fg);
+  --card: var(--ink-800);
+  --card-foreground: var(--fg);
+  --popover: var(--ink-850);
+  --popover-foreground: var(--fg);
+  --primary: var(--jade);
+  --primary-foreground: var(--jade-ink);
+  --secondary: var(--ink-800);
+  --secondary-foreground: var(--fg);
+  --muted: var(--ink-800);
+  --muted-foreground: var(--fg-dim);
+  --accent: var(--ink-750);
+  --accent-foreground: var(--fg);
+  --destructive: var(--rose);
+  --destructive-foreground: var(--fg);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--jade-dim);
+  --radius: 6px;
+
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-ink-900: var(--ink-900);
+  --color-ink-850: var(--ink-850);
+  --color-ink-800: var(--ink-800);
+  --color-ink-750: var(--ink-750);
+  --color-ink-700: var(--ink-700);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-dim: var(--fg-dim);
+  --color-fg-faint: var(--fg-faint);
+  --color-jade: var(--jade);
+  --color-jade-bright: var(--jade-bright);
+  --color-jade-dim: var(--jade-dim);
+  --color-jade-ink: var(--jade-ink);
+
+  --radius-sm: 4px;
+  --radius-md: var(--radius);
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  margin: 0;
+}

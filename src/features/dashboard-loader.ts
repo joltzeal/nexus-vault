@@ -10,6 +10,9 @@ type VaultListRow = Parameters<typeof mapVaultListItem>[0]
 export async function loadDashboardWorkspace(
   viewer: Viewer,
   env?: Partial<CloudflareEnv>,
+  input: {
+    vaultId?: string
+  } = {},
 ): Promise<VaultWorkspaceInitialData> {
   const actor: Actor = {
     id: viewer.id,
@@ -23,7 +26,7 @@ export async function loadDashboardWorkspace(
     database = await createDbSession(env)
     const db = database.db
     const vaultRows = (await listVaults(db, { actor })) as VaultListRow[]
-    const activeVaultId = vaultRows[0]?.id
+    const activeVaultId = input.vaultId || vaultRows[0]?.id
 
     if (!activeVaultId) {
       return {
@@ -37,12 +40,14 @@ export async function loadDashboardWorkspace(
 
     const detail = await getVaultDetail(db, activeVaultId, { actor })
     const hydratedSet = mapVaultDetail(detail)
+    const isOwnedVault = vaultRows.some((vault) => vault.id === hydratedSet.id)
 
     return {
       sets: vaultRows.map((vault) =>
         vault.id === hydratedSet.id ? hydratedSet : mapVaultListItem(vault),
       ),
       activeSetId: hydratedSet.id,
+      externalActiveSet: isOwnedVault ? undefined : hydratedSet,
       actorId: actor.id,
       actorEmail: actor.email,
       actorName: actor.name,

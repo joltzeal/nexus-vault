@@ -48,6 +48,15 @@
   --font-display: "Space Grotesk", system-ui, sans-serif;
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+  --destructive-foreground: var(--color-red-800);
+  --success: var(--color-emerald-500);
+  --success-foreground: var(--color-emerald-900);
+  --info: var(--color-violet-500);
+  --info-foreground: var(--color-violet-900);
+  --warning: var(--color-yellow-500);
+  --warning-foreground: var(--color-yellow-900);
+  --invert: var(--color-zinc-900);
+  --invert-foreground: var(--color-zinc-50);
 }
 
 :root {
@@ -160,6 +169,14 @@
   --height-row: var(--row-h);
   --height-media: var(--media-h);
   --shadow-pop: var(--shadow-pop);
+  --color-invert-foreground: var(--invert-foreground);
+  --color-invert: var(--invert);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning: var(--warning);
+  --color-info-foreground: var(--info-foreground);
+  --color-info: var(--info);
+  --color-success-foreground: var(--success-foreground);
+  --color-success: var(--success);
 }
 
 @layer base {
@@ -233,6 +250,10 @@
     color: var(--rose);
   }
 
+  .tp-douyin {
+    color: var(--sky);
+  }
+
   .tp-drive {
     color: var(--sky);
   }
@@ -277,6 +298,97 @@
   }
 }
 
+@layer components {
+  .wechat-mp-html {
+    color: var(--fg-muted);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.82;
+    overflow-wrap: anywhere;
+  }
+
+  .wechat-mp-html,
+  .wechat-mp-html * {
+    max-width: 100% !important;
+    background: transparent !important;
+    border-color: var(--line-soft) !important;
+    box-sizing: border-box;
+    color: inherit !important;
+    font-family: inherit !important;
+    letter-spacing: 0 !important;
+    visibility: visible !important;
+  }
+
+  .wechat-mp-html p,
+  .wechat-mp-html section,
+  .wechat-mp-html div {
+    margin: 0 0 0.85rem;
+  }
+
+  .wechat-mp-html h1,
+  .wechat-mp-html h2,
+  .wechat-mp-html h3,
+  .wechat-mp-html h4 {
+    margin: 1rem 0 0.5rem;
+    color: var(--fg) !important;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.45;
+  }
+
+  .wechat-mp-html a {
+    color: var(--jade-bright) !important;
+    text-decoration: none;
+  }
+
+  .wechat-mp-html a:hover {
+    text-decoration: underline;
+  }
+
+  .wechat-mp-html img {
+    display: block;
+    width: auto;
+    height: auto;
+    margin: 0.75rem auto;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--r-input);
+    background: var(--ink-850) !important;
+  }
+
+  [data-hide-images="true"] .wechat-mp-html img {
+    display: none;
+  }
+
+  .wechat-mp-html blockquote {
+    margin: 0.75rem 0;
+    border-left: 2px solid var(--jade-dim) !important;
+    padding-left: 0.75rem;
+    color: var(--fg-dim) !important;
+  }
+
+  .wechat-mp-html table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+  }
+
+  .wechat-mp-html pre,
+  .wechat-mp-html code {
+    border: 1px solid var(--line) !important;
+    border-radius: var(--r-input);
+    background: var(--ink-850) !important;
+    color: var(--jade-bright) !important;
+    font-family: var(--font-mono) !important;
+  }
+
+  .wechat-mp-html pre {
+    overflow-x: auto;
+    padding: 0.75rem;
+  }
+}
+
 @keyframes nv-progress {
   0% {
     transform: translateX(-100%);
@@ -287,4 +399,16 @@
   100% {
     transform: translateX(100%);
   }
+}
+
+.dark {
+  --destructive-foreground: var(--color-red-600);
+  --success: var(--color-emerald-500);
+  --success-foreground: var(--color-emerald-600);
+  --info: var(--color-violet-500);
+  --info-foreground: var(--color-violet-600);
+  --warning: var(--color-yellow-500);
+  --warning-foreground: var(--color-yellow-600);
+  --invert: var(--color-zinc-700);
+  --invert-foreground: var(--color-zinc-50);
 }

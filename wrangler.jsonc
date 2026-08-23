@@ -19,6 +19,10 @@
 		"binding": "ASSETS",
 		"directory": "dist/client"
 	},
+	"ai": {
+		"binding": "AI",
+		"remote": true
+	},
 	"observability": {
 		"enabled": true
 	},
@@ -28,7 +32,6 @@
 	"vars": {
 		"NEXTJS_ENV": "development",
 		"ALLOW_USER_REGISTRATION": "true",
-		"TELEGRAM_METADATA_API_URL": "http://localhost:8080",
 		"TELEGRAM_MEDIA_MAX_BYTES": "20971520"
 	},
 	"r2_buckets": [
@@ -63,8 +66,8 @@
 		"consumers": [
 			{
 				"queue": "nexus-vault-queue",
-				"max_batch_size": 10,
-				"max_batch_timeout": 30
+				"max_batch_size": 3,
+				"max_batch_timeout": 5
 			},
 			{
 				"queue": "nexus-vault-cloud-drive-checks",
@@ -85,12 +88,20 @@
 			"vars": {
 				"NEXTJS_ENV": "production",
 				"ALLOW_USER_REGISTRATION": "false",
-				"TELEGRAM_METADATA_API_URL": "http://localhost:8080",
-				"TELEGRAM_MEDIA_MAX_BYTES": "20971520"
+				"TELEGRAM_MEDIA_MAX_BYTES": "20971520",
+				"S3_UPLOAD_ENDPOINT": "https://7ebad0539726888b2fbf39ba2fe538ec.r2.cloudflarestorage.com",
+				"S3_UPLOAD_REGION": "auto",
+				"S3_UPLOAD_BUCKET": "nexus-vault-media",
+				"S3_MEDIA_PUBLIC_BASE_URL": "https://pub-46544995dc3c451c822680411911c856.r2.dev",
+				"S3_UPLOAD_FORCE_PATH_STYLE": "true"
 			},
 			"assets": {
 				"binding": "ASSETS",
 				"directory": "dist/client"
+			},
+			"ai": {
+				"binding": "AI",
+				"remote": true
 			},
 			"hyperdrive": [
 				{
@@ -140,8 +151,8 @@
 				"consumers": [
 					{
 						"queue": "nexus-vault-queue",
-						"max_batch_size": 10,
-						"max_batch_timeout": 30
+						"max_batch_size": 3,
+						"max_batch_timeout": 5
 					},
 					{
 						"queue": "nexus-vault-cloud-drive-checks",

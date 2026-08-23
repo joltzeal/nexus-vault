@@ -5,6 +5,7 @@ import { parseResourceInput } from "../domain/resources/input"
 import { can } from "../domain/vaults/permissions"
 import {
   createResourceSchema,
+  resourceTypeSchema,
   transferResourcesSchema,
   updateResourceSchema,
 } from "./schemas/resource"
@@ -15,6 +16,73 @@ import {
 } from "./schemas/space"
 import { createResourceSubmissionSchema } from "./schemas/submission"
 import { createVaultSchema } from "./schemas/vault"
+import {
+  completeLocalMediaMultipartSchema,
+  createUploadedLocalMediaSchema,
+  prepareLocalMediaMultipartSchema,
+} from "./schemas/local-media-multipart"
+import { isResourceMediaUploadEnabled } from "./services/resource-media-upload-service"
+
+test("resource media upload is disabled unless explicitly enabled", () => {
+  assert.equal(isResourceMediaUploadEnabled(), false)
+  assert.equal(
+    isResourceMediaUploadEnabled({
+      ALLOW_RESOURCE_MEDIA_UPLOAD: "true",
+    } as Partial<CloudflareEnv>),
+    true,
+  )
+  assert.equal(
+    isResourceMediaUploadEnabled({
+      ALLOW_RESOURCE_MEDIA_UPLOAD: "false",
+    } as Partial<CloudflareEnv>),
+    false,
+  )
+})
+
+test("resource schemas accept the local media type", () => {
+  assert.equal(resourceTypeSchema.parse("local_media"), "local_media")
+})
+
+test("local media multipart schemas keep upload sessions and completed objects aligned", () => {
+  const clientId = "media-client-id"
+  assert.equal(
+    prepareLocalMediaMultipartSchema.parse({
+      files: [
+        {
+          clientId,
+          fileName: "demo.mp4",
+          mimeType: "video/mp4",
+          size: 10 * 1024 * 1024,
+        },
+      ],
+    }).files[0]?.clientId,
+    clientId,
+  )
+
+  assert.equal(
+    createUploadedLocalMediaSchema.parse({
+      resourceId: "6805e441-b73b-4318-aa8c-bf0da42e5548",
+      files: [
+        {
+          clientId,
+          fileName: "demo.mp4",
+          mimeType: "video/mp4",
+          objectKey: "uploads/user/resource/demo.mp4",
+          size: 10 * 1024 * 1024,
+        },
+      ],
+    }).files[0]?.objectKey,
+    "uploads/user/resource/demo.mp4",
+  )
+
+  assert.throws(() =>
+    completeLocalMediaMultipartSchema.parse({
+      key: "uploads/user/resource/demo.mp4",
+      uploadId: "upload-id",
+      parts: [],
+    }),
+  )
+})
 
 test("space schemas accept icon values for create and update", () => {
   assert.equal(
@@ -92,6 +160,26 @@ test("description schemas accept long text", () => {
       description,
     }).description,
     description
+  )
+})
+
+test("resource schemas accept an optional referer", () => {
+  const referer = "https://example.com/source"
+
+  assert.equal(
+    createResourceSchema.parse({
+      url: "https://example.com/resource",
+      referer,
+    }).referer,
+    referer,
+  )
+  assert.equal(updateResourceSchema.parse({ referer }).referer, referer)
+  assert.equal(
+    createResourceSubmissionSchema.parse({
+      url: "https://example.com/resource",
+      referer,
+    }).referer,
+    referer,
   )
 })
 
@@ -186,6 +274,55 @@ test("resource input detects telegram message urls", () => {
       messageId: "43",
     },
   })
+})
+
+test("resource input detects douyin urls", () => {
+  assert.deepEqual(parseResourceInput({
+    url: "8.99 :0pm e@B.Gi 06/07 DHI:/ 上海大师赛惨案！罗伯逊被完美6连鞭，赵心童上演逆天准度零封！ # 台球 # 斯诺克 # 赵心童 # 罗伯逊 # 2026上海大师赛  https://v.douyin.com/8cAdadgaq10/ 复制此链接，打开Dou音搜索，直接观看视频！",
+  }), {
+    type: "douyin",
+    url: "https://v.douyin.com/8cAdadgaq10/",
+    title: "抖音视频",
+    metadata: {
+      host: "v.douyin.com",
+      shareCode: "8cAdadgaq10",
+      videoId: undefined,
+    },
+  })
+
+  assert.deepEqual(parseResourceInput({ url: "https://v.douyin.com/8cAdadgaq10/" }), {
+    type: "douyin",
+    url: "https://v.douyin.com/8cAdadgaq10/",
+    title: "抖音视频",
+    metadata: {
+      host: "v.douyin.com",
+      shareCode: "8cAdadgaq10",
+      videoId: undefined,
+    },
+  })
+
+  assert.deepEqual(parseResourceInput({ url: "https://www.douyin.com/video/7350000000000000000?previous_page=app_code_link" }), {
+    type: "douyin",
+    url: "https://www.douyin.com/video/7350000000000000000",
+    title: "抖音视频",
+    metadata: {
+      host: "douyin.com",
+      shareCode: undefined,
+      videoId: "7350000000000000000",
+    },
+  })
+})
+
+test("resource input detects WeChat article urls", () => {
+  const parsed = parseResourceInput({
+    url: "https://mp.weixin.qq.com/s/b2jhSldjmuR3yfNgV2ZUrA?scene=1",
+  })
+
+  assert.equal(parsed.type, "wechat_mp")
+  assert.equal(parsed.url, "https://mp.weixin.qq.com/s/b2jhSldjmuR3yfNgV2ZUrA")
+  assert.equal(parsed.title, "微信公众号文章")
+  assert.equal(parsed.metadata?.previewKind, "wechat_mp_article")
+  assert.equal(parsed.metadata?.articleToken, "b2jhSldjmuR3yfNgV2ZUrA")
 })
 
 test("resource input detects cloud drive share urls and extraction codes", () => {

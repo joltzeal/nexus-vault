@@ -2,6 +2,10 @@ import { and, count, eq, inArray, isNull } from "drizzle-orm"
 
 import { resourceMetadata, resources, spaces, vaults } from "@/db/schema"
 import {
+  getLocalMediaObjectKeys,
+  LOCAL_MEDIA_PROVIDER,
+} from "@/domain/media-storage"
+import {
   parseMagnetLink,
   parseResourceInput,
   type ResourceType,
@@ -27,6 +31,7 @@ export async function createResource(
     title?: string
     description: string
     url: string
+    referer?: string
     actor: Actor
     userEmail?: string
   }
@@ -58,6 +63,7 @@ export async function createResource(
       title: parsedInput.title,
       description: input.description,
       url: parsedInput.url,
+      referer: input.referer || null,
       dedupeKey,
       metadataStatus: "pending",
       createdBy,
@@ -103,6 +109,7 @@ export async function updateResource(
     title?: string
     description?: string
     url?: string
+    referer?: string
     position?: number
     actor?: Actor
     userEmail?: string
@@ -144,6 +151,7 @@ export async function updateResource(
     ...(nextTitle !== undefined ? { title: nextTitle } : {}),
     ...(input.description !== undefined ? { description: input.description } : {}),
     ...(nextUrl !== undefined ? { url: nextUrl } : {}),
+    ...(input.referer !== undefined ? { referer: input.referer || null } : {}),
     ...(nextDedupeKey !== undefined ? { dedupeKey: nextDedupeKey } : {}),
     ...(input.position !== undefined ? { position: input.position } : {}),
     ...(shouldResetMetadata ? { metadataStatus: "pending" as const } : {}),
@@ -176,12 +184,12 @@ export async function updateResource(
   return {
     id: resourceId,
     metadataStatus: shouldResetMetadata ? ("pending" as const) : resource.metadataStatus,
-    metadataTask: shouldResetMetadata
+    metadataTask: shouldResetMetadata && (nextUrl ?? resource.url)
       ? createMetadataQueueMessage(
           resource.vaultId,
           resourceId,
           nextType ?? resource.type,
-          nextUrl ?? resource.url
+          (nextUrl ?? resource.url)!
         )
       : undefined,
   }
@@ -224,15 +232,33 @@ export async function archiveResource(
   resourceId: string,
   input: {
     actor?: Actor
+    media?: R2Bucket
     userEmail?: string
   }
 ) {
   const resource = await getResourceOrThrow(db, resourceId)
   await requireResourceMutationPermission(db, resource, input.actor)
+  const [metadata] = await db
+    .select({
+      provider: resourceMetadata.provider,
+      dataJson: resourceMetadata.dataJson,
+    })
+    .from(resourceMetadata)
+    .where(eq(resourceMetadata.resourceId, resourceId))
+    .limit(1)
 
   await db
     .delete(resources)
     .where(eq(resources.id, resourceId))
+
+  if (input.media && metadata?.provider === LOCAL_MEDIA_PROVIDER) {
+    const objectKeys = getLocalMediaObjectKeys(metadata.dataJson)
+    if (objectKeys.length > 0) {
+      await input.media.delete(objectKeys).catch((error) => {
+        console.error("Failed to delete uploaded resource media.", { error, resourceId })
+      })
+    }
+  }
 
   return { id: resourceId, deleted: true }
 }
@@ -395,6 +421,7 @@ export async function transferResource(
       title: resource.title,
       description: resource.description,
       url: resource.url,
+      referer: resource.referer,
       dedupeKey: resource.dedupeKey,
       metadataStatus: resource.metadataStatus,
       position,
@@ -439,6 +466,7 @@ export async function transferResources(
       title: resources.title,
       description: resources.description,
       url: resources.url,
+      referer: resources.referer,
       dedupeKey: resources.dedupeKey,
       metadataStatus: resources.metadataStatus,
       createdBy: resources.createdBy,
@@ -556,6 +584,7 @@ export async function transferResources(
         title: item.resource.title,
         description: item.resource.description,
         url: item.resource.url,
+        referer: item.resource.referer,
         dedupeKey: item.resource.dedupeKey,
         metadataStatus: item.resource.metadataStatus,
         position: item.position,
@@ -593,6 +622,7 @@ export async function getResourceOrThrow(db: Db, resourceId: string) {
       title: resources.title,
       description: resources.description,
       url: resources.url,
+      referer: resources.referer,
       dedupeKey: resources.dedupeKey,
       metadataStatus: resources.metadataStatus,
       position: resources.position,
@@ -608,7 +638,7 @@ export async function getResourceOrThrow(db: Db, resourceId: string) {
   return resource
 }
 
-async function getNextResourcePosition(db: Db, spaceId: string) {
+export async function getNextResourcePosition(db: Db, spaceId: string) {
   const [row] = await db
     .select({ value: count() })
     .from(resources)

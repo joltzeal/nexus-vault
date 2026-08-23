@@ -1,9 +1,17 @@
 "use client"
 
 import { ChevronLeft, ChevronRight, ExternalLink, ImageOff, Play } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type SyntheticEvent,
+} from "react"
 
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import {
   Carousel,
   CarouselContent,
@@ -19,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { LazyMediaImage } from "@/features/components/lazy-media-image"
+import { LivePhotoMedia } from "@/features/components/live-photo-media"
 import { cn } from "@/lib/utils"
 import type { MediaItem } from "./view-models"
 
@@ -32,23 +41,51 @@ export function ResourceMediaGallery({
   variant?: "scroll" | "carousel"
 }) {
   const [previewIndex, setPreviewIndex] = useState<number | null>(null)
+  const mediaKey = media
+    .map((item) => `${item.src}:${item.aspectRatio ?? ""}`)
+    .join("|")
+  const knownMediaAspectRatios = useMemo(
+    () => {
+      return mediaKey.split("|").reduce<Record<number, number>>((ratios, item, index) => {
+        const separator = item.lastIndexOf(":")
+        const aspectRatio = Number(item.slice(separator + 1))
+        if (aspectRatio > 0) ratios[index] = aspectRatio
+        return ratios
+      }, {})
+    },
+    [mediaKey]
+  )
   const [carouselApi, setCarouselApi] = useState<CarouselApi>()
   const [currentSlide, setCurrentSlide] = useState(0)
+  const [hasHorizontalOverflow, setHasHorizontalOverflow] = useState(false)
+  const [mediaAspectRatios, setMediaAspectRatios] = useState<Record<number, number>>(
+    knownMediaAspectRatios
+  )
+  const carouselAspectRatio = mediaAspectRatios[currentSlide] ?? 16 / 9
   const scrollerRef = useRef<HTMLDivElement>(null)
   const activeItem = previewIndex === null ? null : media[previewIndex]
   const activeImage = activeItem?.kind === "image" ? activeItem : null
+  const activeLivePhoto = activeImage?.livePhoto ? activeImage : null
   const activeVideo =
     activeItem?.kind === "video" && activeItem.playback === "inline"
       ? activeItem
       : null
-  const naturalPreview =
-    activeImage?.fit === "natural"
   const previewableCount = media.filter(isInlinePreviewableMedia).length
 
   useEffect(() => {
+    if (variant !== "scroll") {
+      setHasHorizontalOverflow(false)
+      return
+    }
+
     const scroller = scrollerRef.current
     if (!scroller) return
     const element = scroller
+    const content = element.firstElementChild
+
+    function updateHorizontalOverflow() {
+      setHasHorizontalOverflow(element.scrollWidth > element.clientWidth + 1)
+    }
 
     function handleWheel(event: WheelEvent) {
       const maxScrollLeft = element.scrollWidth - element.clientWidth
@@ -74,12 +111,22 @@ export function ResourceMediaGallery({
       )
     }
 
+    updateHorizontalOverflow()
     element.addEventListener("wheel", handleWheel, { passive: false })
+    window.addEventListener("resize", updateHorizontalOverflow)
+
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(updateHorizontalOverflow)
+    resizeObserver?.observe(element)
+    if (content) resizeObserver?.observe(content)
 
     return () => {
       element.removeEventListener("wheel", handleWheel)
+      window.removeEventListener("resize", updateHorizontalOverflow)
+      resizeObserver?.disconnect()
     }
-  }, [])
+  }, [mediaKey, variant])
 
   useEffect(() => {
     setPreviewIndex((current) => {
@@ -109,7 +156,8 @@ export function ResourceMediaGallery({
 
   useEffect(() => {
     setCurrentSlide(0)
-  }, [media.length])
+    setMediaAspectRatios(knownMediaAspectRatios)
+  }, [knownMediaAspectRatios, mediaKey])
 
   if (media.length === 0) return null
 
@@ -127,28 +175,42 @@ export function ResourceMediaGallery({
     }
   }
 
+  function handleMediaMeasure(index: number, width: number, height: number) {
+    if (width <= 0 || height <= 0) return
+    const aspectRatio = width / height
+    setMediaAspectRatios((current) => {
+      if (Math.abs((current[index] ?? 0) - aspectRatio) < 0.001) return current
+      return {
+        ...current,
+        [index]: aspectRatio,
+      }
+    })
+  }
+
   return (
     <>
       {variant === "carousel" ? (
         <Carousel
-          className="group/media-carousel mt-1 w-full min-w-0"
+          className="group/media-carousel mt-1 w-full min-w-0 overflow-hidden [&_[data-slot=carousel-content]]:h-full [&_[data-slot=carousel-content]>div]:h-full [&_[data-slot=carousel-item]]:h-full"
           opts={{ align: "start" }}
           setApi={setCarouselApi}
+          style={{ aspectRatio: `${carouselAspectRatio}` }}
           onClick={(event) => event.stopPropagation()}
         >
           <CarouselContent className="-ml-0 items-start">
             {media.map((item, index) => (
               <CarouselItem className="pl-0" key={`${item.src}-${index}`}>
-                <div className={cn(index !== currentSlide && "h-0 overflow-hidden")}>
-                  <MediaPreview
-                    item={item}
-                    index={index}
-                    onPreview={() => handlePreview(index)}
-                    total={media.length}
-                    title={title}
-                    variant="carousel"
-                  />
-                </div>
+                <MediaPreview
+                  item={item}
+                  aspectRatio={mediaAspectRatios[index]}
+                  index={index}
+                  onMediaMeasure={(width, height) =>
+                    handleMediaMeasure(index, width, height)
+                  }
+                  onPreview={() => handlePreview(index)}
+                  title={title}
+                  variant="carousel"
+                />
               </CarouselItem>
             ))}
           </CarouselContent>
@@ -173,17 +235,30 @@ export function ResourceMediaGallery({
       ) : (
         <div
           ref={scrollerRef}
-          className="mt-1 h-[calc(var(--media-h)+18px)] w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden rounded-input overscroll-x-contain [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]"
+          className={cn(
+            "w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden rounded-input overscroll-x-contain [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]",
+            hasHorizontalOverflow
+              ? "h-[calc(var(--media-h)+18px)]"
+              : "h-[var(--media-h)]"
+          )}
           onClick={(event) => event.stopPropagation()}
         >
-          <div className="flex w-max gap-2 pb-3 pr-2">
+          <div
+            className={cn(
+              "flex w-max gap-2",
+              hasHorizontalOverflow && "pb-3"
+            )}
+          >
             {media.map((item, index) => (
               <MediaPreview
                 item={item}
+                aspectRatio={mediaAspectRatios[index]}
                 key={`${item.src}-${index}`}
                 index={index}
+                onMediaMeasure={(width, height) =>
+                  handleMediaMeasure(index, width, height)
+                }
                 onPreview={() => handlePreview(index)}
-                total={media.length}
                 title={title}
               />
             ))}
@@ -191,13 +266,13 @@ export function ResourceMediaGallery({
         </div>
       )}
       <Dialog open={previewIndex !== null} onOpenChange={(open) => !open && setPreviewIndex(null)}>
-        <DialogContent className="max-w-[min(960px,calc(100vw-32px))] border-line bg-ink-900 p-3 text-fg sm:max-w-[min(960px,calc(100vw-32px))]">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-[min(960px,calc(100vw-32px))] overflow-hidden border-line bg-ink-900 p-3 text-fg sm:max-w-[min(960px,calc(100vw-32px))]">
           <DialogTitle className="sr-only">资源媒体预览</DialogTitle>
           <DialogDescription className="sr-only">
             查看当前资源的图片或视频媒体。
           </DialogDescription>
           {(activeImage || activeVideo) && previewIndex !== null ? (
-            <div className="flex flex-col gap-3">
+            <div className="flex min-h-0 flex-col gap-3">
               <div className="flex items-center justify-between gap-3 pr-8">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold">{title}</p>
@@ -206,18 +281,33 @@ export function ResourceMediaGallery({
                   </p>
                 </div>
               </div>
-              <div className={getDialogMediaClassName(activeImage, naturalPreview)}>
-                {activeImage ? (
+              <div className="relative grid min-h-0 w-full place-items-center overflow-hidden rounded-input border border-line bg-black/35">
+                {activeLivePhoto ? (
+                  <div
+                    className="w-full max-w-full overflow-hidden bg-black"
+                    style={{
+                      aspectRatio: activeLivePhoto.aspectRatio
+                        ? `${activeLivePhoto.aspectRatio}`
+                        : undefined,
+                      maxHeight: "calc(100dvh - 8rem)",
+                    }}
+                  >
+                    <LivePhotoMedia
+                      photoSrc={activeLivePhoto.src}
+                      videoSrc={activeLivePhoto.livePhoto.videoSrc}
+                    />
+                  </div>
+                ) : activeImage ? (
                   <LazyMediaImage
                     alt={`${title} preview ${previewIndex + 1}`}
-                    className={naturalPreview ? "max-h-[78vh] max-w-full object-contain" : "h-auto w-full max-w-none object-contain"}
+                    className="block h-auto max-h-[calc(100dvh-8rem)] w-auto max-w-full object-contain"
                     eager
                     src={activeImage.src}
                   />
                 ) : activeVideo ? (
                   <video
                     autoPlay
-                    className="max-h-[78vh] w-full bg-black object-contain"
+                    className="block max-h-[calc(100dvh-8rem)] w-full bg-black object-contain"
                     controls
                     playsInline
                     poster={activeVideo.preview}
@@ -256,45 +346,46 @@ export function ResourceMediaGallery({
 }
 
 function MediaPreview({
+  aspectRatio,
   index,
   item,
+  onMediaMeasure,
   onPreview,
   title,
-  total,
   variant = "scroll",
 }: {
+  aspectRatio?: number
   index: number
   item: MediaItem
+  onMediaMeasure?: (width: number, height: number) => void
   onPreview: () => void
   title: string
-  total: number
   variant?: "scroll" | "carousel"
 }) {
   const [failed, setFailed] = useState(false)
   const previewSrc = item.kind === "video" ? item.preview : item.src
+  const isLivePhoto = item.kind === "image" && Boolean(item.livePhoto)
   const opensInline = item.kind === "video" && item.playback === "inline"
-  const mediaClassName = getMediaPreviewClassName(variant, item)
+  const mediaClassName = getMediaPreviewClassName(variant, item, aspectRatio)
   const imageClassName = getMediaPreviewImageClassName(variant, item)
   const failedClassName = getMediaPreviewFailedClassName(variant, item)
+  const mediaStyle = getMediaPreviewStyle(variant, item, aspectRatio)
+
+  function handleMediaLoad(event: SyntheticEvent<HTMLImageElement>) {
+    const image = event.currentTarget
+    onMediaMeasure?.(image.naturalWidth, image.naturalHeight)
+  }
 
   if (item.kind === "video") {
-    return (
-      <button
-        className={cn(
-          mediaClassName,
-          "grid place-items-center transition hover:border-jade-dim hover:bg-ink-850"
-        )}
-        onClick={(event) => {
-          event.stopPropagation()
-          onPreview()
-        }}
-        type="button"
-      >
+    const content = (
+      <>
         {previewSrc && !failed ? (
           <LazyMediaImage
             alt={`${title} preview ${index + 1}`}
             className={imageClassName}
+            eager={variant === "carousel"}
             onError={() => setFailed(true)}
+            onLoad={handleMediaLoad}
             src={previewSrc}
           />
         ) : (
@@ -308,12 +399,75 @@ function MediaPreview({
           {opensInline ? <Play className="size-3 fill-current" /> : <ExternalLink className="size-3" />}
           {opensInline ? "播放视频" : "打开视频"}
         </span>
-        {item.duration && (
-          <span className="mono absolute bottom-2 right-2 z-10 rounded-sm border border-line bg-ink-950/85 px-1.5 py-0.5 text-[10px] text-fg-muted">
-            {item.duration}
+        {(item.duration || (item.width && item.height)) && (
+          <span className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1">
+            {item.duration && (
+              <Badge className="mono h-5 border-line bg-ink-950/85 px-1.5 text-[10px] font-normal text-fg-muted">
+                {item.duration}
+              </Badge>
+            )}
+            {item.width && item.height && (
+              <Badge className="mono h-5 border-line bg-ink-950/85 px-1.5 text-[10px] font-normal text-fg-muted">
+                {item.width}x{item.height}
+              </Badge>
+            )}
           </span>
         )}
+      </>
+    )
+
+    if (!opensInline) {
+      return (
+        <a
+          aria-label={`在新标签页打开 ${title} 视频 ${index + 1}`}
+          className={cn(
+            mediaClassName,
+            "grid place-items-center transition hover:border-jade-dim hover:bg-ink-850"
+          )}
+          href={item.src}
+          onClick={(event) => event.stopPropagation()}
+          rel="noreferrer"
+          target="_blank"
+          style={mediaStyle}
+        >
+          {content}
+        </a>
+      )
+    }
+
+    return (
+      <button
+        className={cn(
+          mediaClassName,
+          "grid place-items-center transition hover:border-jade-dim hover:bg-ink-850"
+        )}
+        onClick={(event) => {
+          event.stopPropagation()
+          onPreview()
+        }}
+        style={mediaStyle}
+        type="button"
+      >
+        {content}
       </button>
+    )
+  }
+
+  if (isLivePhoto && item.livePhoto) {
+    return (
+      <div
+        aria-label={`播放 ${title} 实况照片 ${index + 1}`}
+        className={mediaClassName}
+        onClick={(event) => event.stopPropagation()}
+        style={mediaStyle}
+      >
+        <LivePhotoMedia
+          onPhotoLoad={(width, height) => onMediaMeasure?.(width, height)}
+          onPreview={onPreview}
+          photoSrc={item.src}
+          videoSrc={item.livePhoto.videoSrc}
+        />
+      </div>
     )
   }
 
@@ -324,6 +478,7 @@ function MediaPreview({
         event.stopPropagation()
         onPreview()
       }}
+      style={mediaStyle}
       type="button"
     >
       {failed || !previewSrc ? (
@@ -335,14 +490,11 @@ function MediaPreview({
         <LazyMediaImage
           alt={`${title} preview ${index + 1}`}
           className={imageClassName}
+          eager={variant === "carousel"}
           onError={() => setFailed(true)}
+          onLoad={handleMediaLoad}
           src={previewSrc}
         />
-      )}
-      {variant === "scroll" && (
-        <span className="mono absolute left-1.5 top-1.5 rounded-sm bg-black/70 px-1.5 py-0.5 text-[9.5px] text-fg-muted">
-          {index + 1}/{total}
-        </span>
       )}
     </button>
   )
@@ -350,20 +502,25 @@ function MediaPreview({
 
 function getMediaPreviewClassName(
   variant: "scroll" | "carousel",
-  item: MediaItem
+  item: MediaItem,
+  aspectRatio?: number
 ) {
   const base =
     "relative shrink-0 overflow-hidden rounded-input border border-line bg-ink-900 text-left"
 
   if (variant === "scroll") {
-    return cn(base, "h-media w-[228px]")
+    return cn(
+      base,
+      "grid h-media place-items-center",
+      !aspectRatio && "w-[228px]"
+    )
   }
 
   if (item.kind === "image") {
-    return cn(base, "grid min-h-[140px] w-full place-items-center bg-black/30")
+    return cn(base, "grid h-full w-full place-items-center bg-black/30")
   }
 
-  return cn(base, "grid w-full place-items-center bg-black/30")
+  return cn(base, "grid h-full w-full place-items-center bg-black/30")
 }
 
 function getMediaPreviewImageClassName(
@@ -371,7 +528,11 @@ function getMediaPreviewImageClassName(
   item: MediaItem
 ) {
   if (variant === "carousel" && (item.kind === "image" || item.kind === "video")) {
-    return "h-auto max-h-[420px] max-w-full object-contain"
+    return "block size-full object-contain"
+  }
+
+  if (variant === "scroll") {
+    return "block size-full object-contain"
   }
 
   return "size-full object-cover"
@@ -382,27 +543,27 @@ function getMediaPreviewFailedClassName(
   item: MediaItem
 ) {
   if (variant === "carousel" && item.kind === "image") {
-    return "min-h-[180px] w-full bg-ink-850"
+    return "size-full bg-ink-850"
   }
 
   if (variant === "carousel" && item.kind === "video") {
-    return "min-h-[180px] w-full bg-ink-850"
+    return "size-full bg-ink-850"
   }
 
   return "size-full bg-ink-850"
 }
 
-function getDialogMediaClassName(
-  activeImage: MediaItem | null,
-  naturalPreview: boolean,
-) {
-  if (!activeImage) {
-    return "relative grid max-h-[78vh] min-h-[260px] place-items-center overflow-hidden rounded-input border border-line bg-black"
-  }
+function getMediaPreviewStyle(
+  variant: "scroll" | "carousel",
+  item: MediaItem,
+  aspectRatio?: number
+): CSSProperties | undefined {
+  if (item.kind !== "image" && item.kind !== "video") return undefined
+  if (!aspectRatio) return undefined
 
-  return naturalPreview
-    ? "relative grid max-h-[78vh] min-h-[260px] place-items-center overflow-hidden rounded-input border border-line bg-black/35"
-    : "relative grid max-h-[78vh] min-h-[260px] place-items-start overflow-auto rounded-input border border-line bg-black/35"
+  if (variant !== "scroll") return undefined
+
+  return { width: `calc(var(--media-h) * ${aspectRatio})` }
 }
 
 function isInlinePreviewableMedia(item: MediaItem) {

@@ -6,6 +6,7 @@ import {
   createCanonicalMagnetUrl,
   parseMagnetLink,
 } from "@/domain/resources/input"
+import { createSocialVideoMediaProxyUrl } from "@/domain/social-video-media"
 import type {
   MetadataStatus,
   Resource,
@@ -16,12 +17,21 @@ import type {
 } from "@/features/types"
 
 export type MediaItem = {
+  aspectRatio?: number
+  height?: number
   fit?: "cover" | "natural"
   kind: "image" | "video"
+  livePhoto?: {
+    duration?: string
+    height?: number
+    videoSrc: string
+    width?: number
+  }
   playback?: "inline" | "external"
   src: string
   preview?: string
   duration?: string
+  width?: number
 }
 
 export type ResourcePillItem =
@@ -82,14 +92,14 @@ export function getResourceTitle(resource: Resource) {
 }
 
 export function getDisplayResourceTitle(resource: Pick<Resource, "type" | "url" | "title" | "metadata">) {
-  const metadataTitle = normalizeDisplayTitle(resource.metadata?.data?.title)
-  if (metadataTitle) return metadataTitle
-
   const resourceTitle = normalizeDisplayTitle(resource.title)
   if (resourceTitle) return resourceTitle
 
+  const metadataTitle = normalizeDisplayTitle(resource.metadata?.data?.title)
+  if (metadataTitle) return metadataTitle
+
   if (resource.type === "magnet") {
-    const hash = getMagnetHash(resource.url)
+    const hash = getMagnetHash(resource.url ?? "")
     return hash ? `Magnet · ${hash.slice(0, 8)}...` : "Magnet"
   }
 
@@ -100,13 +110,48 @@ export function getResourceDescription(resource: Resource) {
   return resource.description || resource.metadata?.data?.description || ""
 }
 
+export type ResourceAiSummaryView = {
+  error?: string
+  status: "pending" | "processing" | "completed" | "failed"
+  text: string
+}
+
+export function getResourceAiSummary(resource: Resource): ResourceAiSummaryView | null {
+  const value = resource.metadata?.data?.extra?.aiSummary
+  if (!isRecord(value)) return null
+  let status = value.status
+  if (status !== "pending" && status !== "processing" && status !== "completed" && status !== "failed") {
+    return null
+  }
+
+  if (status === "pending" || status === "processing") {
+    const timestamp = [value.startedAt, value.requestedAt, resource.metadata?.updatedAt]
+      .find((item): item is string => typeof item === "string" && item.length > 0)
+    const startedAt = timestamp ? Date.parse(timestamp) : Number.NaN
+    if (Number.isFinite(startedAt) && Date.now() - startedAt >= 2 * 60 * 1000) {
+      status = "failed"
+    }
+  }
+
+  return {
+    error:
+      typeof value.error === "string"
+        ? value.error
+        : status === "failed"
+          ? "AI summary timed out."
+          : undefined,
+    status,
+    text: typeof value.text === "string" ? value.text : "",
+  }
+}
+
 export function getResourceSize(resource: Resource) {
   const metadata = resource.metadata?.data
   return formatBytes(metadata?.size)
 }
 
 export function getResourceDisplayUrl(resource: Resource) {
-  const value = resource.url.trim()
+  const value = resource.url?.trim() ?? ""
   if (resource.type !== "magnet") return value
   const parsed = parseMagnetLink(value)
   if (parsed) return createCanonicalMagnetUrl(parsed.infoHash)
@@ -158,9 +203,9 @@ export function getResourceCloudDriveData(resource: Resource) {
 export function getMetadataState(status: MetadataStatus) {
   const map = {
     completed: { label: "就绪" },
-    pending: { label: "补全中" },
-    processing: { label: "解析中" },
-    failed: { label: "解析失败" },
+    pending: { label: "Processing" },
+    processing: { label: "Processing" },
+    failed: { label: "Failed" },
   } satisfies Record<MetadataStatus, { label: string }>
 
   return map[status]
@@ -170,6 +215,8 @@ export function getTypePill(type: ResourceType) {
   if (type === "magnet") return { className: "tp-magnet", label: "MAG" }
   if (type === "twitter") return { className: "tp-http", label: "X" }
   if (type === "telegram") return { className: "tp-http", label: "TG" }
+  if (type === "douyin") return { className: "tp-douyin", label: "DY" }
+  if (type === "wechat_mp") return { className: "tp-http", label: "MP" }
   if (type === "ftp") return { className: "tp-http", label: "FTP" }
   if (type === "baidu_pan") return { className: "tp-drive", label: "BD" }
   if (type === "pan_115") return { className: "tp-drive", label: "115" }
@@ -179,6 +226,7 @@ export function getTypePill(type: ResourceType) {
   if (type === "xunlei_pan") return { className: "tp-drive", label: "XL" }
   if (type === "pikpak") return { className: "tp-drive", label: "PK" }
   if (type === "youtube") return { className: "tp-youtube", label: "YT" }
+  if (type === "local_media") return { className: "tp-http", label: "MEDIA" }
   if (type === "onedrive" || type === "google_drive" || type === "dropbox" || type === "alist") {
     return { className: "tp-drive", label: type === "google_drive" ? "GD" : "OD" }
   }
@@ -237,6 +285,8 @@ function normalizeDisplayTitle(value?: string | null) {
     "untitled resource",
     "untitled link",
     "untitled tweet",
+    "微信公众号文章",
+    "抖音视频",
   ])
 
   return fallbackTitles.has(title.toLowerCase()) ? "" : title
@@ -339,12 +389,16 @@ function getNormalizedMedia(value: unknown, sourceUrl?: string): MediaItem[] {
       typeof item.thumbnailUrl === "string"
         ? item.thumbnailUrl.trim() || undefined
         : undefined
+    const width = getPositiveNumber(item.width)
+    const height = getPositiveNumber(item.height)
+    const aspectRatio = width && height ? width / height : undefined
 
     if (kind === "video" && url) {
       media.push({
         kind: "video",
         playback: getVideoPlayback(provider),
         src: url,
+        ...(aspectRatio ? { aspectRatio } : {}),
         ...(thumbnailUrl ? { preview: thumbnailUrl } : {}),
       })
       continue
@@ -353,10 +407,13 @@ function getNormalizedMedia(value: unknown, sourceUrl?: string): MediaItem[] {
     if (kind === "image") {
       const imageUrl = url || thumbnailUrl
       if (!imageUrl) continue
+      const livePhoto = getLivePhotoMedia(item.metadata)
       media.push({
         fit: isWhatsLinkMetadataSource(sourceUrl) ? "natural" : "cover",
         kind: "image",
+        ...(livePhoto ? { livePhoto } : {}),
         src: imageUrl,
+        ...(aspectRatio ? { aspectRatio } : {}),
       })
     }
   }
@@ -364,8 +421,38 @@ function getNormalizedMedia(value: unknown, sourceUrl?: string): MediaItem[] {
   return media
 }
 
+function getLivePhotoMedia(value: unknown): MediaItem["livePhoto"] {
+  if (!isRecord(value) || value.mediaType !== "live_photo") return undefined
+  const livePhoto = isRecord(value.livePhoto) ? value.livePhoto : undefined
+  const videoUrl = typeof livePhoto?.url === "string" ? livePhoto.url.trim() : ""
+  if (!videoUrl) return undefined
+  return {
+    videoSrc: createSocialVideoMediaProxyUrl(videoUrl),
+    duration: formatDuration(getPositiveNumber(livePhoto?.duration)),
+    height: getPositiveNumber(livePhoto?.height),
+    width: getPositiveNumber(livePhoto?.width),
+  }
+}
+
+function formatDuration(seconds?: number) {
+  if (typeof seconds !== "number") return undefined
+  const totalSeconds = Math.round(seconds)
+  const minutes = Math.floor(totalSeconds / 60)
+  const remainingSeconds = totalSeconds % 60
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`
+}
+
+function getPositiveNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : undefined
+}
+
 function getVideoPlayback(provider: string): MediaItem["playback"] {
   if (provider === "telegram") return "inline"
+  if (provider === "douyin" || provider === "snapdouyin") return "inline"
+  if (provider === "douyin-tiktok-download-api") return "inline"
+  if (provider === "local-media") return "inline"
   return "external"
 }
 

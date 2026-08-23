@@ -33,6 +33,8 @@ export const httpPageMetadataProvider: MetadataProvider = {
     const pageResult =
       options?.fetchHttpPage === false
         ? {
+            content: "",
+            description: "",
             source: "skipped" as const,
             title: "",
             favicon: getDefaultFaviconUrl(parsed.url),
@@ -63,7 +65,9 @@ export const httpPageMetadataProvider: MetadataProvider = {
             sourceUrl: parsed.url,
             url: screenshotUrl,
             thumbnailUrl: screenshotUrl,
+            height: 1080,
             mimeType: "image/png",
+            width: 1920,
           },
         ] satisfies ResourceMediaMetadata[])
       : undefined
@@ -78,6 +82,7 @@ export const httpPageMetadataProvider: MetadataProvider = {
           fetchedAt,
         }),
         title,
+        ...(pageResult.description ? { description: pageResult.description } : {}),
         ...(media ? { media } : {}),
         source: {
           name: "http-page",
@@ -88,6 +93,7 @@ export const httpPageMetadataProvider: MetadataProvider = {
             host: parsed.host,
             favicon: pageResult.favicon,
             titleSource: pageResult.source,
+            ...(pageResult.content ? { content: pageResult.content } : {}),
             ...(pageResult.warning ? { warning: pageResult.warning } : {}),
             ...(screenshotWarning ? { screenshotWarning } : {}),
           },
@@ -110,6 +116,8 @@ async function fetchPageMetadata(url: string) {
 
     if (!response.ok) {
       return {
+        content: "",
+        description: "",
         source: "fallback" as const,
         title: "",
         favicon: getDefaultFaviconUrl(url),
@@ -120,6 +128,8 @@ async function fetchPageMetadata(url: string) {
     const contentType = response.headers.get("content-type")?.toLowerCase() ?? ""
     if (contentType && !contentType.includes("html")) {
       return {
+        content: "",
+        description: "",
         source: "fallback" as const,
         title: "",
         favicon: getDefaultFaviconUrl(url),
@@ -129,9 +139,13 @@ async function fetchPageMetadata(url: string) {
 
     const html = await response.text()
     const title = extractHtmlTitle(html)
+    const description = extractMetaDescription(html)
+    const content = extractPageText(html)
     const favicon = extractFaviconUrl(html, url) || getDefaultFaviconUrl(url)
 
     return {
+      content,
+      description,
       source: title ? ("html-title" as const) : ("fallback" as const),
       favicon,
       title,
@@ -139,6 +153,8 @@ async function fetchPageMetadata(url: string) {
     }
   } catch (error) {
     return {
+      content: "",
+      description: "",
       source: "fallback" as const,
       title: "",
       favicon: getDefaultFaviconUrl(url),
@@ -155,6 +171,37 @@ function extractHtmlTitle(html: string) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 240)
+}
+
+function extractMetaDescription(html: string) {
+  const tags = html.match(/<meta\b[^>]*>/gi) ?? []
+  for (const tag of tags) {
+    const name = getHtmlAttribute(tag, "name").toLowerCase()
+    const property = getHtmlAttribute(tag, "property").toLowerCase()
+    if (name !== "description" && property !== "og:description") continue
+
+    const content = getHtmlAttribute(tag, "content")
+      .replace(/\s+/g, " ")
+      .trim()
+    if (content) return content.slice(0, 1000)
+  }
+  return ""
+}
+
+function extractPageText(html: string) {
+  return decodeHtmlEntities(
+    html
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/<(script|style|svg|noscript|template)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|article|section|main|h[1-6]|li|tr)>/gi, "\n")
+      .replace(/<[^>]+>/g, " ")
+  )
+    .replace(/[\t\r ]+/g, " ")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 16_000)
 }
 
 function decodeHtmlEntities(value: string) {

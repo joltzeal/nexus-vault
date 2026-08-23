@@ -36,6 +36,7 @@ import {
   SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { Switch } from "@/components/ui/switch"
 import { Spinner } from "@/components/ui/spinner"
@@ -83,11 +84,17 @@ export function VaultSidebar({
   const [accountOpen, setAccountOpen] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
   const isMobile = useIsMobile()
+  const { setOpenMobile } = useSidebar()
   const displayName = user?.name?.trim() || "未登录"
   const displayEmail = user?.email?.trim() || "请先登录"
   const initials = getUserInitials(displayName, displayEmail)
   const vaultActionClass =
     "grid size-7 place-items-center rounded-md text-fg-dim transition hover:bg-ink-750 hover:text-jade focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jade/20 disabled:pointer-events-none disabled:opacity-40 group-data-[collapsible=icon]:size-8"
+
+  function selectVault(id: string, callback: (vaultId: string) => void) {
+    if (isMobile) setOpenMobile(false)
+    callback(id)
+  }
 
   return (
     <Sidebar
@@ -157,7 +164,7 @@ export function VaultSidebar({
                     "before:absolute before:-left-2 before:top-1/2 before:h-[18px] before:w-[3px] before:-translate-y-1/2 before:rounded-r-sm before:bg-jade"
                 )}
                 isActive={activeSetId === set.id}
-                onClick={() => onSelectVault(set.id)}
+                onClick={() => selectVault(set.id, onSelectVault)}
                 tooltip={set.name}
                 type="button"
               >
@@ -199,7 +206,7 @@ export function VaultSidebar({
           <SidebarSeparator className="bg-line-soft" />
           <SidebarGroup className="px-2 py-1">
             <SidebarGroupLabel>
-              <Star className="size-3" />
+              <Star className="size-3 mr-2" />
               Starred vaults
             </SidebarGroupLabel>
             <SidebarGroupContent>
@@ -209,7 +216,7 @@ export function VaultSidebar({
                 <SidebarMenuButton
                   className="h-8 text-fg-muted hover:bg-ink-800 hover:text-fg data-active:bg-ink-800 data-active:text-fg group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
                   isActive={activeSetId === vault.id}
-                  onClick={() => onSelectStarredVault(vault.id)}
+                  onClick={() => selectVault(vault.id, onSelectStarredVault)}
                   tooltip={vault.title}
                   type="button"
                 >

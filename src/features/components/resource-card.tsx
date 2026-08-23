@@ -1,22 +1,28 @@
 "use client"
 
 import { useSortable } from "@dnd-kit/react/sortable"
+import { LOCAL_MEDIA_PROVIDER } from "@/domain/media-storage"
+import { parseGitHubLink } from "@/domain/resources/input"
 import {
   Copy,
   Clock3,
-  Edit3,
+  Download,
   ExternalLink,
   FolderInput,
+  FolderTree,
   GripVertical,
+  HardDriveUpload,
   Heart,
+  Link as LinkIcon,
   LoaderCircle,
+  MessageSquare,
   Plus,
   RefreshCw,
   Search,
   Star,
   Trash2,
 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "@/lib/toast"
 
 import {
@@ -31,6 +37,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
@@ -40,6 +47,7 @@ import {
 import {
   Popover,
   PopoverContent,
+  PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover"
 import {
@@ -49,12 +57,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  Pill,
-  PillIndicator,
-  PillStatus,
-} from "@/components/kibo-ui/pill"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
 import {
   TreeExpander,
   TreeIcon,
@@ -72,8 +76,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { ButtonGroup } from "@/components/ui/button-group"
-import { MarkdownContent } from "@/features/components/markdown-content"
+import { ResourceDescription } from "@/features/components/resource-description"
+import { ResourceFileTree } from "@/features/components/resource-file-tree"
 import { ResourceMediaGallery } from "@/features/components/resource-media-gallery"
+import {
+  ResourceCardActions,
+  ResourceCardCommentButton,
+  ResourceCardCommentEditor,
+} from "@/features/components/resource-cards/resource-card-actions"
+import { ResourcePreviewCard } from "@/features/components/resource-cards/resource-preview-card"
+import { toResourceCardPreview } from "@/features/components/resource-cards/view-models"
 import { SpaceIcon } from "@/features/components/space-icon-picker"
 import type { VaultResourceViewMode } from "@/features/components/vault-view-mode"
 import type {
@@ -81,9 +93,11 @@ import type {
   ResourceAnnotationPatch,
   ResourceTransferTargetVault,
 } from "@/features/types"
+import { formatResourceType } from "@/features/formatters"
 import { cn } from "@/lib/utils"
 import {
   getMetadataState,
+  getResourceAiSummary,
   getResourceFaviconUrl,
   getResourceDescription,
   getResourceDisplayUrl,
@@ -102,11 +116,15 @@ export type ResourceDragData = {
 const RESOURCE_ICON_MAP = {
   baidu_pan: "baidu-pan.svg",
   ed2k: "emule.svg",
+  github: "github.svg",
   magnet: "magnet.svg",
   quark_pan: "quark-pan.svg",
   telegram: "telegram.svg",
   thunder: "thunder.svg",
   twitter: "x.com.svg",
+  douyin: "tiktok.svg",
+  wechat_mp: "wechat.svg",
+  local_media: "local_media",
 } as const
 
 export function ResourceCard({
@@ -198,24 +216,42 @@ export function ResourceCard({
     },
     disabled: disabled || !isVaultOwner || showSelectionControl,
   })
-  const [descriptionOpen, setDescriptionOpen] = useState(false)
   const [externalOpen, setExternalOpen] = useState(false)
+  const [specialDeleteOpen, setSpecialDeleteOpen] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
+  const [commentEditorOpen, setCommentEditorOpen] = useState(false)
+  const [magnetTreeOpen, setMagnetTreeOpen] = useState(false)
+  const magnetTreeCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const title = getResourceTitle(resource)
   const description = getResourceDescription(resource)
-  const descriptionStartsWithImage = startsWithMarkdownImage(description)
-  const collapsedDescriptionText = getCollapsedDescriptionText(description)
+  const aiSummary = getResourceAiSummary(resource)
   const displayUrl = getResourceDisplayUrl(resource)
+  const refererUrl = getHttpUrl(resource.referer)
+  const isLocalMediaResource = resource.type === "local_media"
+  const resourceLinkUrl = isLocalMediaResource ? (refererUrl ?? "") : displayUrl
   const media = getResourceMedia(resource)
+  const downloadableMedia = getDownloadableResourceMedia(resource)
   const pills = getResourcePillItems(resource)
+  const resourceTypeLabel = formatResourceType(resource.type)
+  const detailPills = pills.filter(
+    (pill) => !(pill.kind === "text" && pill.label === resourceTypeLabel)
+  )
   const metadataState = getMetadataState(resource.metadataStatus)
-  const hasMetadataState = resource.metadataStatus !== "completed"
   const isResolvingMetadata =
     resource.metadataStatus === "pending" || resource.metadataStatus === "processing"
+  const specializedPreview = toResourceCardPreview(resource)
+  const specializedPreviewState = isResolvingMetadata
+    ? "loading" as const
+    : resource.metadataStatus === "failed"
+      ? "failed" as const
+      : "ready" as const
   const isMasonryView = viewMode === "masonry"
   const iconName = getResourceIconName(resource)
-  const iconSrc = getResourceFaviconUrl(resource)
+  const iconSrc = iconName ? undefined : getResourceFaviconUrl(resource)
   const iconLabel = resource.type === "http" ? "WEB" : resource.type === "ftp" ? "FTP" : "LINK"
+  const magnetFileTree = resource.type === "magnet"
+    ? resource.metadata?.data?.tree ?? []
+    : []
   const annotation = resource.annotation ?? null
   const checked = annotation?.checked === true
   const rating = annotation?.rating ?? 0
@@ -223,21 +259,29 @@ export function ResourceCard({
   const [localCommentDraft, setLocalCommentDraft] = useState(
     annotation?.comment ?? ""
   )
-  const copyDisplayUrl = async () => {
-    await navigator.clipboard?.writeText(displayUrl)
+  const copyResourceLink = async () => {
+    await navigator.clipboard?.writeText(resourceLinkUrl)
     toast.success("链接已复制")
-  }
-  const copyDescription = async () => {
-    await navigator.clipboard?.writeText(description)
-    toast.success("描述已复制")
   }
   const copyPillValue = (value: string) => {
     void navigator.clipboard?.writeText(value)
   }
 
+  function handleDownloadAllMedia() {
+    if (downloadableMedia.length === 0) return
+
+    downloadableMedia.forEach((item) => triggerMediaDownload(item))
+  }
+
   useEffect(() => {
     setLocalCommentDraft(annotation?.comment ?? "")
   }, [annotation?.comment])
+
+  useEffect(() => () => {
+    if (magnetTreeCloseTimerRef.current) {
+      clearTimeout(magnetTreeCloseTimerRef.current)
+    }
+  }, [])
 
   function handleToggleWatchLater() {
     if (!isSignedIn) {
@@ -264,11 +308,49 @@ export function ResourceCard({
     onClearAnnotation?.(resource.id)
   }
 
+  function renderCommentAction() {
+    if (!showAnnotationActions || showSelectionControl) return null
+
+    return (
+      <ResourceCardCommentButton
+        onClick={() => {
+          if (!isSignedIn) {
+            toast.info("请先登录后再编辑资源批注。")
+            return
+          }
+          setCommentEditorOpen((open) => !open)
+        }}
+      />
+    )
+  }
+
+  function renderCommentEditor() {
+    if (!showAnnotationActions || !commentEditorOpen) return null
+
+    return (
+      <ResourceCardCommentEditor
+        onCancel={() => {
+          setLocalCommentDraft(annotation?.comment ?? "")
+          setCommentEditorOpen(false)
+        }}
+        onChange={setLocalCommentDraft}
+        onSave={() => {
+          const comment = localCommentDraft.trim()
+          setLocalCommentDraft(comment)
+          handleUpdateAnnotation({ comment })
+          setCommentEditorOpen(false)
+        }}
+        value={localCommentDraft}
+      />
+    )
+  }
+
   function renderAnnotationActions(className?: string) {
     if (showSelectionControl) return null
 
     return (
       <ButtonGroup className={cn("mono h-6 items-center rounded-md border border-line-soft bg-ink-850/55 px-1 text-[10px] text-fg-dim", className)}>
+        {renderMagnetTreeAction()}
         {showAnnotationActions && rating > 0 && (
           <ResourceLocalRating
             ariaLabel={`资源评分 ${rating}/5`}
@@ -320,7 +402,10 @@ export function ResourceCard({
             disabled={!isSignedIn}
             size="icon-xs"
             variant="ghost"
-            onClick={onToggleStar}
+            onClick={(event) => {
+              event.stopPropagation()
+              onToggleStar()
+            }}
             type="button"
           >
             <Star className={cn(resource.isStarred && "fill-current")} />
@@ -338,7 +423,7 @@ export function ResourceCard({
       <Checkbox
         aria-label={checked ? "标记为未处理" : "标记为已处理"}
         checked={checked}
-        className="size-5 rounded-[5px] border border-line-soft bg-ink-950 text-jade shadow-inner hover:border-jade-dim focus-visible:border-jade-dim focus-visible:ring-2 focus-visible:ring-jade/20 data-checked:border-jade-dim data-checked:bg-[var(--jade-glow)] data-checked:text-jade [&_[data-slot=checkbox-indicator]>svg]:size-3.5"
+        className="size-5 rounded-[5px] border border-line bg-ink-950 text-jade shadow-inner hover:border-line focus-visible:border-line focus-visible:ring-2 focus-visible:ring-jade/20 data-checked:border-line data-checked:bg-[var(--jade-glow)] data-checked:text-jade [&_[data-slot=checkbox-indicator]>svg]:size-3.5"
         onClick={(event) => event.stopPropagation()}
         onCheckedChange={(value) =>
           handleUpdateAnnotation({ checked: value === true })
@@ -347,17 +432,104 @@ export function ResourceCard({
     )
   }
 
+  function renderMagnetTreeAction() {
+    if (magnetFileTree.length === 0) return null
+
+    const keepOpen = () => {
+      if (magnetTreeCloseTimerRef.current) {
+        clearTimeout(magnetTreeCloseTimerRef.current)
+        magnetTreeCloseTimerRef.current = null
+      }
+      setMagnetTreeOpen(true)
+    }
+    const scheduleClose = () => {
+      if (magnetTreeCloseTimerRef.current) {
+        clearTimeout(magnetTreeCloseTimerRef.current)
+      }
+      magnetTreeCloseTimerRef.current = setTimeout(() => {
+        setMagnetTreeOpen(false)
+        magnetTreeCloseTimerRef.current = null
+      }, 120)
+    }
+
+    return (
+      <Popover open={magnetTreeOpen} onOpenChange={setMagnetTreeOpen}>
+        <PopoverTrigger
+          render={
+            <Button
+              className="size-5 rounded-sm text-fg-dim hover:text-jade [&_svg]:size-3"
+              onClick={(event) => event.stopPropagation()}
+              onMouseEnter={keepOpen}
+              onMouseLeave={scheduleClose}
+              size="icon-xs"
+              title="查看文件目录"
+              type="button"
+              variant="ghost"
+            />
+          }
+        >
+          <FolderTree />
+          <span className="sr-only">查看文件目录</span>
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          className="w-[min(92vw,32rem)] gap-0 overflow-hidden border-line bg-ink-850 p-0 text-fg"
+          onClick={(event) => event.stopPropagation()}
+          onMouseEnter={keepOpen}
+          onMouseLeave={scheduleClose}
+          sideOffset={6}
+        >
+          <div className="flex h-9 items-center justify-between border-b border-line px-3">
+            <PopoverTitle className="mono text-[10px] font-normal uppercase tracking-[.12em] text-fg-dim">
+              文件目录
+            </PopoverTitle>
+            {typeof resource.metadata?.data?.fileCount === "number" && (
+              <Badge className="h-4 px-1.5 text-[9px] font-normal" variant="secondary">
+                {resource.metadata.data.fileCount} files
+              </Badge>
+            )}
+          </div>
+          <div className="max-h-[calc(70vh-2.25rem)] overflow-y-auto overscroll-contain p-1">
+            <ResourceFileTree tree={magnetFileTree} />
+          </div>
+        </PopoverContent>
+      </Popover>
+    )
+  }
+
   function renderResourceActions(className?: string) {
     if (
       showSelectionControl ||
-      (!canDeleteResource && !canEditResource && !isVaultOwner)
+      (
+        downloadableMedia.length === 0 &&
+        !canDeleteResource &&
+        !canEditResource &&
+        !isVaultOwner
+      )
     ) {
       return null
     }
 
     return (
       <ButtonGroup className={cn("h-6 items-center rounded-md border border-line-soft bg-ink-850/70 px-1", className)}>
-        {canDeleteResource && (
+        {downloadableMedia.length > 0 && (
+          <Button
+            className="size-5 rounded-sm text-fg-dim hover:text-jade [&_svg]:size-3"
+            disabled={disabled}
+            onClick={(event) => {
+              event.stopPropagation()
+              handleDownloadAllMedia()
+            }}
+            size="icon-xs"
+            title="下载全部媒体"
+            type="button"
+            variant="ghost"
+          >
+            <Download />
+            <span className="sr-only">下载全部媒体</span>
+          </Button>
+        )}
+        {canDeleteResource && resource.metadata?.provider !== LOCAL_MEDIA_PROVIDER && (
           <Button
             className="size-5 rounded-sm text-fg-dim hover:text-jade [&_svg]:size-3"
             disabled={disabled || isResolvingMetadata}
@@ -380,6 +552,7 @@ export function ResourceCard({
               render={
               <Button
                 className="size-5 rounded-sm text-fg-dim hover:text-rose [&_svg]:size-3"
+                onClick={(event) => event.stopPropagation()}
                 size="icon-xs"
                 variant="ghost"
                 type="button"
@@ -450,7 +623,7 @@ export function ResourceCard({
       return (
         <button
           className={cn(
-            "relative grid size-[30px] shrink-0 cursor-grab place-items-center overflow-hidden rounded-input border border-line bg-ink-700 transition hover:border-ink-600 hover:bg-ink-750 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-60",
+            "group/resource-handle relative grid size-[30px] shrink-0 cursor-grab place-items-center overflow-hidden rounded-input  hover:border-ink-600 hover:border hover:bg-ink-750 border-line transition active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-60",
             className
           )}
           disabled={disabled}
@@ -458,12 +631,12 @@ export function ResourceCard({
           type="button"
         >
           <ResourceIcon
-            className="transition group-hover/resource-card:opacity-0"
+            className="transition group-hover/resource-handle:opacity-0"
             iconName={iconName}
             iconSrc={iconSrc}
             label={iconLabel}
           />
-          <GripVertical className="absolute size-4 text-fg-faint opacity-0 transition group-hover/resource-card:opacity-100" />
+          <GripVertical className="absolute size-4 text-fg-faint opacity-0 transition group-hover/resource-handle:opacity-100" />
           <span className="sr-only">拖动排序资源</span>
         </button>
       )
@@ -481,7 +654,7 @@ export function ResourceCard({
     )
   }
 
-  function renderExternalLinkAction(className?: string) {
+  function renderExternalLinkAction(url: string, className?: string) {
     return (
       <AlertDialog open={externalOpen} onOpenChange={setExternalOpen}>
         <AlertDialogTrigger
@@ -507,14 +680,14 @@ export function ResourceCard({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="mono max-w-full truncate rounded-input border border-line bg-ink-900 px-2.5 py-2 text-[11px] text-fg-dim">
-            {displayUrl}
+            {url}
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 setExternalOpen(false)
-                window.open(displayUrl, "_blank", "noopener,noreferrer")
+                window.open(url, "_blank", "noopener,noreferrer")
               }}
             >
               继续打开
@@ -525,10 +698,179 @@ export function ResourceCard({
     )
   }
 
+  function renderRefererLinkAction(className?: string) {
+    if (!refererUrl || isLocalMediaResource) return null
+
+    return (
+      <a
+        className={cn(
+          "inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-fg-dim transition hover:bg-ink-700 hover:text-jade [&_svg]:size-3",
+          className
+        )}
+        href={refererUrl}
+        onClick={(event) => event.stopPropagation()}
+        rel="noreferrer"
+        target="_blank"
+        title="打开 Referer"
+      >
+        <LinkIcon />
+        <span className="sr-only">打开 Referer</span>
+      </a>
+    )
+  }
+
+  if (specializedPreview) {
+    const specializedActions = showSelectionControl ? undefined : (
+      <ResourceCardActions
+        comment={localCommentDraft}
+        disabled={disabled}
+        isChecked={checked}
+        isReadLater={isWatchedLater}
+        isStarred={resource.isStarred}
+        onClearAnnotation={showAnnotationActions ? handleClearAnnotation : undefined}
+        onRatingChange={showAnnotationActions ? (value) =>
+          handleUpdateAnnotation({ rating: value > 0 ? value : null }) : undefined}
+        onSaveComment={showAnnotationActions ? (comment) => {
+          setLocalCommentDraft(comment)
+          handleUpdateAnnotation({ comment })
+        } : undefined}
+        onToggleChecked={showAnnotationActions ? () =>
+          handleUpdateAnnotation({ checked: !checked }) : undefined}
+        onToggleReadLater={showReadLaterAction ? handleToggleWatchLater : undefined}
+        onToggleStar={showStarAction ? () => {
+          if (!isSignedIn) {
+            toast.info("请先登录后再收藏资源。")
+            return
+          }
+          onToggleStar()
+        } : undefined}
+        rating={rating}
+        section="annotation"
+      />
+    )
+    const specializedFooterActions =
+      showSelectionControl ||
+      (
+        downloadableMedia.length === 0 &&
+        !canDeleteResource &&
+        !canEditResource &&
+        !isVaultOwner
+      )
+        ? undefined
+        : (
+          <ResourceCardActions
+            disabled={disabled}
+            onDelete={canDeleteResource ? () => setSpecialDeleteOpen(true) : undefined}
+            onDownload={downloadableMedia.length > 0 ? handleDownloadAllMedia : undefined}
+            onEdit={canEditResource ? onOpenDetails : undefined}
+            onMove={isVaultOwner ? () => {
+              setTransferOpen(true)
+              if (transferTargets.length === 0) {
+                void onLoadTransferTargets().catch(() => undefined)
+              }
+            } : undefined}
+            onRetryMetadata={
+              canDeleteResource &&
+              resource.metadata?.provider !== LOCAL_MEDIA_PROVIDER &&
+              !isResolvingMetadata
+                ? onResolveMetadata
+                : undefined
+            }
+            section="management"
+          />
+        )
+
+    return (
+      <>
+        <ResourcePreviewCard
+          actions={specializedActions}
+          annotation={
+            !showSelectionControl && showAnnotationActions && !commentEditorOpen
+              ? localCommentDraft || undefined
+              : undefined
+          }
+          articleId={`resource-${resource.id}`}
+          articleRef={ref}
+          className={cn(
+            "group/resource-card",
+            isResolvingMetadata && "border-line bg-ink-800/80",
+            isActive && "border-jade hover:border-jade",
+            className
+          )}
+          commentAction={renderCommentAction()}
+          commentEditor={renderCommentEditor()}
+          descriptionContent={
+            aiSummary && aiSummary.status !== "failed"
+              ? <ResourceDescription aiSummary={aiSummary} description={description} />
+              : undefined
+          }
+          footerActions={specializedFooterActions}
+          leadingControl={
+            showSelectionControl || isVaultOwner
+              ? renderLeadingControl(
+                  "size-5 rounded-[5px] [&_img]:size-3.5 [&_span.mono]:text-[7px]"
+                )
+              : undefined
+          }
+          mediaVisible={mediaVisible}
+          onActivate={() => {
+            if (showSelectionControl) {
+              onToggleSelected?.(!isSelected)
+              return
+            }
+            onActivate()
+          }}
+          preview={specializedPreview}
+          state={specializedPreviewState}
+          viewMode={viewMode}
+        />
+
+        <AlertDialog open={specialDeleteOpen} onOpenChange={setSpecialDeleteOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>删除这个 resource?</AlertDialogTitle>
+              <AlertDialogDescription>
+                此操作会归档该资源，并从当前列表中移除。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" onClick={onDelete}>
+                删除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {isVaultOwner && (
+          <ResourceTransferDialog
+            disabled={disabled}
+            focusedSpaceId={transferFocusSpaceId}
+            onCreateSpace={onCreateTransferTargetSpace}
+            onLoadTargets={onLoadTransferTargets}
+            onOpenChange={setTransferOpen}
+            onTransfer={async (input) => {
+              setTransferOpen(false)
+              await onTransferResource({
+                ...input,
+                resourceId: resource.id,
+              })
+            }}
+            open={transferOpen}
+            resourceTitle={title}
+            showTrigger={false}
+            sourceSpaceId={resource.spaceId}
+            targets={transferTargets}
+          />
+        )}
+      </>
+    )
+  }
+
   return (
     <article
       className={cn(
-        "group/resource-card flex min-w-0 flex-col gap-1 rounded-card border border-line bg-ink-800 px-3.5 py-3 transition hover:border-ink-700 hover:bg-ink-750",
+        "group/resource-card mono flex min-w-0 flex-col overflow-hidden rounded-card border border-line bg-ink-800 text-xs transition hover:border-ink-700 hover:bg-ink-750",
         isResolvingMetadata && "border-line bg-ink-800/80",
         isActive && "border-jade hover:border-jade",
         className
@@ -543,18 +885,42 @@ export function ResourceCard({
       }}
       ref={ref}
     >
-      {isMasonryView ? (
-        <div className={cn("relative min-w-0", hasMetadataState && "pr-14")}>
-          <div className="absolute left-0 top-0">
-            {renderLeadingControl("size-5 rounded-[5px] [&_img]:size-3.5 [&_span.mono]:text-[8px]")}
-          </div>
+      <header className="flex min-w-0 items-center gap-1.5 px-3 py-1.5 text-[10px]">
+        <div className="flex min-w-0 items-center gap-1.5">
+          {renderLeadingControl(
+            "size-5 rounded-[5px] [&_img]:size-3.5 [&_span.mono]:text-[7px]"
+          )}
+          <Badge className="mono h-4 px-1.5 text-[9px] font-normal" variant="secondary">
+            {resourceTypeLabel}
+          </Badge>
+        </div>
+        <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1">
+          <ResourceMetadataState
+            className="mono h-4 shrink-0 px-1.5 text-[9px] font-normal"
+            label={metadataState.label}
+            status={resource.metadataStatus}
+          />
+          {renderCheckedAction()}
+          {renderAnnotationActions("h-5")}
+        </div>
+      </header>
+
+      <Separator className="h-px w-full shrink-0 bg-line" />
+
+      <section className="flex min-w-0 flex-col gap-1.5 px-3 py-2.5">
+        <div className="flex min-w-0 items-start gap-2">
           <TooltipProvider>
             <Tooltip>
               {canEditResource && !showSelectionControl ? (
                 <TooltipTrigger
                   render={
                   <button
-                    className="block min-w-0 w-full whitespace-normal break-words text-left text-sm font-semibold leading-[22px] text-fg [text-indent:28px] hover:text-jade-bright"
+                    className={cn(
+                      "min-w-0 flex-1 text-left font-semibold text-fg hover:text-jade-bright",
+                      isMasonryView
+                        ? "whitespace-normal break-words text-xs leading-5"
+                        : "truncate text-xs"
+                    )}
                     onClick={(event) => {
                       event.stopPropagation()
                       onOpenDetails()
@@ -568,48 +934,15 @@ export function ResourceCard({
               ) : (
                 <TooltipTrigger
                   render={
-                  <span className="block min-w-0 w-full whitespace-normal break-words text-left text-sm font-semibold leading-[22px] text-fg [text-indent:28px]">
-                    {title}
-                  </span>
-                  }
-                />
-              )}
-              <TooltipContent className="max-w-[360px] break-words" side="top" sideOffset={6}>
-                {title}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <ResourceMetadataState
-            className="absolute right-0 top-0"
-            label={metadataState.label}
-            status={resource.metadataStatus}
-          />
-        </div>
-      ) : (
-        <div className="flex min-w-0 items-center gap-2">
-          {renderLeadingControl()}
-          <TooltipProvider>
-            <Tooltip>
-              {canEditResource && !showSelectionControl ? (
-                <TooltipTrigger
-                  render={
-                  <button
-                    className="min-w-0 flex-1 truncate text-left text-[14.5px] font-semibold text-fg hover:text-jade-bright"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onOpenDetails()
-                    }}
-                    type="button"
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 text-left font-semibold text-fg",
+                      isMasonryView
+                        ? "whitespace-normal break-words text-xs leading-5"
+                        : "truncate text-xs"
+                    )}
                   >
                     {title}
-                  </button>
-                  }
-                />
-              ) : (
-                <TooltipTrigger
-                  render={
-                  <span className="min-w-0 flex-1 truncate text-left text-[14.5px] font-semibold text-fg">
-                    {title}
                   </span>
                   }
                 />
@@ -619,191 +952,113 @@ export function ResourceCard({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <ResourceMetadataState
-            className="shrink-0"
-            label={metadataState.label}
-            status={resource.metadataStatus}
-          />
-          {!showSelectionControl && (
-            <div className="flex shrink-0 items-center gap-2">
-              {renderAnnotationActions()}
-              {renderCheckedAction()}
-            </div>
-          )}
         </div>
-      )}
 
-      {isMasonryView && !showSelectionControl && (
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-          {renderAnnotationActions("shrink-0")}
-          <div className="ml-auto flex shrink-0 items-center gap-1.5">
-            {renderCheckedAction()}
-            {renderResourceActions("shrink-0")}
-          </div>
-        </div>
-      )}
-
-      {isMasonryView ? (
-        <div className="flex min-w-0 flex-col gap-1.5">
-          {pills.length > 0 && (
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              {pills.map((pill) => (
-                <ResourceMetadataPill
-                  key={pill.key}
-                  onCopy={copyPillValue}
-                  pill={pill}
-                />
-              ))}
-            </div>
-          )}
+        {resourceLinkUrl && (
           <div className="flex min-w-0 items-center gap-1.5">
             <button
               className="mono min-w-0 flex-1 truncate rounded-input border border-line bg-ink-900 px-2 py-1 text-left text-[10.5px] text-fg-muted transition hover:text-jade hover:underline"
-              onClick={() => void copyDisplayUrl()}
+              onClick={(event) => {
+                event.stopPropagation()
+                void copyResourceLink()
+              }}
               title="点击复制链接"
               type="button"
             >
-              {displayUrl}
+              {resourceLinkUrl}
             </button>
-            {renderExternalLinkAction("size-6 rounded-input border border-line-soft bg-ink-850 hover:border-jade-dim hover:bg-ink-800")}
+            {renderExternalLinkAction(
+              resourceLinkUrl,
+              isMasonryView
+                ? "size-6 rounded-input border border-line-soft bg-ink-850 hover:border-jade-dim hover:bg-ink-800"
+                : undefined
+            )}
+            {renderRefererLinkAction(
+              isMasonryView
+                ? "size-6 rounded-input border border-line-soft bg-ink-850 hover:border-jade-dim hover:bg-ink-800"
+                : undefined
+            )}
           </div>
-        </div>
-      ) : (
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-            {pills.map((pill) => (
+        )}
+
+        <ResourceDescription aiSummary={aiSummary} description={description} />
+
+        {isResolvingMetadata && (
+          <div className="overflow-hidden rounded-input border border-line-soft bg-ink-850/45">
+            <div className="h-0.5 w-full animate-[nv-progress_1.8s_ease-in-out_infinite] bg-linear-to-r from-transparent via-jade-dim to-transparent" />
+          </div>
+        )}
+
+        {mediaVisible && media.length > 0 && !isResolvingMetadata && (
+          <ResourceMediaGallery
+            media={media}
+            title={title}
+            variant={isMasonryView ? "carousel" : "scroll"}
+          />
+        )}
+
+        {detailPills.length > 0 && (
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            {detailPills.map((pill) => (
               <ResourceMetadataPill
                 key={pill.key}
                 onCopy={copyPillValue}
                 pill={pill}
               />
             ))}
-            <button
-              className="mono min-w-0 max-w-full truncate rounded-input border border-line bg-ink-900 px-2 py-1 text-left text-[10.5px] text-fg-muted transition hover:text-jade hover:underline md:max-w-[520px]"
-              onClick={() => void copyDisplayUrl()}
-              title="点击复制链接"
-              type="button"
-            >
-              {displayUrl}
-            </button>
-            {renderExternalLinkAction()}
-            {renderResourceActions("ml-auto hidden group-hover/resource-card:inline-flex focus-within:inline-flex")}
           </div>
-        </div>
-      )}
+        )}
+      </section>
 
-      {description && (
-        <div
-          className={cn(
-            "mt-1 min-w-0 cursor-pointer rounded-input border border-line-soft bg-ink-850/45 px-2 py-1 text-left outline-none transition hover:border-line hover:bg-ink-850 focus-visible:border-jade-dim focus-visible:shadow-[0_0_0_3px_var(--jade-glow)]",
-            descriptionOpen && "border-line bg-ink-850"
-          )}
-          onClick={(event) => {
-            if (event.target instanceof Element && event.target.closest("a,button")) return
-            setDescriptionOpen((value) => !value)
-          }}
-          onKeyDown={(event) => {
-            if (event.target instanceof Element && event.target.closest("button")) return
-            if (event.key !== "Enter" && event.key !== " ") return
-            event.preventDefault()
-            setDescriptionOpen((value) => !value)
-          }}
-          role="button"
-          tabIndex={0}
-        >
-          {!descriptionOpen ? (
-            <span className="block truncate text-xs leading-5 text-fg-dim">
-              {descriptionStartsWithImage || !collapsedDescriptionText
-                ? "展开描述"
-                : collapsedDescriptionText}
-            </span>
-          ) : (
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <div className="flex justify-end">
-                <Button
-                  className="h-6 rounded-sm px-1.5 text-[11px] text-fg-dim hover:text-jade [&_svg]:size-3"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    void copyDescription()
-                  }}
-                  size="xs"
-                  type="button"
-                  variant="ghost"
-                >
-                  <Copy data-icon="inline-start" />
-                  复制
-                </Button>
-              </div>
-              <MarkdownContent
-                className="min-w-0 gap-1.5 text-fg-muted"
-                value={description}
-              />
+      {!showSelectionControl && (
+        <>
+          <Separator className="h-px w-full shrink-0 bg-line" />
+          <footer className="flex min-w-0 flex-col">
+            <div className="flex min-w-0 items-center justify-between gap-2 px-3 py-1.5 text-[10px]">
+              {showAnnotationActions ? (
+                renderCommentAction()
+              ) : (
+                <span />
+              )}
+              {renderResourceActions("h-5 shrink-0")}
             </div>
-          )}
-        </div>
-      )}
 
-      {isResolvingMetadata && (
-        <div className="mt-1 overflow-hidden rounded-input border border-line-soft bg-ink-850/45">
-          <div className="h-0.5 w-full animate-[nv-progress_1.8s_ease-in-out_infinite] bg-linear-to-r from-transparent via-jade-dim to-transparent" />
-        </div>
-      )}
+            {showAnnotationActions && (annotation?.comment || commentEditorOpen) && (
+              <Separator className="h-px w-full shrink-0 bg-line" />
+            )}
 
-      {mediaVisible && media.length > 0 && !isResolvingMetadata && (
-        <ResourceMediaGallery
-          media={media}
-          title={title}
-          variant={isMasonryView ? "carousel" : "scroll"}
-        />
-      )}
+            {showAnnotationActions && annotation?.comment && !commentEditorOpen && (
+              <div className="px-3.5 py-3" onClick={(event) => event.stopPropagation()}>
+                <div className="min-w-0 rounded-input border border-line-soft bg-ink-850/35 px-2 py-1 text-xs leading-5 text-fg-muted">
+                  <span className="mono mr-2 text-[10px] uppercase tracking-[.12em] text-fg-faint">
+                    COMMENT
+                  </span>
+                  {annotation.comment}
+                </div>
+              </div>
+            )}
 
-      {showAnnotationActions && annotation?.comment && (
-        <div
-          className="mt-1 min-w-0 rounded-input border border-line-soft bg-ink-850/35 px-2 py-1 text-xs leading-5 text-fg-muted"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <span className="mono mr-2 text-[10px] uppercase tracking-[.12em] text-fg-faint">
-            COMMENT
-          </span>
-          {annotation.comment}
-        </div>
+            {showAnnotationActions && commentEditorOpen && (
+              <div className="px-3.5 py-3" onClick={(event) => event.stopPropagation()}>
+                {renderCommentEditor()}
+              </div>
+            )}
+          </footer>
+        </>
       )}
     </article>
   )
 }
 
-function startsWithMarkdownImage(value: string) {
-  const firstLine = value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean)
+function getHttpUrl(value?: string | null) {
+  if (!value) return null
 
-  if (!firstLine) return false
-
-  return /^!\[[^\]]*]\([^)]+\)/.test(firstLine) || /^<img\b/i.test(firstLine)
-}
-
-function getCollapsedDescriptionText(value: string) {
-  const firstLine = value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean)
-
-  if (!firstLine) return ""
-
-  return firstLine
-    .replace(/<img\b[^>]*>/gi, "")
-    .replace(/!\[[^\]]*]\([^)]+\)/g, "")
-    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/^#{1,6}\s+/, "")
-    .replace(/^>\s?/, "")
-    .replace(/^[-*+]\s+/, "")
-    .replace(/^\d+[.)]\s+/, "")
-    .replace(/<[^>]+>/g, "")
-    .replace(/[*_~]+/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
+  try {
+    const url = new URL(value)
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null
+  } catch {
+    return null
+  }
 }
 
 function ResourceLocalRating({
@@ -880,7 +1135,7 @@ function LocalAnnotationPopover({
           type="button"
           variant="ghost"
         >
-          <Edit3 />
+          <MessageSquare />
         </Button>
         }
       />
@@ -941,36 +1196,52 @@ function ResourceMetadataPill({
 }) {
   if (pill.kind === "status") {
     return (
-      <Pill className={metadataPillClassName} title={pill.title} variant="outline">
-        <PillStatus className="border-r-0 pr-0">
-          <PillIndicator variant={getPillIndicatorVariant(pill.status)} />
-          <span>{pill.label}</span>
-        </PillStatus>
-      </Pill>
+      <Badge
+        className="mono h-4 px-1.5 text-[9px] font-normal"
+        title={pill.title}
+        variant="outline"
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            "size-1.5 rounded-full",
+            pill.status === "online" && "bg-success",
+            pill.status === "offline" && "bg-destructive",
+            pill.status === "degraded" && "bg-primary",
+            pill.status === "maintenance" && "bg-muted-foreground"
+          )}
+        />
+        {pill.label}
+      </Badge>
     )
   }
 
   if (pill.kind === "copy") {
     return (
-      <Pill className={metadataPillClassName} variant="outline">
+      <Badge className="mono h-4 px-1.5 text-[9px] font-normal" variant="outline">
         <span>{pill.label}</span>
-        <span className="text-fg-muted">{pill.value}</span>
-        <button
+        <span className="text-muted-foreground">{pill.value}</span>
+        <Button
           aria-label={pill.ariaLabel}
-          className="-mr-0.5 inline-flex size-3.5 shrink-0 items-center justify-center rounded-[3px] text-fg-dim transition hover:bg-ink-700 hover:text-jade [&_svg]:size-2"
-          onClick={() => onCopy(pill.value)}
+          className="size-4 shrink-0"
+          onClick={(event) => {
+            event.stopPropagation()
+            onCopy(pill.value)
+          }}
+          size="icon-xs"
           type="button"
+          variant="ghost"
         >
           <Copy />
-        </button>
-      </Pill>
+        </Button>
+      </Badge>
     )
   }
 
   return (
-    <Pill className={metadataPillClassName} variant="outline">
+    <Badge className="mono h-4 px-1.5 text-[9px] font-normal" variant="outline">
       {pill.label}
-    </Pill>
+    </Badge>
   )
 }
 
@@ -988,22 +1259,18 @@ function ResourceMetadataState({
   const resolving = status === "pending" || status === "processing"
 
   return (
-    <span
-      className={cn(
-        "mono inline-flex h-5 items-center gap-1 rounded-chip border px-1.5 text-[10px]",
-        resolving && "border-sky/25 bg-sky/10 text-sky",
-        status === "failed" && "border-rose/25 bg-rose/10 text-rose",
-        className
-      )}
+    <Badge
+      className={className}
       title={label}
+      variant={status === "failed" ? "destructive" : "outline"}
     >
       {resolving ? (
-        <LoaderCircle className="size-3 animate-spin" />
+        <LoaderCircle className="animate-spin" />
       ) : (
         <span className="size-1.5 rounded-full bg-current" />
       )}
-      <span>{label}</span>
-    </span>
+      {label}
+    </Badge>
   )
 }
 
@@ -1047,6 +1314,7 @@ export function ResourceTransferDialog({
   onTransfer,
   open,
   resourceTitle,
+  showTrigger = true,
   showTriggerLabel = false,
   sourceSpaceId,
   targets,
@@ -1066,6 +1334,7 @@ export function ResourceTransferDialog({
   }) => Promise<void>
   open: boolean
   resourceTitle: string
+  showTrigger?: boolean
   showTriggerLabel?: boolean
   sourceSpaceId: string
   targets: ResourceTransferTargetVault[]
@@ -1133,23 +1402,25 @@ export function ResourceTransferDialog({
 
   return (
     <Dialog open={open} onOpenChange={(value) => void handleOpenChange(value)}>
-      <Button
-        className={cn(
-          !showTriggerLabel && "size-5 rounded-sm text-fg-dim hover:text-jade [&_svg]:size-3",
-          triggerClassName
-        )}
-        disabled={disabled}
-        onClick={(event) => {
-          event.stopPropagation()
-          void handleOpenChange(true)
-        }}
-        size={triggerSize}
-        type="button"
-        variant="ghost"
-      >
-        <FolderInput />
-        {showTriggerLabel ? <span>{triggerLabel}</span> : <span className="sr-only">{triggerLabel}</span>}
-      </Button>
+      {showTrigger && (
+        <Button
+          className={cn(
+            !showTriggerLabel && "size-5 rounded-sm text-fg-dim hover:text-jade [&_svg]:size-3",
+            triggerClassName
+          )}
+          disabled={disabled}
+          onClick={(event) => {
+            event.stopPropagation()
+            void handleOpenChange(true)
+          }}
+          size={triggerSize}
+          type="button"
+          variant="ghost"
+        >
+          <FolderInput />
+          {showTriggerLabel ? <span>{triggerLabel}</span> : <span className="sr-only">{triggerLabel}</span>}
+        </Button>
+      )}
       <DialogContent className="max-h-[min(680px,calc(100dvh-2rem))] overflow-hidden border-line bg-ink-850 p-0 gap-0 text-fg sm:max-w-[520px]">
         <DialogHeader className="min-w-0 border-b border-line px-4 py-3">
           <DialogTitle className="font-display">移动或复制</DialogTitle>
@@ -1295,16 +1566,6 @@ export function ResourceTransferDialog({
   )
 }
 
-const metadataPillClassName =
-  "mono h-5 gap-1 rounded-chip border-line bg-ink-900 px-1.5 py-0 text-[10px] font-normal text-fg-dim shadow-none [&_[data-slot=button]]:text-fg-dim"
-
-function getPillIndicatorVariant(status: Extract<ResourcePillItem, { kind: "status" }>["status"]) {
-  if (status === "online") return "success"
-  if (status === "offline") return "error"
-  if (status === "degraded") return "warning"
-  return "info"
-}
-
 function ResourceIcon({
   className,
   iconName,
@@ -1317,6 +1578,10 @@ function ResourceIcon({
   label?: string
 }) {
   const [failed, setFailed] = useState(false)
+
+  if (iconName === RESOURCE_ICON_MAP.local_media) {
+    return <HardDriveUpload aria-hidden="true" className={cn("size-[18px] text-fg-dim", className)} />
+  }
 
   if (iconSrc && !failed) {
     return (
@@ -1338,7 +1603,11 @@ function ResourceIcon({
     <img
       alt=""
       aria-hidden="true"
-      className={cn("size-[18px] object-contain", className)}
+      className={cn(
+        "size-[18px] object-contain",
+        iconName === RESOURCE_ICON_MAP.github && "brightness-0 invert",
+        className,
+      )}
       src={`/icons/${iconName}`}
     />
   )
@@ -1347,13 +1616,22 @@ function ResourceIcon({
 type ResourceIconName = (typeof RESOURCE_ICON_MAP)[keyof typeof RESOURCE_ICON_MAP]
 
 function getResourceIconName(resource: Resource): ResourceIconName | undefined {
+  if (resource.type === "local_media") return RESOURCE_ICON_MAP.local_media
+  if (resource.type === "douyin") return RESOURCE_ICON_MAP.douyin
   if (resource.type === "magnet") return RESOURCE_ICON_MAP.magnet
   if (resource.type === "twitter") return RESOURCE_ICON_MAP.twitter
   if (resource.type === "telegram") return RESOURCE_ICON_MAP.telegram
+  if (resource.type === "wechat_mp") return RESOURCE_ICON_MAP.wechat_mp
   if (resource.type === "baidu_pan") return RESOURCE_ICON_MAP.baidu_pan
   if (resource.type === "quark_pan") return RESOURCE_ICON_MAP.quark_pan
+  if (
+    resource.metadata?.data?.preview?.kind?.startsWith("github_") ||
+    parseGitHubLink(resource.url ?? "")
+  ) {
+    return RESOURCE_ICON_MAP.github
+  }
 
-  const protocol = getResourceProtocol(resource.url)
+  const protocol = getResourceProtocol(resource.url ?? "")
   if (protocol === "ed2k") return RESOURCE_ICON_MAP.ed2k
   if (protocol === "thunder") return RESOURCE_ICON_MAP.thunder
 
@@ -1366,4 +1644,122 @@ function getResourceProtocol(url: string) {
   if (value.startsWith("ftp://")) return "ftp"
   if (value.startsWith("thunder://")) return "thunder"
   return undefined
+}
+
+type ResourceMediaDownload = {
+  fileName: string
+  url: string
+}
+
+function getDownloadableResourceMedia(resource: Resource): ResourceMediaDownload[] {
+  const media = resource.metadata?.data?.media
+  if (!Array.isArray(media)) return []
+
+  const seenUrls = new Set<string>()
+  return (media as unknown[]).flatMap((value, index) => {
+    if (!value || typeof value !== "object") return []
+    const item = value as Record<string, unknown>
+    const url = getMediaDownloadUrl(item)
+    if (!url || seenUrls.has(url)) return []
+    seenUrls.add(url)
+
+    return [{
+      fileName: getMediaDownloadFileName(resource.title, item, url, index),
+      url: `/api/v1/resources/${encodeURIComponent(resource.id)}/media/${index}/download`,
+    }]
+  })
+}
+
+function getMediaDownloadUrl(item: Record<string, unknown>) {
+  const candidates = [item.url, item.thumbnailUrl]
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string" || !candidate.trim()) continue
+    const url = candidate.trim()
+    try {
+      const parsed = new URL(url, "https://nexus-vault.local")
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") return url
+    } catch {
+      continue
+    }
+  }
+  return undefined
+}
+
+function getMediaDownloadFileName(
+  resourceTitle: string,
+  item: Record<string, unknown>,
+  url: string,
+  index: number,
+) {
+  const persistedName = typeof item.fileName === "string"
+    ? item.fileName.trim()
+    : ""
+  const urlName = getUrlFileName(url)
+  const extension = getMediaExtension(item)
+  const fallbackName = `${resourceTitle.trim() || "resource"}-${index + 1}${extension}`
+  const resolvedName = persistedName || urlName || fallbackName
+  const fileName = extension && !/\.[a-z0-9]{1,8}$/i.test(resolvedName)
+    ? `${resolvedName}${extension}`
+    : resolvedName
+  return sanitizeDownloadFileName(fileName)
+}
+
+function getUrlFileName(url: string) {
+  try {
+    const pathname = new URL(url, "https://nexus-vault.local").pathname
+    const value = pathname.split("/").filter(Boolean).at(-1)
+    return value ? decodeURIComponent(value) : ""
+  } catch {
+    return ""
+  }
+}
+
+function getMediaExtension(item: Record<string, unknown>) {
+  const mimeType = typeof item.mimeType === "string"
+    ? item.mimeType.toLowerCase()
+    : ""
+  const mimeExtensions: Record<string, string> = {
+    "audio/mpeg": ".mp3",
+    "audio/ogg": ".ogg",
+    "audio/wav": ".wav",
+    "image/avif": ".avif",
+    "image/gif": ".gif",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+  }
+  if (mimeExtensions[mimeType]) return mimeExtensions[mimeType]
+
+  if (item.kind === "image") return ".jpg"
+  if (item.kind === "video") return ".mp4"
+  if (item.kind === "audio") return ".mp3"
+  return ""
+}
+
+function sanitizeDownloadFileName(value: string) {
+  const sanitized = value
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+  return (sanitized || "media").slice(0, 180)
+}
+
+function triggerMediaDownload(item: ResourceMediaDownload) {
+  const anchor = document.createElement("a")
+  anchor.download = item.fileName
+  anchor.href = item.url
+  anchor.rel = "noreferrer"
+
+  try {
+    const target = new URL(item.url, window.location.href)
+    if (target.origin !== window.location.origin) anchor.target = "_blank"
+  } catch {
+    return
+  }
+
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
 }

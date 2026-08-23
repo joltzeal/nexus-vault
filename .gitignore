@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnpm-store/
 /.pnp
 .pnp.*
@@ -17,6 +18,7 @@
 # production
 /build
 /dist
+**/dist/
 
 # misc
 .DS_Store
@@ -44,3 +46,6 @@ yarn-error.log*
 
 
 !.dev.vars.example
+
+# Independently versioned metadata services repository
+/metadata-services/

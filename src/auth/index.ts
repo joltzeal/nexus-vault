@@ -25,7 +25,11 @@ type PostgresDb = ReturnType<typeof drizzlePostgres>;
 const BCRYPT_COST = 12;
 const MAX_PASSWORD_BYTES = 72;
 
-export function getAuthOptions(env: RuntimeEnv, db?: Db) {
+export function getAuthOptions(
+	env: RuntimeEnv,
+	db?: Db,
+	options: { skipCaptcha?: boolean } = {},
+) {
 	const turnstileSecret = env.TURNSTILE_SECRET_KEY?.trim();
 
 	return {
@@ -55,7 +59,7 @@ export function getAuthOptions(env: RuntimeEnv, db?: Db) {
 				},
 			},
 		},
-		...(turnstileSecret
+		...(turnstileSecret && !options.skipCaptcha
 			? {
 					plugins: [
 						captcha({
@@ -132,7 +136,10 @@ function isPostgresBcryptHash(hash: string) {
 	return /^\$2[aby]\$\d{2}\$/.test(hash);
 }
 
-export async function createAuthSession(envOverride?: RuntimeEnv) {
+export async function createAuthSession(
+	envOverride?: RuntimeEnv,
+	options: { skipCaptcha?: boolean } = {},
+) {
 	const env = (envOverride ?? process.env) as unknown as RuntimeEnv;
 	const database = await createDbSession(env);
 
@@ -151,7 +158,7 @@ export async function createAuthSession(envOverride?: RuntimeEnv) {
 						},
 					},
 				},
-				getAuthOptions(env, database.db),
+				getAuthOptions(env, database.db, options),
 			),
 		});
 
