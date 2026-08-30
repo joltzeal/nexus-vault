@@ -35,3 +35,4 @@ metadata-services/
 TODO.md
 # Native iOS client is checked in under ios/
 docs/
+ios/*

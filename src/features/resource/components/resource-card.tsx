@@ -141,7 +141,6 @@ export function ResourceCard({
   mediaVisible,
   onCreateTransferTargetSpace,
   onDelete,
-  onClearAnnotation,
   onLoadTransferTargets,
   onOpenDetails,
   onResolveMetadata,
@@ -174,7 +173,6 @@ export function ResourceCard({
   /** Legacy activation callback retained for list consumers; title controls details now. */
   onActivate?: () => void;
   onDelete: () => void;
-  onClearAnnotation?: (resourceId: string) => void;
   onLoadTransferTargets: () => Promise<void>;
   onOpenDetails: () => void;
   onResolveMetadata?: () => void;
@@ -364,15 +362,6 @@ export function ResourceCard({
     onUpdateAnnotation?.(resource.id, patch);
   }
 
-  function handleClearAnnotation() {
-    if (!isSignedIn) {
-      toast.info("Sign in to edit resource notes.");
-      return;
-    }
-    setLocalCommentDraft("");
-    onClearAnnotation?.(resource.id);
-  }
-
   function renderCommentAction() {
     if (!showAnnotationActions || showSelectionControl) return null;
 
@@ -415,26 +404,14 @@ export function ResourceCard({
 
     return (
       <ResourceCardActions
-        comment={localCommentDraft}
         disabled={disabled || downloadingMedia}
         isChecked={checked}
         isReadLater={isWatchedLater}
         isStarred={resource.isStarred}
-        onClearAnnotation={
-          showAnnotationActions ? handleClearAnnotation : undefined
-        }
         onRatingChange={
           showAnnotationActions
             ? (value) =>
                 handleUpdateAnnotation({ rating: value > 0 ? value : null })
-            : undefined
-        }
-        onSaveComment={
-          showAnnotationActions
-            ? (comment) => {
-                setLocalCommentDraft(comment);
-                handleUpdateAnnotation({ comment });
-              }
             : undefined
         }
         onToggleChecked={
@@ -630,26 +607,22 @@ export function ResourceCard({
       <Popover open={magnetTreeOpen} onOpenChange={setMagnetTreeOpen}>
         <PopoverTrigger
           render={
-            <BaseButton
+            <Button
               aria-label="View file tree"
-              className="!size-5 rounded-none border-0 bg-transparent p-0 text-[color:var(--andromeda-text-secondary)] ![backdrop-filter:none] ![filter:none] hover:bg-[color:var(--andromeda-surface-hover)] hover:text-[color:var(--andromeda-text-primary)] [transform:none!important] [&_svg]:size-3"
+              className="size-6 !rounded-sm bg-secondary text-secondary-foreground hover:bg-muted [&_svg]:size-3.5"
+              disabled={disabled}
               onClick={(event: MouseEvent) => event.stopPropagation()}
               onMouseEnter={openMagnetTreeOnHover}
               onMouseLeave={closeMagnetTreeOnHover}
-              size="sm"
-              style={{
-                backdropFilter: "none",
-                filter: "none",
-                WebkitBackdropFilter: "none",
-              }}
+              size="icon-xs"
               title="View file tree"
               type="button"
               variant="ghost"
-            />
+            >
+              <FolderTree />
+            </Button>
           }
-        >
-          <FolderTree />
-        </PopoverTrigger>
+        />
         <PopoverContent
           className="w-[min(92vw,32rem)] border-border bg-card p-0 text-foreground"
           onClick={(event) => event.stopPropagation()}

@@ -208,7 +208,7 @@ async function renameLegacyAuthColumns(
 	const hasProviderId = accountColumns.has("provider_id") || accountColumns.has("providerId");
 	if (!hasIssuer && hasProviderId) {
 		statements.push('ALTER TABLE "account" ADD COLUMN "issuer" text');
-		statements.push('UPDATE "account" SET "issuer" = "provider_id" WHERE "issuer" IS NULL');
+		statements.push('UPDATE "account" SET "issuer" = \'local:credential\' WHERE "provider_id" = \'credential\' AND "issuer" IS NULL');
 		statements.push('ALTER TABLE "account" ALTER COLUMN "issuer" SET NOT NULL');
 	}
 

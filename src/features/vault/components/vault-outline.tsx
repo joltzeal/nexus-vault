@@ -18,6 +18,7 @@ import {
   DrawerTitle as DrawerTitlePrimitive,
 } from "@/components/aicanvas/andromeda/components/Drawer";
 import { IconButton as IconButtonPrimitive } from "@/components/aicanvas/andromeda/components/IconButton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { ResourceTransferDialog } from "@/features/resource/components";
 import type { ResourceTransferTargetVault } from "@/features/resource/types";
 import { SpaceIcon } from "@/features/resource/space-icon-picker";
@@ -221,14 +222,17 @@ function OutlinePanel({
           {spaces.length} SPACES
         </span>
         <IconButton
-          aria-label={allSpacesCollapsed ? "Expand all spaces" : "Collapse all spaces"}
+          aria-label={
+            allSpacesCollapsed ? "Expand all spaces" : "Collapse all spaces"
+          }
           icon={allSpacesCollapsed ? ChevronDown : ChevronRight}
           onClick={onToggleCollapsed}
           size="sm"
           variant="ghost"
         />
       </div>
-      <nav className="max-h-[44dvh] overflow-auto p-1.5">
+      <ScrollArea className="max-h-[44dvh]">
+        <nav className="px-1.5">
           {spaces.length ? (
             <div className="flex flex-col gap-px">
               {spaces.map((space) => {
@@ -272,7 +276,8 @@ function OutlinePanel({
               No spaces yet
             </div>
           )}
-      </nav>
+        </nav>
+      </ScrollArea>
       <div className="border-t border-border p-1.5">
         <div className="flex items-center gap-1.5">
           <div className="flex shrink-0 overflow-hidden border border-border">

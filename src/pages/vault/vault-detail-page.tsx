@@ -6,11 +6,7 @@ import { useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button as ButtonPrimitive } from "@/components/aicanvas/andromeda/components/Button";
 import {
   Dialog,
@@ -23,7 +19,10 @@ import {
   DialogTitle,
 } from "@/components/aicanvas/andromeda/components/Dialog";
 import { toast } from "@/components/ui/toast";
-import { CreateResourceDialog, ResourceSubmissionReviewDialog } from "@/features/resource/components";
+import {
+  CreateResourceDialog,
+  ResourceSubmissionReviewDialog,
+} from "@/features/resource/components";
 import {
   ResourceCard,
   ResourceDetailsSheet,
@@ -85,7 +84,7 @@ import {
   CreateVaultDialog,
   VaultHeader,
   VaultOutline,
-  VaultResourcePreviewRail,
+  // VaultResourcePreviewRail,
   VaultSettingsSheet,
   type SettingsTab,
 } from "@/features/vault/components";
@@ -99,7 +98,8 @@ const Button: any = ButtonPrimitive;
 export function VaultDetailPage() {
   const { vaultId } = useParams<{ vaultId: string }>();
   const navigate = useNavigate();
-  const { mediaVisible, onVaultStatusChange, refreshVaults } = useOutletContext<DashboardOutletContext>();
+  const { mediaVisible, onVaultStatusChange, refreshVaults } =
+    useOutletContext<DashboardOutletContext>();
   const [detail, setDetail] = useState<VaultDetail | null>(null);
   const detailRevisionRef = useRef(0);
   const [error, setError] = useState("");
@@ -113,13 +113,20 @@ export function VaultDetailPage() {
   const [share, setShare] = useState<VaultShare>({ visibility: "private" });
   const [sharePassword, setSharePassword] = useState("");
   const [collaborators, setCollaborators] = useState<VaultCollaborator[]>([]);
-  const [submissions, setSubmissions] = useState<import("@/features/resource/types").ResourceSubmissionItem[]>([]);
+  const [submissions, setSubmissions] = useState<
+    import("@/features/resource/types").ResourceSubmissionItem[]
+  >([]);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [resourceEditOpen, setResourceEditOpen] = useState(false);
   const [resourceToEdit, setResourceToEdit] = useState<Resource | undefined>();
   const [editSpaceOpen, setEditSpaceOpen] = useState(false);
-  const [spaceToEdit, setSpaceToEdit] = useState<{ id: string; name: string; description: string; icon: string } | null>(null);
+  const [spaceToEdit, setSpaceToEdit] = useState<{
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [vaultForm, setVaultForm] = useState<VaultForm>({
     cover: "",
@@ -143,7 +150,9 @@ export function VaultDetailPage() {
   const [collapsedSpaceIds, setCollapsedSpaceIds] = useState<Set<string>>(
     new Set(),
   );
-  const allSpacesCollapsed = Boolean(detail?.spaces.length) && detail?.spaces.every((space) => collapsedSpaceIds.has(space.id));
+  const allSpacesCollapsed =
+    Boolean(detail?.spaces.length) &&
+    detail?.spaces.every((space) => collapsedSpaceIds.has(space.id));
   const [viewMode, setViewMode] = useState<VaultViewMode>("list");
   const [selectionSpaceId, setSelectionSpaceId] = useState<string | null>(null);
   const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(
@@ -187,9 +196,15 @@ export function VaultDetailPage() {
   }, [loadDetail, vaultId]);
 
   useEffect(() => {
-    if (!detail || !detail.resources.some((resource) =>
-      resource.metadataStatus === "pending" || resource.metadataStatus === "processing"
-    )) return;
+    if (
+      !detail ||
+      !detail.resources.some(
+        (resource) =>
+          resource.metadataStatus === "pending" ||
+          resource.metadataStatus === "processing",
+      )
+    )
+      return;
 
     const timer = window.setInterval(() => {
       void loadDetail().catch(() => {
@@ -218,10 +233,18 @@ export function VaultDetailPage() {
     try {
       setSettingsLoading(true);
       if (tab === "share") setShare(await getVaultShare(vaultId));
-      if (tab === "members") setCollaborators(await listVaultCollaborators(vaultId));
-      if (tab === "submissions") setSubmissions(await listVaultSubmissions(vaultId));
+      if (tab === "members")
+        setCollaborators(await listVaultCollaborators(vaultId));
+      if (tab === "submissions")
+        setSubmissions(await listVaultSubmissions(vaultId));
     } catch (reason) {
-      toast.add({ type: "error", title: reason instanceof Error ? reason.message : "Could not load vault settings." });
+      toast.add({
+        type: "error",
+        title:
+          reason instanceof Error
+            ? reason.message
+            : "Could not load vault settings.",
+      });
     } finally {
       setSettingsLoading(false);
     }
@@ -230,40 +253,73 @@ export function VaultDetailPage() {
   async function hashSharePassword(value: string) {
     const bytes = new TextEncoder().encode(value);
     const digest = await crypto.subtle.digest("SHA-256", bytes);
-    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
   }
 
   async function handleSaveShare() {
     if (!vaultId) return;
     await runMutation(async () => {
-      const passwordHash = share.visibility === "password" ? await hashSharePassword(sharePassword) : null;
-      const result = await updateVaultShare(vaultId, { visibility: share.visibility, passwordHash });
-      setShare((current) => ({ ...current, ...result, visibility: share.visibility }));
+      const passwordHash =
+        share.visibility === "password"
+          ? await hashSharePassword(sharePassword)
+          : null;
+      const result = await updateVaultShare(vaultId, {
+        visibility: share.visibility,
+        passwordHash,
+      });
+      setShare((current) => ({
+        ...current,
+        ...result,
+        visibility: share.visibility,
+      }));
     }, "Share settings saved");
   }
 
-  async function handleVaultOptionChange(patch: { collectionEnabled?: boolean; nsfwEnabled?: boolean }) {
+  async function handleVaultOptionChange(patch: {
+    collectionEnabled?: boolean;
+    nsfwEnabled?: boolean;
+  }) {
     if (!vaultId) return;
-    await runMutation(() => updateDashboardVaultOptions(vaultId, patch), "Vault settings updated");
+    await runMutation(
+      () => updateDashboardVaultOptions(vaultId, patch),
+      "Vault settings updated",
+    );
   }
 
   async function handleRemoveCollaborator(id: string) {
     if (!vaultId) return;
-    if (await runMutation(() => removeVaultCollaborator(vaultId, id), "Collaborator removed")) {
+    if (
+      await runMutation(
+        () => removeVaultCollaborator(vaultId, id),
+        "Collaborator removed",
+      )
+    ) {
       setCollaborators((items) => items.filter((item) => item.id !== id));
     }
   }
 
   async function handleApproveSubmission(id: string, spaceId?: string) {
     if (!vaultId) return;
-    if (await runMutation(() => approveVaultSubmission(vaultId, id, spaceId), "Submission approved")) {
+    if (
+      await runMutation(
+        () => approveVaultSubmission(vaultId, id, spaceId),
+        "Submission approved",
+      )
+    ) {
       setSubmissions((items) => items.filter((item) => item.id !== id));
     }
   }
 
   async function handleRejectSubmission(id: string) {
     if (!vaultId) return;
-    if (await runMutation(() => rejectVaultSubmission(vaultId, id), "Submission rejected")) {
+    if (
+      await runMutation(
+        () => rejectVaultSubmission(vaultId, id),
+        "Submission rejected",
+      )
+    ) {
       setSubmissions((items) => items.filter((item) => item.id !== id));
     }
   }
@@ -272,7 +328,9 @@ export function VaultDetailPage() {
     if (!vaultId) return;
     try {
       const data = await exportVault(vaultId);
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -281,7 +339,11 @@ export function VaultDetailPage() {
       URL.revokeObjectURL(url);
       toast.add({ type: "success", title: "Vault exported" });
     } catch (reason) {
-      toast.add({ type: "error", title: reason instanceof Error ? reason.message : "Could not export vault." });
+      toast.add({
+        type: "error",
+        title:
+          reason instanceof Error ? reason.message : "Could not export vault.",
+      });
     }
   }
 
@@ -294,7 +356,11 @@ export function VaultDetailPage() {
       setSettingsOpen(false);
       navigate(`/dashboard/vault/${result.id}`);
     } catch (reason) {
-      toast.add({ type: "error", title: reason instanceof Error ? reason.message : "Could not import vault." });
+      toast.add({
+        type: "error",
+        title:
+          reason instanceof Error ? reason.message : "Could not import vault.",
+      });
     } finally {
       setIsImporting(false);
     }
@@ -354,7 +420,10 @@ export function VaultDetailPage() {
         toast.add({ title: "Space created", type: "success" });
       } catch (reason) {
         toast.add({
-          title: reason instanceof Error ? reason.message : "Could not create space.",
+          title:
+            reason instanceof Error
+              ? reason.message
+              : "Could not create space.",
           type: "error",
         });
       } finally {
@@ -374,16 +443,30 @@ export function VaultDetailPage() {
     }
   }
 
-  function openEditSpace(space: { id: string; name: string; description: string; icon: string }) {
+  function openEditSpace(space: {
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+  }) {
     setSpaceToEdit(space);
-    setSpaceForm({ description: space.description, icon: space.icon, name: space.name });
+    setSpaceForm({
+      description: space.description,
+      icon: space.icon,
+      name: space.name,
+    });
     setEditSpaceOpen(true);
   }
 
   async function handleEditSpace(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!vaultId || !spaceToEdit) return;
-    if (await runMutation(() => updateVaultSpace(vaultId, spaceToEdit.id, spaceForm), "Space updated")) {
+    if (
+      await runMutation(
+        () => updateVaultSpace(vaultId, spaceToEdit.id, spaceForm),
+        "Space updated",
+      )
+    ) {
       setEditSpaceOpen(false);
       setSpaceToEdit(null);
     }
@@ -391,7 +474,10 @@ export function VaultDetailPage() {
 
   async function handleDeleteSpace(spaceId: string) {
     if (!vaultId) return;
-    await runMutation(() => deleteVaultSpace(vaultId, spaceId), "Space deleted");
+    await runMutation(
+      () => deleteVaultSpace(vaultId, spaceId),
+      "Space deleted",
+    );
   }
 
   async function handleCreateResource(event: FormEvent<HTMLFormElement>) {
@@ -404,7 +490,14 @@ export function VaultDetailPage() {
       )
     ) {
       setResourceOpen(false);
-      setResourceForm({ description: "", extractionCode: "", referer: "", spaceId: "", title: "", url: "" });
+      setResourceForm({
+        description: "",
+        extractionCode: "",
+        referer: "",
+        spaceId: "",
+        title: "",
+        url: "",
+      });
       void refreshVaults().catch(() => {
         // The current Vault refreshed successfully; the aggregate count retries later.
       });
@@ -444,7 +537,8 @@ export function VaultDetailPage() {
       toast.add({ title: "Resource added", type: "success" });
     } catch (reason) {
       toast.add({
-        title: reason instanceof Error ? reason.message : "Media upload failed.",
+        title:
+          reason instanceof Error ? reason.message : "Media upload failed.",
         type: "error",
       });
       throw reason;
@@ -502,7 +596,9 @@ export function VaultDetailPage() {
   async function handleToggleResourceReadLater(resource: Resource) {
     await runMutation(
       () => setResourceReadLater(resource.id, !resource.isReadLater),
-      resource.isReadLater ? "Removed from watch later" : "Saved to watch later",
+      resource.isReadLater
+        ? "Removed from watch later"
+        : "Saved to watch later",
     );
   }
 
@@ -634,7 +730,9 @@ export function VaultDetailPage() {
     );
     // Ignore any detail request that started before this optimistic reorder.
     detailRevisionRef.current += 1;
-    setDetail((current) => (current ? { ...current, resources: nextResources } : current));
+    setDetail((current) =>
+      current ? { ...current, resources: nextResources } : current,
+    );
     setBusy(true);
     void reorderVaultResources(
       vaultId,
@@ -704,7 +802,12 @@ export function VaultDetailPage() {
 
   async function handleSaveResourceDetails(form: ResourceDetailsForm) {
     if (!resourceToEdit) return;
-    if (await runMutation(() => updateResourceDetails(resourceToEdit.id, form), "Resource updated")) {
+    if (
+      await runMutation(
+        () => updateResourceDetails(resourceToEdit.id, form),
+        "Resource updated",
+      )
+    ) {
       setResourceEditOpen(false);
       setResourceToEdit(undefined);
     }
@@ -732,7 +835,7 @@ export function VaultDetailPage() {
             onDeleteVault={() => setDeleteOpen(true)}
             onEditVault={openEditVault}
             onOpenSettings={(tab) => {
-              void openVaultSettings(tab)
+              void openVaultSettings(tab);
             }}
           />
         </div>
@@ -745,42 +848,42 @@ export function VaultDetailPage() {
           >
             {detail.spaces.map((space, index) => (
               <SpaceSection
-              key={space.id}
-              canAddResource={
-                detail.actorRole === "owner" || detail.actorRole === "editor"
-              }
-              collapsed={collapsedSpaceIds.has(space.id)}
-              disabled={busy}
-              isVaultOwner={detail.actorRole === "owner"}
-              index={index}
-              onLoadTransferTargets={loadTransferTargets}
-              onTransferSpace={handleTransferSpace}
-              onAddResource={() => {
-                setResourceForm((form) => ({ ...form, spaceId: space.id }));
-                setResourceOpen(true);
-              }}
-              onDeleteSpace={() => void handleDeleteSpace(space.id)}
-              onEditSpace={() => openEditSpace(space)}
-              onToggleCollapsed={() =>
-                setCollapsedSpaceIds((current) => {
-                  const next = new Set(current);
-                  if (next.has(space.id)) next.delete(space.id);
-                  else next.add(space.id);
-                  return next;
-                })
-              }
-              onUpdateIcon={(icon) => {
-                if (!vaultId) return;
-                return runMutation(
-                  () =>
-                    updateVaultSpace(vaultId, space.id, {
-                      description: space.description ?? "",
-                      icon,
-                      name: space.name,
-                    }),
-                  "Space icon updated",
-                ).then(() => undefined);
-              }}
+                key={space.id}
+                canAddResource={
+                  detail.actorRole === "owner" || detail.actorRole === "editor"
+                }
+                collapsed={collapsedSpaceIds.has(space.id)}
+                disabled={busy}
+                isVaultOwner={detail.actorRole === "owner"}
+                index={index}
+                onLoadTransferTargets={loadTransferTargets}
+                onTransferSpace={handleTransferSpace}
+                onAddResource={() => {
+                  setResourceForm((form) => ({ ...form, spaceId: space.id }));
+                  setResourceOpen(true);
+                }}
+                onDeleteSpace={() => void handleDeleteSpace(space.id)}
+                onEditSpace={() => openEditSpace(space)}
+                onToggleCollapsed={() =>
+                  setCollapsedSpaceIds((current) => {
+                    const next = new Set(current);
+                    if (next.has(space.id)) next.delete(space.id);
+                    else next.add(space.id);
+                    return next;
+                  })
+                }
+                onUpdateIcon={(icon) => {
+                  if (!vaultId) return;
+                  return runMutation(
+                    () =>
+                      updateVaultSpace(vaultId, space.id, {
+                        description: space.description ?? "",
+                        icon,
+                        name: space.name,
+                      }),
+                    "Space icon updated",
+                  ).then(() => undefined);
+                }}
                 resources={detail.resources.filter(
                   (resource) => resource.spaceId === space.id,
                 )}
@@ -788,50 +891,55 @@ export function VaultDetailPage() {
                 sourceVaultId={detail.vault.id}
                 transferTargets={transferTargets}
                 selectedResourceIds={
-                  selectionSpaceId === space.id ? selectedResourceIds : new Set()
+                  selectionSpaceId === space.id
+                    ? selectedResourceIds
+                    : new Set()
                 }
                 selectionMode={selectionSpaceId === space.id}
                 onToggleResourceSelected={toggleResourceSelected}
                 onToggleSelectionMode={() => toggleSpaceSelectionMode(space.id)}
                 viewMode={viewMode}
                 renderResource={(resource, index, selection) => (
-                <ResourceCard
-                  canDeleteResource={detail.actorRole === "owner"}
-                  canEditResource={detail.actorRole === "owner" || detail.actorRole === "editor"}
-                  disabled={busy}
-                  index={index}
-                  isActive={false}
-                  isSignedIn
-                  isVaultOwner={detail.actorRole === "owner"}
-                  mediaVisible={mediaVisible}
-                  onCreateTransferTargetSpace={openCreateTransferTargetSpace}
-                  onDelete={() => void handleDeleteResource(resource.id)}
-                  onLoadTransferTargets={loadTransferTargets}
-                  onOpenDetails={() => openResourceEditor(resource)}
-                  onResolveMetadata={() =>
-                    void handleResolveResourceMetadata(resource.id)
-                  }
-                  onToggleReadLater={() =>
-                    void handleToggleResourceReadLater(resource)
-                  }
-                  onToggleStar={() => void handleToggleResourceStar(resource)}
-                  onToggleSelected={selection?.onToggleSelected}
-                  showSelectionControl={Boolean(selection)}
-                  isSelected={selection?.isSelected ?? false}
-                  onUpdateAnnotation={(resourceId, patch) => {
-                    void handleUpdateResourceAnnotation(resourceId, patch);
-                  }}
-                  onTransferResource={handleTransferResource}
-                  resource={resource}
-                  spaceId={space.id}
-                  transferFocusSpaceId={transferFocusSpaceId}
-                  transferTargets={transferTargets}
-                  vaultId={detail.vault.id}
-                  vaultName={detail.vault.title}
-                  spaceName={space.name}
-                  viewMode={viewMode}
-                />
-              )}
+                  <ResourceCard
+                    canDeleteResource={detail.actorRole === "owner"}
+                    canEditResource={
+                      detail.actorRole === "owner" ||
+                      detail.actorRole === "editor"
+                    }
+                    disabled={busy}
+                    index={index}
+                    isActive={false}
+                    isSignedIn
+                    isVaultOwner={detail.actorRole === "owner"}
+                    mediaVisible={mediaVisible}
+                    onCreateTransferTargetSpace={openCreateTransferTargetSpace}
+                    onDelete={() => void handleDeleteResource(resource.id)}
+                    onLoadTransferTargets={loadTransferTargets}
+                    onOpenDetails={() => openResourceEditor(resource)}
+                    onResolveMetadata={() =>
+                      void handleResolveResourceMetadata(resource.id)
+                    }
+                    onToggleReadLater={() =>
+                      void handleToggleResourceReadLater(resource)
+                    }
+                    onToggleStar={() => void handleToggleResourceStar(resource)}
+                    onToggleSelected={selection?.onToggleSelected}
+                    showSelectionControl={Boolean(selection)}
+                    isSelected={selection?.isSelected ?? false}
+                    onUpdateAnnotation={(resourceId, patch) => {
+                      void handleUpdateResourceAnnotation(resourceId, patch);
+                    }}
+                    onTransferResource={handleTransferResource}
+                    resource={resource}
+                    spaceId={space.id}
+                    transferFocusSpaceId={transferFocusSpaceId}
+                    transferTargets={transferTargets}
+                    vaultId={detail.vault.id}
+                    vaultName={detail.vault.title}
+                    spaceName={space.name}
+                    viewMode={viewMode}
+                  />
+                )}
               />
             ))}
             {detail.spaces.length === 0 ? (
@@ -863,7 +971,7 @@ export function VaultDetailPage() {
           />
         </div>
       </DragDropProvider>
-      <VaultResourcePreviewRail resources={detail.resources} />
+      {/* <VaultResourcePreviewRail resources={detail.resources} /> */}
       <CreateVaultDialog
         form={vaultForm}
         isSubmitting={busy}
@@ -876,8 +984,9 @@ export function VaultDetailPage() {
       <CreateSpaceDialog
         contextLabel={
           targetSpaceVaultId
-            ? (transferTargets.find((target) => target.id === targetSpaceVaultId)
-                ?.title ?? detail.vault.title)
+            ? (transferTargets.find(
+                (target) => target.id === targetSpaceVaultId,
+              )?.title ?? detail.vault.title)
             : detail.vault.title
         }
         form={spaceForm}
@@ -924,19 +1033,27 @@ export function VaultDetailPage() {
         isBusy={busy || settingsLoading}
         isImporting={isImporting}
         nsfwEnabled={detail.vault.nsfwEnabled}
-        onApproveSubmission={(id, spaceId) => void handleApproveSubmission(id, spaceId)}
-        onCollectionChange={(value) => void handleVaultOptionChange({ collectionEnabled: value })}
+        onApproveSubmission={(id, spaceId) =>
+          void handleApproveSubmission(id, spaceId)
+        }
+        onCollectionChange={(value) =>
+          void handleVaultOptionChange({ collectionEnabled: value })
+        }
         onDelete={() => void handleDeleteVault()}
         onExport={() => void handleExportVault()}
         onImport={(file) => void handleImportVault(file)}
-        onNsfwChange={(value) => void handleVaultOptionChange({ nsfwEnabled: value })}
+        onNsfwChange={(value) =>
+          void handleVaultOptionChange({ nsfwEnabled: value })
+        }
         onOpenChange={setSettingsOpen}
         onPasswordChange={setSharePassword}
         onRejectSubmission={(id) => void handleRejectSubmission(id)}
         onRemoveCollaborator={(id) => void handleRemoveCollaborator(id)}
         onSubmitShare={() => void handleSaveShare()}
         onTabChange={(tab) => void openVaultSettings(tab)}
-        onVisibilityChange={(value) => setShare((current) => ({ ...current, visibility: value }))}
+        onVisibilityChange={(value) =>
+          setShare((current) => ({ ...current, visibility: value }))
+        }
         open={settingsOpen}
         ownerName={detail.vault.ownerName ?? ""}
         password={sharePassword}

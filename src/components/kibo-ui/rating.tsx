@@ -92,7 +92,7 @@ export const RatingButton = ({
   return (
     <button
       className={cn(
-        "rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        "rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         "p-0.5",
         readOnly && "cursor-default",
         className,
@@ -110,6 +110,7 @@ export const RatingButton = ({
         size,
         className: cn(
           "transition-colors duration-200",
+          isActive ? "text-rose" : "text-muted-foreground",
           isActive && "fill-current",
           !readOnly && "cursor-pointer",
         ),

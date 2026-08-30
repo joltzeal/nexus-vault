@@ -36,12 +36,14 @@ export async function createSpace(
   await ensureSpaceNameNotDuplicate(db, vaultId, input.name)
 
   const spaceId = newId()
+  const position = await findNextSpacePosition(db, vaultId)
   await db.insert(spaces).values({
     id: spaceId,
     vaultId,
     name: input.name,
     description: input.description,
     icon: input.icon ?? "tv",
+    position,
   })
 
   return { id: spaceId }

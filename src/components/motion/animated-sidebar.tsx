@@ -27,6 +27,12 @@ import {
 import { createPortal } from "react-dom";
 import { SharedLayoutBg } from "@/components/motion/shared-layout-bg";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   EASE_DRAWER,
   EASE_OUT,
   SPRING_LAYOUT,
@@ -1018,6 +1024,7 @@ export interface AnimatedSidebarMenuButtonProps {
   children: ReactNode;
   icon?: ReactNode;
   badge?: ReactNode;
+  tooltip?: string | React.ComponentProps<typeof TooltipContent>;
   href?: string;
   isActive?: boolean;
   ariaExpanded?: boolean;
@@ -1033,6 +1040,7 @@ export function AnimatedSidebarMenuButton({
   children,
   icon,
   badge,
+  tooltip,
   href,
   isActive = false,
   ariaExpanded,
@@ -1151,7 +1159,7 @@ export function AnimatedSidebarMenuButton({
     className,
   );
 
-  return href ? (
+  const trigger = href ? (
     <motion.a
       href={href}
       target={target}
@@ -1187,5 +1195,24 @@ export function AnimatedSidebarMenuButton({
     >
       {content}
     </motion.button>
+  );
+
+  if (!tooltip) return trigger;
+
+  const tooltipProps =
+    typeof tooltip === "string" ? { children: tooltip } : tooltip;
+
+  return (
+    <TooltipProvider delay={0}>
+      <Tooltip>
+        <TooltipTrigger render={trigger} />
+        <TooltipContent
+          align="center"
+          hidden={!panel.collapsed || context.isMobile}
+          side="right"
+          {...tooltipProps}
+        />
+      </Tooltip>
+    </TooltipProvider>
   );
 }

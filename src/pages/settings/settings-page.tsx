@@ -165,17 +165,23 @@ export function SettingsPage({
               [rw]
             </span>
           </div>
-          <TabsList className="flex h-12 w-full justify-start gap-4 overflow-x-auto rounded-none border-b border-border bg-transparent px-3">
+          <TabsList className="flex min-h-10 w-full items-end justify-start gap-0 rounded-none border-b border-border bg-transparent px-3">
             <TabsTrigger
-              className="h-full rounded-none px-2 pl-5 font-mono text-label uppercase tracking-[0.08em]"
+              className="!min-h-9 rounded-none border border-transparent border-b-0 px-3 font-mono text-label uppercase tracking-[0.08em]"
               value="general"
             >
+              <span aria-hidden="true" className="mr-1 text-primary">
+                &gt;
+              </span>
               [General]
             </TabsTrigger>
             <TabsTrigger
-              className="h-full rounded-none px-2 pl-5 font-mono text-label uppercase tracking-[0.08em]"
+              className="!min-h-9 rounded-none border border-transparent border-b-0 px-3 font-mono text-label uppercase tracking-[0.08em]"
               value="integrations"
             >
+              <span aria-hidden="true" className="mr-1 text-primary">
+                &gt;
+              </span>
               [Integrations]
             </TabsTrigger>
           </TabsList>
@@ -250,7 +256,7 @@ export function SettingsPage({
                       autoComplete="current-password"
                       disabled={!user || passwordBusy}
                       label="Current password"
-                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
                         setPasswordForm((form) => ({
                           ...form,
                           currentPassword: event.target.value,
@@ -265,7 +271,7 @@ export function SettingsPage({
                         autoComplete="new-password"
                         disabled={!user || passwordBusy}
                         label="New password"
-                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
                           setPasswordForm((form) => ({
                             ...form,
                             newPassword: event.target.value,
@@ -279,7 +285,7 @@ export function SettingsPage({
                         autoComplete="new-password"
                         disabled={!user || passwordBusy}
                         label="Confirm password"
-                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
                           setPasswordForm((form) => ({
                             ...form,
                             confirmPassword: event.target.value,
@@ -354,7 +360,9 @@ export function SettingsPage({
                   autoComplete="off"
                   disabled={!user || integrationBusy}
                   label="Cookie string"
-            onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setCookieString(event.target.value)}
+                  onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+                    setCookieString(event.target.value)
+                  }
                   placeholder="auth_token=...; ct0=..."
                   rows={4}
                   value={cookieString}

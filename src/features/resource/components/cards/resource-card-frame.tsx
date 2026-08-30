@@ -131,7 +131,7 @@ export function ResourceCardFrame({
             </BaseBadge>
           )}
           {actions && (
-            <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="pointer-events-none min-w-0 overflow-x-auto opacity-0 transition-opacity [scrollbar-width:none] group-hover/resource-preview:pointer-events-auto group-hover/resource-preview:opacity-100 group-focus-within/resource-preview:pointer-events-auto group-focus-within/resource-preview:opacity-100 [&::-webkit-scrollbar]:hidden">
               {actions}
             </div>
           )}

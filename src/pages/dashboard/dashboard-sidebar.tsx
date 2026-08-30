@@ -223,6 +223,7 @@ export function DashboardSidebar({
                         `/dashboard/vault/${encodeURIComponent(vault.id)}`,
                       )
                     }
+                    tooltip={vault.title}
                   >
                     {vault.title}
                   </AnimatedSidebarMenuButton>

@@ -8,6 +8,7 @@
 		"build": "tsc -b && vite build",
 		"lint": "eslint .",
 		"test:twitter": "tsx scripts/twitter-live.test.ts",
+		"auth:set-password": "tsx scripts/set-auth-password.ts",
 		"preview": "pnpm run build && vite preview",
 		"deploy": "pnpm run deploy:production",
 		"deploy:local": "pnpm run build && wrangler deploy",
