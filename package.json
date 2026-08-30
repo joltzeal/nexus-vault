@@ -14,6 +14,7 @@
 		"cf-typegen": "wrangler types",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
+		"db:migrate:preserve": "tsx scripts/migrate-preserve.ts",
 		"db:migrate:local": "drizzle-kit migrate"
 	},
 	"dependencies": {
