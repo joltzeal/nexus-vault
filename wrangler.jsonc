@@ -28,7 +28,7 @@
 		{
 			"binding": "HYPERDRIVE",
 			"id": "3271a1cca21447d9bc4ba2ff47a167ff",
-			"localConnectionString": "postgres://postgres:DYX920912@127.0.0.1:5432/nv"
+			"localConnectionString": "postgres://postgres:postgres@127.0.0.1:5432/nv"
 		}
 	],
 	"r2_buckets": [
@@ -90,6 +90,19 @@
 		"production": {
 			"name": "nexus-vault",
 			"minify": true,
+			"vars": {
+				"BETTER_AUTH_URL": "https://vault.example.com",
+				"S3_UPLOAD_ENDPOINT": "https://...",
+				"S3_UPLOAD_BUCKET": "nexus-vault-media",
+				"S3_UPLOAD_REGION": "auto",
+				"S3_UPLOAD_FORCE_PATH_STYLE": "false",
+				"TURNSTILE_SITE_KEY": "...",
+				"TURNSTILE_ALLOWED_HOSTNAMES": "vault.example.com",
+				"TELEGRAM_METADATA_API_URL": "https://...",
+				"BROWSERLESS_SCREENSHOT_ENDPOINT": "https://...",
+				"AI_GATEWAY_ID": "default",
+				"AI_SUMMARY_MODEL": "@cf/meta/llama-3.1-8b-instruct-fp8"
+			},
 			"triggers": {
 				"crons": [
 					"15 19 * * *"

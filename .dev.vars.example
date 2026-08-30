@@ -1,0 +1,7 @@
+# Local Worker secrets. Copy to .dev.vars and replace values.
+# .dev.vars is ignored by git.
+BETTER_AUTH_SECRET=replace-with-a-local-random-secret
+BETTER_AUTH_URL=http://localhost:5173
+BETTER_AUTH_TRUSTED_ORIGINS=http://localhost:5173
+ALLOW_USER_REGISTRATION=true
+ALLOW_RESOURCE_MEDIA_UPLOAD=true
