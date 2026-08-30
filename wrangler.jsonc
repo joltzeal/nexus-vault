@@ -5,15 +5,160 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "nexus-vault",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
 	"main": "worker/index.ts",
 	"compatibility_date": "2026-08-25",
 	"assets": {
-		"not_found_handling": "single-page-application"
+		"not_found_handling": "single-page-application",
+		"run_worker_first": [
+			"/api/*"
+		]
+	},
+	"ai": {
+		"binding": "AI",
+		"remote": true
 	},
 	"observability": {
 		"enabled": true
 	},
-	"upload_source_maps": true
+	"upload_source_maps": true,
+	"hyperdrive": [
+		{
+			"binding": "HYPERDRIVE",
+			"id": "3271a1cca21447d9bc4ba2ff47a167ff",
+			"localConnectionString": "postgres://postgres:DYX920912@127.0.0.1:5432/nv"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "MEDIA",
+			"bucket_name": "nexus-vault-media-local",
+			"preview_bucket_name": "nexus-vault-media-local",
+			"remote": false
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "CACHE",
+			"id": "local-cache",
+			"preview_id": "local-cache-preview",
+			"remote": false
+		}
+	],
+	"queues": {
+		"producers": [
+			{
+				"binding": "QUEUE",
+				"queue": "nexus-vault-queue",
+				"remote": false
+			},
+			{
+				"binding": "CLOUD_DRIVE_CHECK_QUEUE",
+				"queue": "nexus-vault-cloud-drive-checks",
+				"remote": false
+			}
+		],
+		"consumers": [
+			{
+				"queue": "nexus-vault-queue",
+				"max_batch_size": 3,
+				"max_batch_timeout": 5
+			},
+			{
+				"queue": "nexus-vault-cloud-drive-checks",
+				"max_batch_size": 5,
+				"max_batch_timeout": 30
+			}
+		]
+	},
+	"vars": {
+    "BETTER_AUTH_URL": "https://vault.example.com",
+    "S3_UPLOAD_ENDPOINT": "https://...",
+    "S3_UPLOAD_BUCKET": "nexus-vault-media",
+    "S3_UPLOAD_REGION": "auto",
+    "S3_UPLOAD_FORCE_PATH_STYLE": "false",
+    "TURNSTILE_SITE_KEY": "...",
+    "TURNSTILE_ALLOWED_HOSTNAMES": "vault.example.com",
+    "TELEGRAM_METADATA_API_URL": "https://...",
+    "BROWSERLESS_SCREENSHOT_ENDPOINT": "https://...",
+    "AI_GATEWAY_ID": "default",
+    "AI_SUMMARY_MODEL": "@cf/meta/llama-3.1-8b-instruct-fp8"
+  },
+	"env": {
+		"production": {
+			"name": "nexus-vault",
+			"minify": true,
+			"triggers": {
+				"crons": [
+					"15 19 * * *"
+				]
+			},
+			"ai": {
+				"binding": "AI",
+				"remote": true
+			},
+			"hyperdrive": [
+				{
+					"binding": "HYPERDRIVE",
+					"id": "3271a1cca21447d9bc4ba2ff47a167ff",
+					"localConnectionString": "postgres://postgres:postgres@127.0.0.1:5432/nv"
+				}
+			],
+			"r2_buckets": [
+				{
+					"binding": "MEDIA",
+					"bucket_name": "nexus-vault-media"
+				}
+			],
+			"kv_namespaces": [
+				{
+					"binding": "CACHE",
+					"id": "7221c902e852402a9b1a72aa81156a67"
+				}
+			],
+			"observability": {
+				"enabled": true,
+				"head_sampling_rate": 1,
+				"logs": {
+					"enabled": true,
+					"head_sampling_rate": 1,
+					"persist": true,
+					"invocation_logs": true
+				},
+				"traces": {
+					"enabled": true,
+					"persist": true,
+					"head_sampling_rate": 1
+				}
+			},
+			"queues": {
+				"producers": [
+					{
+						"binding": "QUEUE",
+						"queue": "nexus-vault-queue"
+					},
+					{
+						"binding": "CLOUD_DRIVE_CHECK_QUEUE",
+						"queue": "nexus-vault-cloud-drive-checks"
+					}
+				],
+				"consumers": [
+					{
+						"queue": "nexus-vault-queue",
+						"max_batch_size": 3,
+						"max_batch_timeout": 5
+					},
+					{
+						"queue": "nexus-vault-cloud-drive-checks",
+						"max_batch_size": 5,
+						"max_batch_timeout": 30
+					}
+				]
+			}
+		}
+	}
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

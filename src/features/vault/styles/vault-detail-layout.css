@@ -1,0 +1,65 @@
+.vault-detail-page {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  margin-top: -1.25rem;
+}
+
+.vault-detail-page__body {
+  display: grid;
+  position: relative;
+  min-width: 0;
+  align-items: start;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.vault-detail-page__content {
+  min-width: 0;
+  scroll-behavior: smooth;
+}
+
+.dashboard-resource-preview-rail {
+  display: none;
+  position: absolute;
+  z-index: 20;
+  top: 50%;
+  left: 0.5rem;
+  min-width: 0;
+  transform: translateY(-50%);
+}
+
+.vault-detail-page__space-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  min-height: 2.5rem;
+  background: var(--andromeda-surface-base, var(--background));
+}
+
+.vault-detail-page__outline {
+  display: none;
+  position: sticky;
+  top: 0;
+  min-width: 0;
+  max-height: calc(100dvh - 2rem);
+  align-self: start;
+}
+
+@media (min-width: 1024px) {
+  .vault-detail-page {
+    margin-top: -2rem;
+  }
+
+  .vault-detail-page__body {
+    grid-template-columns: minmax(0, 1fr) 216px;
+  }
+
+  .dashboard-resource-preview-rail {
+    display: block;
+  }
+
+  .vault-detail-page__outline {
+    display: flex;
+  }
+}
