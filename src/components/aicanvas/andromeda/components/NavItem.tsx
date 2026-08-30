@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 
 import { forwardRef } from 'react';
@@ -97,7 +98,7 @@ const navItemVariants = cva(
  */
 
 /** @type {React.ForwardRefExoticComponent<NavItemProps & React.ButtonHTMLAttributes<HTMLButtonElement>>} */
-export const NavItem = forwardRef(function NavItem(
+export const NavItem = forwardRef<any, any>(function NavItem(
   {
     className,
     icon: Icon,

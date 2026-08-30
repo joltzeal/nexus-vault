@@ -261,11 +261,17 @@ function Sortable<T>({
   const overlayContent = useMemo(() => {
     if (!activeId) return null
     let result: ReactNode = null
+    type SortableChildProps = { value?: string; className?: string } & Record<
+      string,
+      unknown
+    >
     Children.forEach(children, (child) => {
-      if (isValidElement(child) && (child.props as any).value === activeId) {
-        result = cloneElement(child as ReactElement<any>, {
-          ...(child.props as any),
-          className: cn((child.props as any).className, "z-50"),
+      if (isValidElement(child)) {
+        const childProps = child.props as SortableChildProps
+        if (childProps.value !== activeId) return
+        result = cloneElement(child as ReactElement<SortableChildProps>, {
+          ...childProps,
+          className: cn(childProps.className, "z-50"),
         })
       }
     })

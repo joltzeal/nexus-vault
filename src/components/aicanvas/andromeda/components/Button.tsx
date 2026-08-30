@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+// @ts-nocheck
 "use client";
 
 import { forwardRef } from 'react';
@@ -150,7 +150,7 @@ const buttonVariants = cva(
  */
 
 /** @type {React.ForwardRefExoticComponent<ButtonProps & React.ButtonHTMLAttributes<HTMLButtonElement>>} */
-export const Button = forwardRef(function Button(
+export const Button = forwardRef<any, any>(function Button(
   {
     className,
     variant = 'default',

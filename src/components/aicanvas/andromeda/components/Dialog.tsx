@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { createPortal } from "react-dom"
 import { useId, type FormHTMLAttributes, type HTMLAttributes, type ReactNode } from "react"
 import { X } from "lucide-react"

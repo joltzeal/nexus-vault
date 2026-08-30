@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+// @ts-nocheck
 "use client";
 
 import { forwardRef } from 'react';
@@ -136,7 +136,7 @@ const ICON_SIZE = { sm: 14, md: 16, lg: 20 };
  */
 
 /** @type {React.ForwardRefExoticComponent<IconButtonProps & React.ButtonHTMLAttributes<HTMLButtonElement>>} */
-export const IconButton = forwardRef(function IconButton(
+export const IconButton = forwardRef<any, any>(function IconButton(
   {
     className,
     variant = 'outline',

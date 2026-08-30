@@ -1,6 +1,6 @@
-import { Text as RACText, TextProps } from "react-aria-components"
+import { Text as RACText, type TextProps } from "react-aria-components";
 
-import { cn } from "../lib/utils"
+import { cn } from "@/lib/utils";
 
 export function Description(props: TextProps) {
   return (
@@ -9,5 +9,5 @@ export function Description(props: TextProps) {
       slot="description"
       className={cn("text-sm text-gray-600", props.className)}
     />
-  )
+  );
 }

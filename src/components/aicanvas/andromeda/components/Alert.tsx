@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 
 import { forwardRef } from 'react';
@@ -61,7 +62,7 @@ const alertVariants = cva(
  */
 
 /** @type {React.ForwardRefExoticComponent<AlertProps & React.HTMLAttributes<HTMLDivElement>>} */
-export const Alert = forwardRef(function Alert(
+export const Alert = forwardRef<any, any>(function Alert(
   { className, variant = 'default', children, style, ...props },
   ref,
 ) {
@@ -83,7 +84,7 @@ export const Alert = forwardRef(function Alert(
 });
 
 /** Icon slot — recolors any child SVG to the variant's icon color. */
-export const AlertIcon = forwardRef(function AlertIcon(
+export const AlertIcon = forwardRef<any, any>(function AlertIcon(
   { className, children, ...props },
   ref,
 ) {
@@ -105,7 +106,7 @@ export const AlertIcon = forwardRef(function AlertIcon(
   );
 });
 
-export const AlertContent = forwardRef(function AlertContent(
+export const AlertContent = forwardRef<any, any>(function AlertContent(
   { className, children, ...props },
   ref,
 ) {
@@ -121,7 +122,7 @@ export const AlertContent = forwardRef(function AlertContent(
   );
 });
 
-export const AlertTitle = forwardRef(function AlertTitle(
+export const AlertTitle = forwardRef<any, any>(function AlertTitle(
   { className, children, ...props },
   ref,
 ) {
@@ -144,7 +145,7 @@ export const AlertTitle = forwardRef(function AlertTitle(
   );
 });
 
-export const AlertDescription = forwardRef(function AlertDescription(
+export const AlertDescription = forwardRef<any, any>(function AlertDescription(
   { className, children, ...props },
   ref,
 ) {

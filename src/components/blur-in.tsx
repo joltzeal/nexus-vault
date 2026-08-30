@@ -1,9 +1,10 @@
 "use client";
-import * as React from "react";
-import { motion, HTMLMotionProps } from "motion/react";
+import { motion, type HTMLMotionProps } from "motion/react";
 import { cn } from "@/lib/utils";
-export interface TextBlurInProps
-  extends Omit<HTMLMotionProps<"p">, "children"> {
+export interface TextBlurInProps extends Omit<
+  HTMLMotionProps<"p">,
+  "children"
+> {
   children: string;
   duration?: number;
   delay?: number;

@@ -235,14 +235,14 @@ function toStarredResourceEntry(item: StarredResourceItem): DashboardResourceEnt
       metadataStatus: item.metadataStatus,
       position: item.position ?? 0,
       createdAt: item.sourceCreatedAt ?? item.createdAt,
-      updatedAt: item.resourceUpdatedAt,
+      updatedAt: item.resourceUpdatedAt ?? undefined,
       isReadLater: item.isReadLater,
       isStarred: true,
       metadata: item.metadataProvider
         ? {
             provider: item.metadataProvider,
             data: item.metadataDataJson as ResourceMetadataEnvelope["data"],
-            errorMessage: item.metadataErrorMessage,
+            errorMessage: item.metadataErrorMessage ?? undefined,
             updatedAt: item.metadataUpdatedAt,
           }
         : null,

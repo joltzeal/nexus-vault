@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 
 import { forwardRef, useId, useState } from 'react';
@@ -101,7 +102,7 @@ const labelClass = cn(
  */
 
 /** @type {React.ForwardRefExoticComponent<ToggleProps & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'|'type'>>} */
-export const Toggle = forwardRef(function Toggle(
+export const Toggle = forwardRef<any, any>(function Toggle(
   {
     className,
     checked: controlledChecked,

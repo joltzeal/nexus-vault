@@ -99,7 +99,9 @@ export function SharePanel({
         </span>
         <RadioGroup
           value={share.visibility}
-          onValueChange={(value) => onVisibilityChange(value as Visibility)}
+          onValueChange={(value: string) =>
+            onVisibilityChange(value as Visibility)
+          }
         >
           {(["public", "password", "private"] as Visibility[]).map((value) => (
             <label
@@ -125,7 +127,9 @@ export function SharePanel({
           autoComplete="new-password"
           type="password"
           value={password}
-          onChange={(event) => onPasswordChange(event.target.value)}
+          onChange={(event: { target: { value: string } }) =>
+            onPasswordChange(event.target.value)
+          }
         />
       ) : null}
       {share.visibility !== "private" ? (

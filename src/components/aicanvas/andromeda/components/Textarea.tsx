@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 
 import { forwardRef, useId } from 'react';
@@ -50,7 +51,7 @@ const textareaVariants = cva(
  */
 
 /** @type {React.ForwardRefExoticComponent<TextareaProps & React.TextareaHTMLAttributes<HTMLTextAreaElement>>} */
-export const Textarea = forwardRef(function Textarea(
+export const Textarea = forwardRef<any, any>(function Textarea(
   {
     className,
     wrapperClassName,

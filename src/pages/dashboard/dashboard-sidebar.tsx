@@ -287,9 +287,9 @@ function DashboardAccountFooter({
       icon: EyeSlash,
       closeOnSelect: false,
       trailing: (
-        <Toggle
+          <Toggle
           checked={!mediaVisible}
-          onCheckedChange={(checked) => onMediaVisibleChange(!checked)}
+            onCheckedChange={(checked: boolean) => onMediaVisibleChange(!checked)}
           size="sm"
         />
       ),

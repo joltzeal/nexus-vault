@@ -586,8 +586,7 @@ export const AnimatedSidebar = forwardRef<HTMLElement, AnimatedSidebarProps>(
   },
 );
 
-export interface AnimatedSidebarTriggerProps
-  extends ButtonHTMLAttributes<HTMLButtonElement> {}
+export type AnimatedSidebarTriggerProps = ButtonHTMLAttributes<HTMLButtonElement>;
 
 export const AnimatedSidebarTrigger = forwardRef<
   HTMLButtonElement,
@@ -625,8 +624,7 @@ export const AnimatedSidebarTrigger = forwardRef<
   );
 });
 
-export interface AnimatedSidebarCloseProps
-  extends ButtonHTMLAttributes<HTMLButtonElement> {}
+export type AnimatedSidebarCloseProps = ButtonHTMLAttributes<HTMLButtonElement>;
 
 export const AnimatedSidebarClose = forwardRef<
   HTMLButtonElement,
@@ -658,8 +656,7 @@ export const AnimatedSidebarClose = forwardRef<
   );
 });
 
-export interface AnimatedSidebarRailProps
-  extends ButtonHTMLAttributes<HTMLButtonElement> {}
+export type AnimatedSidebarRailProps = ButtonHTMLAttributes<HTMLButtonElement>;
 
 export const AnimatedSidebarRail = forwardRef<
   HTMLButtonElement,
@@ -694,8 +691,7 @@ export const AnimatedSidebarRail = forwardRef<
   );
 });
 
-export interface AnimatedSidebarInsetProps
-  extends HTMLMotionProps<"main"> {}
+export type AnimatedSidebarInsetProps = HTMLMotionProps<"main">;
 
 export const AnimatedSidebarInset = forwardRef<
   HTMLElement,

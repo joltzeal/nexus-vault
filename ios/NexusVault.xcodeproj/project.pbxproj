@@ -1,0 +1,516 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		100000000000000000000401 /* NexusVault/Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000008 /* NexusVault/Models.swift */; };
+		100000000000000000000402 /* NexusVault/APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000009 /* NexusVault/APIClient.swift */; };
+		100000000000000000000403 /* NexusVault/SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000A /* NexusVault/SessionStore.swift */; };
+		100000000000000000000404 /* NexusVault/NexusVaultApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000B /* NexusVault/NexusVaultApp.swift */; };
+		100000000000000000000405 /* NexusVault/AppGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000C /* NexusVault/AppGroup.swift */; };
+		100000000000000000000406 /* NexusVault/MediaCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000F /* NexusVault/MediaCache.swift */; };
+		100000000000000000000407 /* NexusVault/MediaSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000019 /* NexusVault/MediaSaver.swift */; };
+		100000000000000000000411 /* NexusVault/Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000008 /* NexusVault/Models.swift */; };
+		100000000000000000000412 /* NexusVault/APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000009 /* NexusVault/APIClient.swift */; };
+		100000000000000000000413 /* NexusVault/AppGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000C /* NexusVault/AppGroup.swift */; };
+		100000000000000000000414 /* ShareExtension/ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000D /* ShareExtension/ShareViewController.swift */; };
+		100000000000000000000421 /* NexusVault/Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000008 /* NexusVault/Models.swift */; };
+		100000000000000000000422 /* NexusVault/APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000009 /* NexusVault/APIClient.swift */; };
+		100000000000000000000423 /* NexusVault/AppGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000C /* NexusVault/AppGroup.swift */; };
+		100000000000000000000424 /* ActionExtension/ActionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000E /* ActionExtension/ActionViewController.swift */; };
+		100000000000000000000431 /* ShareExtension.appex in CopyFiles */ = {isa = PBXBuildFile; fileRef = 100000000000000000000003 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		100000000000000000000432 /* ActionExtension.appex in CopyFiles */ = {isa = PBXBuildFile; fileRef = 100000000000000000000004 /* ActionExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		F788249C30441AE900E4105A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 100000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 100000000000000000000020;
+			remoteInfo = ShareExtension;
+		};
+		F788249D30441AE900E4105A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 100000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 100000000000000000000030;
+			remoteInfo = ActionExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		100000000000000000000320 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				100000000000000000000431 /* ShareExtension.appex in CopyFiles */,
+				100000000000000000000432 /* ActionExtension.appex in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		100000000000000000000002 /* NexusVault.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = NexusVault.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000003 /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000004 /* ActionExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = ActionExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000005 /* NexusVault/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = NexusVault/Info.plist; sourceTree = SOURCE_ROOT; };
+		100000000000000000000006 /* ShareExtension/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = ShareExtension/Info.plist; sourceTree = SOURCE_ROOT; };
+		100000000000000000000007 /* ActionExtension/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = ActionExtension/Info.plist; sourceTree = SOURCE_ROOT; };
+		100000000000000000000008 /* NexusVault/Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexusVault/Models.swift; sourceTree = SOURCE_ROOT; };
+		100000000000000000000009 /* NexusVault/APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexusVault/APIClient.swift; sourceTree = SOURCE_ROOT; };
+		10000000000000000000000A /* NexusVault/SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexusVault/SessionStore.swift; sourceTree = SOURCE_ROOT; };
+		10000000000000000000000B /* NexusVault/NexusVaultApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexusVault/NexusVaultApp.swift; sourceTree = SOURCE_ROOT; };
+		10000000000000000000000C /* NexusVault/AppGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexusVault/AppGroup.swift; sourceTree = SOURCE_ROOT; };
+		10000000000000000000000D /* ShareExtension/ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareExtension/ShareViewController.swift; sourceTree = SOURCE_ROOT; };
+		10000000000000000000000E /* ActionExtension/ActionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionExtension/ActionViewController.swift; sourceTree = SOURCE_ROOT; };
+		10000000000000000000000F /* NexusVault/MediaCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexusVault/MediaCache.swift; sourceTree = SOURCE_ROOT; };
+		100000000000000000000015 /* NexusVault/NexusVault.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NexusVault/NexusVault.entitlements; sourceTree = SOURCE_ROOT; };
+		100000000000000000000016 /* ShareExtension/ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension/ShareExtension.entitlements; sourceTree = SOURCE_ROOT; };
+		100000000000000000000017 /* ActionExtension/ActionExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ActionExtension/ActionExtension.entitlements; sourceTree = SOURCE_ROOT; };
+		100000000000000000000019 /* NexusVault/MediaSaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexusVault/MediaSaver.swift; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		100000000000000000000500 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		100000000000000000000501 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		100000000000000000000502 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		100000000000000000000200 = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000210 /* NexusVault */,
+				100000000000000000000220 /* ShareExtension */,
+				100000000000000000000230 /* ActionExtension */,
+				100000000000000000000201 /* Products */,
+			);
+			sourceTree = SOURCE_ROOT;
+		};
+		100000000000000000000201 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000002 /* NexusVault.app */,
+				100000000000000000000003 /* ShareExtension.appex */,
+				100000000000000000000004 /* ActionExtension.appex */,
+			);
+			name = Products;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		100000000000000000000210 /* NexusVault */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000008 /* NexusVault/Models.swift */,
+				100000000000000000000009 /* NexusVault/APIClient.swift */,
+				10000000000000000000000A /* NexusVault/SessionStore.swift */,
+				10000000000000000000000B /* NexusVault/NexusVaultApp.swift */,
+				10000000000000000000000C /* NexusVault/AppGroup.swift */,
+				10000000000000000000000F /* NexusVault/MediaCache.swift */,
+				100000000000000000000019 /* NexusVault/MediaSaver.swift */,
+				100000000000000000000005 /* NexusVault/Info.plist */,
+				100000000000000000000015 /* NexusVault/NexusVault.entitlements */,
+			);
+			path = NexusVault;
+			sourceTree = SOURCE_ROOT;
+		};
+		100000000000000000000220 /* ShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				10000000000000000000000D /* ShareExtension/ShareViewController.swift */,
+				100000000000000000000006 /* ShareExtension/Info.plist */,
+				100000000000000000000016 /* ShareExtension/ShareExtension.entitlements */,
+			);
+			path = ShareExtension;
+			sourceTree = SOURCE_ROOT;
+		};
+		100000000000000000000230 /* ActionExtension */ = {
+			isa = PBXGroup;
+			children = (
+				10000000000000000000000E /* ActionExtension/ActionViewController.swift */,
+				100000000000000000000007 /* ActionExtension/Info.plist */,
+				100000000000000000000017 /* ActionExtension/ActionExtension.entitlements */,
+			);
+			path = ActionExtension;
+			sourceTree = SOURCE_ROOT;
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		100000000000000000000010 /* NexusVault */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 100000000000000000000110 /* Build configuration list for PBXNativeTarget "NexusVault" */;
+			buildPhases = (
+				100000000000000000000300 /* Sources */,
+				100000000000000000000500 /* Frameworks */,
+				100000000000000000000310 /* Resources */,
+				100000000000000000000320 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				100000000000000000000610 /* PBXTargetDependency */,
+				100000000000000000000620 /* PBXTargetDependency */,
+			);
+			name = NexusVault;
+			productName = NexusVault;
+			productReference = 100000000000000000000002 /* NexusVault.app */;
+			productType = "com.apple.product-type.application";
+		};
+		100000000000000000000020 /* ShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 100000000000000000000120 /* Build configuration list for PBXNativeTarget "ShareExtension" */;
+			buildPhases = (
+				100000000000000000000301 /* Sources */,
+				100000000000000000000501 /* Frameworks */,
+				100000000000000000000311 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ShareExtension;
+			productName = ShareExtension;
+			productReference = 100000000000000000000003 /* ShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		100000000000000000000030 /* ActionExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 100000000000000000000130 /* Build configuration list for PBXNativeTarget "ActionExtension" */;
+			buildPhases = (
+				100000000000000000000302 /* Sources */,
+				100000000000000000000502 /* Frameworks */,
+				100000000000000000000312 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ActionExtension;
+			productName = ActionExtension;
+			productReference = 100000000000000000000004 /* ActionExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		100000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1600;
+				ORGANIZATIONNAME = StackLabs;
+				TargetAttributes = {
+					100000000000000000000010 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					100000000000000000000020 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					100000000000000000000030 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = 100000000000000000000100 /* Build configuration list for PBXProject "NexusVault" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 100000000000000000000200;
+			productRefGroup = 100000000000000000000201 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				100000000000000000000010 /* NexusVault */,
+				100000000000000000000020 /* ShareExtension */,
+				100000000000000000000030 /* ActionExtension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		100000000000000000000310 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		100000000000000000000311 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		100000000000000000000312 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		100000000000000000000300 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000401 /* NexusVault/Models.swift in Sources */,
+				100000000000000000000402 /* NexusVault/APIClient.swift in Sources */,
+				100000000000000000000403 /* NexusVault/SessionStore.swift in Sources */,
+				100000000000000000000404 /* NexusVault/NexusVaultApp.swift in Sources */,
+				100000000000000000000405 /* NexusVault/AppGroup.swift in Sources */,
+				100000000000000000000406 /* NexusVault/MediaCache.swift in Sources */,
+				100000000000000000000407 /* NexusVault/MediaSaver.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		100000000000000000000301 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000411 /* NexusVault/Models.swift in Sources */,
+				100000000000000000000412 /* NexusVault/APIClient.swift in Sources */,
+				100000000000000000000413 /* NexusVault/AppGroup.swift in Sources */,
+				100000000000000000000414 /* ShareExtension/ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		100000000000000000000302 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000421 /* NexusVault/Models.swift in Sources */,
+				100000000000000000000422 /* NexusVault/APIClient.swift in Sources */,
+				100000000000000000000423 /* NexusVault/AppGroup.swift in Sources */,
+				100000000000000000000424 /* ActionExtension/ActionViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		100000000000000000000610 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 100000000000000000000020 /* ShareExtension */;
+			targetProxy = F788249C30441AE900E4105A /* PBXContainerItemProxy */;
+		};
+		100000000000000000000620 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 100000000000000000000030 /* ActionExtension */;
+			targetProxy = F788249D30441AE900E4105A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		100000000000000000000101 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		100000000000000000000102 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		100000000000000000000111 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NexusVault/NexusVault.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = UABK2ZT9K7;
+				INFOPLIST_FILE = NexusVault/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = space.stacklabs.nexusvault;
+				PRODUCT_NAME = NexusVault;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		100000000000000000000112 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NexusVault/NexusVault.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = UABK2ZT9K7;
+				INFOPLIST_FILE = NexusVault/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = space.stacklabs.nexusvault;
+				PRODUCT_NAME = NexusVault;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		100000000000000000000121 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = UABK2ZT9K7;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = space.stacklabs.nexusvault.share;
+				PRODUCT_NAME = ShareExtension;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		100000000000000000000122 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = UABK2ZT9K7;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = space.stacklabs.nexusvault.share;
+				PRODUCT_NAME = ShareExtension;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		100000000000000000000131 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ActionExtension/ActionExtension.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = UABK2ZT9K7;
+				INFOPLIST_FILE = ActionExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = space.stacklabs.nexusvault.action;
+				PRODUCT_NAME = ActionExtension;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		100000000000000000000132 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ActionExtension/ActionExtension.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = UABK2ZT9K7;
+				INFOPLIST_FILE = ActionExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = space.stacklabs.nexusvault.action;
+				PRODUCT_NAME = ActionExtension;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		100000000000000000000100 /* Build configuration list for PBXProject "NexusVault" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				100000000000000000000101 /* Debug */,
+				100000000000000000000102 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		100000000000000000000110 /* Build configuration list for PBXNativeTarget "NexusVault" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				100000000000000000000111 /* Debug */,
+				100000000000000000000112 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		100000000000000000000120 /* Build configuration list for PBXNativeTarget "ShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				100000000000000000000121 /* Debug */,
+				100000000000000000000122 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		100000000000000000000130 /* Build configuration list for PBXNativeTarget "ActionExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				100000000000000000000131 /* Debug */,
+				100000000000000000000132 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 100000000000000000000001 /* Project object */;
+}

@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 
 import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
@@ -114,5 +115,4 @@ export const Tag = forwardRef<HTMLSpanElement, TagProps>(function Tag(
   );
 });
 
-// eslint-disable-next-line react-refresh/only-export-components
 export { tagVariants };

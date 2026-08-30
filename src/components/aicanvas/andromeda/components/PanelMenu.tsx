@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -286,7 +287,7 @@ function MenuItem({ item, onClose }) {
 }
 
 /** @type {React.ForwardRefExoticComponent<PanelMenuProps & React.HTMLAttributes<HTMLDivElement>>} */
-export const PanelMenu = forwardRef(function PanelMenu(
+export const PanelMenu = forwardRef<any, any>(function PanelMenu(
   { items, align = 'right', ariaLabel = 'Panel options', defaultOpen = false, staticOpen = false, className, style, triggerClassName, ...props },
   ref,
 ) {

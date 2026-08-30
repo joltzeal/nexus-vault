@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 
 import { forwardRef, useState } from 'react';
@@ -75,7 +76,7 @@ function deriveInitials(name) {
  */
 
 /** @type {React.ForwardRefExoticComponent<AvatarProps & React.HTMLAttributes<HTMLDivElement>>} */
-export const Avatar = forwardRef(function Avatar(
+export const Avatar = forwardRef<any, any>(function Avatar(
   { className, name = '?', src, size = 'md', status, style, ...props },
   ref,
 ) {

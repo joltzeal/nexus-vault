@@ -1,4 +1,3 @@
-import React from "react";
 import {
   ProgressBar as AriaProgressBar,
   type ProgressBarProps as AriaProgressBarProps,

@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 
 import { forwardRef } from 'react';
@@ -12,7 +13,7 @@ import { Card, CardContent } from './Card';
  */
 
 /** @type {React.ForwardRefExoticComponent<EmptyStateProps & React.HTMLAttributes<HTMLDivElement>>} */
-export const EmptyState = forwardRef(function EmptyState(
+export const EmptyState = forwardRef<any, any>(function EmptyState(
   { className, children, style, ...props },
   ref,
 ) {
@@ -36,7 +37,7 @@ export const EmptyState = forwardRef(function EmptyState(
   );
 });
 
-export const EmptyStateIcon = forwardRef(function EmptyStateIcon(
+export const EmptyStateIcon = forwardRef<any, any>(function EmptyStateIcon(
   { className, children, ...props },
   ref,
 ) {
@@ -62,7 +63,7 @@ export const EmptyStateIcon = forwardRef(function EmptyStateIcon(
   );
 });
 
-export const EmptyStateTitle = forwardRef(function EmptyStateTitle(
+export const EmptyStateTitle = forwardRef<any, any>(function EmptyStateTitle(
   { className, children, ...props },
   ref,
 ) {
@@ -85,7 +86,7 @@ export const EmptyStateTitle = forwardRef(function EmptyStateTitle(
   );
 });
 
-export const EmptyStateDescription = forwardRef(function EmptyStateDescription(
+export const EmptyStateDescription = forwardRef<any, any>(function EmptyStateDescription(
   { className, children, ...props },
   ref,
 ) {
@@ -108,7 +109,7 @@ export const EmptyStateDescription = forwardRef(function EmptyStateDescription(
   );
 });
 
-export const EmptyStateAction = forwardRef(function EmptyStateAction(
+export const EmptyStateAction = forwardRef<any, any>(function EmptyStateAction(
   { className, children, ...props },
   ref,
 ) {

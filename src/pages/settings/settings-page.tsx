@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/aicanvas/andromeda/components/Button";
@@ -250,7 +250,7 @@ export function SettingsPage({
                       autoComplete="current-password"
                       disabled={!user || passwordBusy}
                       label="Current password"
-                      onChange={(event) =>
+                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
                         setPasswordForm((form) => ({
                           ...form,
                           currentPassword: event.target.value,
@@ -265,7 +265,7 @@ export function SettingsPage({
                         autoComplete="new-password"
                         disabled={!user || passwordBusy}
                         label="New password"
-                        onChange={(event) =>
+                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
                           setPasswordForm((form) => ({
                             ...form,
                             newPassword: event.target.value,
@@ -279,7 +279,7 @@ export function SettingsPage({
                         autoComplete="new-password"
                         disabled={!user || passwordBusy}
                         label="Confirm password"
-                        onChange={(event) =>
+                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
                           setPasswordForm((form) => ({
                             ...form,
                             confirmPassword: event.target.value,
@@ -354,7 +354,7 @@ export function SettingsPage({
                   autoComplete="off"
                   disabled={!user || integrationBusy}
                   label="Cookie string"
-                  onChange={(event) => setCookieString(event.target.value)}
+            onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setCookieString(event.target.value)}
                   placeholder="auth_token=...; ct0=..."
                   rows={4}
                   value={cookieString}

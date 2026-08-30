@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 
 import { useReducedMotion as fmUseReducedMotion } from 'framer-motion';

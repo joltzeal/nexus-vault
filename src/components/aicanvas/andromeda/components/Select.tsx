@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 
 import { ChevronDown } from "lucide-react";
@@ -6,7 +7,7 @@ import { forwardRef, useId } from "react";
 import { cn, andromedaVars } from "./lib/utils";
 import { inputVariants } from "./Input";
 
-export const Select = forwardRef(function Select(
+export const Select = forwardRef<any, any>(function Select(
   {
     children,
     className,

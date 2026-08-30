@@ -70,6 +70,7 @@ export function ResourceCardFrame({
       {sourceIcon}
     </span>
   );
+  const SourceLabel = sourceLabelVariant === "plain" ? BaseBadge : BaseTag;
 
   return (
     <article
@@ -105,9 +106,9 @@ export function ResourceCardFrame({
             target="_blank"
             title={`打开 ${sourceName}`}
           >
-            <BaseTag className="cursor-pointer" variant="default">
+            <SourceLabel className="cursor-pointer" variant="default">
               {sourceName}
-            </BaseTag>
+            </SourceLabel>
           </a>
         </div>
         <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1">

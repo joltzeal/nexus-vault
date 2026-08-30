@@ -2,6 +2,7 @@
 
 import { ExternalLink, Save } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { ChangeEvent } from "react";
 
 import { Button } from "@/components/aicanvas/andromeda/components/Button";
 import { Input } from "@/components/aicanvas/andromeda/components/Input";
@@ -119,7 +120,7 @@ export function ResourceDetailsSheet({
                     <Input
                       className="min-w-0 flex-1"
                       disabled={!canEdit || busy}
-                      onChange={(event) => update("url", event.target.value)}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => update("url", event.target.value)}
                       value={form.url}
                     />
                     <Button
@@ -145,7 +146,7 @@ export function ResourceDetailsSheet({
                   <Textarea
                     className="min-h-16 resize-y"
                     disabled={!canEdit || busy}
-                    onChange={(event) => update("title", event.target.value)}
+                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) => update("title", event.target.value)}
                     value={form.title}
                   />
                 </label>
@@ -154,7 +155,7 @@ export function ResourceDetailsSheet({
                   <Textarea
                     className="min-h-24 resize-y"
                     disabled={!canEdit || busy}
-                    onChange={(event) =>
+                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
                       update("description", event.target.value)
                     }
                     value={form.description}
@@ -164,14 +165,14 @@ export function ResourceDetailsSheet({
                   Referer
                   <Input
                     disabled={!canEdit || busy}
-                    onChange={(event) => update("referer", event.target.value)}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => update("referer", event.target.value)}
                     value={form.referer}
                   />
                 </label>
                 <AndromedaSelect
                   disabled={!canEdit || busy}
                   label="Space"
-                  onChange={(event) => update("spaceId", event.target.value)}
+                  onChange={(event: ChangeEvent<HTMLSelectElement>) => update("spaceId", event.target.value)}
                   value={form.spaceId}
                 >
                   {spaces.map((space) => (

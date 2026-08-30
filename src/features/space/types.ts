@@ -3,3 +3,5 @@ export type SpaceForm = {
   description: string
   icon: string
 }
+
+export type { Space } from "../resource/types";

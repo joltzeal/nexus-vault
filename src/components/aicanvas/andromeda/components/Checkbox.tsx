@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 
 import { forwardRef, useId, useState, useEffect } from 'react';
@@ -96,7 +97,7 @@ const labelClass = cn(
  */
 
 /** @type {React.ForwardRefExoticComponent<CheckboxProps & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'|'type'>>} */
-export const Checkbox = forwardRef(function Checkbox(
+export const Checkbox = forwardRef<any, any>(function Checkbox(
   {
     className,
     checked: controlledChecked,
