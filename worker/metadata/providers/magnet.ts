@@ -17,8 +17,13 @@ const MAGNET_METADATA_API_URL =
   "https://magnet-metadata-api.darklyn.org/api/v1/metadata"
 const MAGNET_METADATA_TIMEOUT_MS = 165_000
 const MAGNET_METADATA_RESPONSE_MAX_BYTES = 8 * 1024 * 1024
+const WHATSLINK_RESPONSE_MAX_BYTES = 512 * 1024
 const MAGNET_METADATA_TREE_MAX_NODES = 20_000
 const MAGNET_METADATA_TREE_MAX_DEPTH = 32
+const MAGNET_CACHE_VERSION = 1
+const MAGNET_CACHE_TTL_SECONDS = 30 * 24 * 60 * 60
+const WHATSLINK_MAX_ATTEMPTS = 3
+const WHATSLINK_RETRY_DELAYS_MS = [500, 1500]
 const WHATSLINK_ATTRIBUTION = {
   label: "whatslink.info",
   url: "https://whatslink.info",
@@ -47,45 +52,83 @@ export const magnetMetadataProvider: MetadataProvider = {
       type: "magnet",
       title: fallbackTitle,
     })
-    const [whatslinkResult, torrentResult] = await Promise.allSettled([
-      fetchWhatsLinkMetadata(parsed.infoHash),
-      fetchTorrentMetadata(
-        resource.url,
-        parsed.infoHash,
-      ),
-    ])
-    const whatslink = fulfilledValue(whatslinkResult)
-    const torrent = fulfilledValue(torrentResult)
-    const whatslinkError = rejectedReason(whatslinkResult)
-    const torrentError = rejectedReason(torrentResult)
+    const cached = await readMagnetCache(options?.magnetCache, parsed.infoHash)
+    let whatslink: WhatsLinkFetchResult | undefined
+    let torrent: TorrentFetchResult | undefined
+    let whatslinkError: unknown
+    let torrentError: unknown
 
-    if (
-      !torrent &&
-      torrentError instanceof RetryableMetadataError &&
-      options?.retryTransient
-    ) {
-      throw torrentError
-    }
-    if (!whatslink && !torrent) {
-      const error = torrentError ?? whatslinkError
-      if (error instanceof RetryableMetadataError && options?.retryTransient) {
-        throw error
+    if (cached) {
+      whatslink = {
+        raw: cached.whatslink.raw,
+        value: normalizeWhatsLinkResponse(cached.whatslink.raw),
+      }
+      if (cached.darklyn.status === "available") {
+        torrent = {
+          raw: cached.darklyn.raw,
+          value: normalizeTorrentMetadata(cached.darklyn.raw, parsed.infoHash),
+        }
+      } else if (cached.darklyn.error) {
+        torrentError = new Error(cached.darklyn.error)
+      }
+    } else {
+      try {
+        whatslink = await fetchWhatsLinkMetadata(parsed.infoHash)
+      } catch (error) {
+        whatslinkError = error
       }
 
-      return {
-        provider: "magnet",
-        status: "failed",
-        data: {
-          ...baseMetadata,
-          identifiers: { infoHash: parsed.infoHash },
-          source: { name: "darklyn", url: MAGNET_METADATA_API_URL },
+      if (!whatslink) {
+        if (whatslinkError instanceof RetryableMetadataError && options?.retryTransient) {
+          throw whatslinkError
+        }
+
+        return {
+          provider: "magnet",
+          status: "failed",
+          data: {
+            ...baseMetadata,
+            identifiers: { infoHash: parsed.infoHash },
+            extra: {
+              magnet: {
+                infoHash: parsed.infoHash,
+                sources: {
+                  whatslink: { status: "unavailable" },
+                },
+              },
+            },
+          },
+          errorMessage: getErrorMessage(
+            whatslinkError,
+            "Whatslink metadata request failed.",
+          ),
+        }
+      }
+
+      try {
+        torrent = await fetchTorrentMetadata(resource.url, parsed.infoHash)
+      } catch (error) {
+        torrentError = error
+      }
+
+      await writeMagnetCache(options?.magnetCache, parsed.infoHash, {
+        version: MAGNET_CACHE_VERSION,
+        infoHash: parsed.infoHash,
+        whatslink: {
+          status: "available",
+          raw: whatslink.raw,
         },
-        errorMessage: getErrorMessage(error, "Magnet metadata request failed."),
-      }
+        darklyn: torrent
+          ? { status: "available", raw: torrent.raw }
+          : {
+              status: "unavailable",
+              error: getErrorMessage(torrentError, "Magnet file tree is unavailable."),
+            },
+      })
     }
 
     const media = await getWhatsLinkMedia(
-      whatslink?.screenshots,
+      whatslink.value.screenshots,
       options?.persistMagnetScreenshot,
     )
     const metadataError = torrentError
@@ -93,55 +136,39 @@ export const magnetMetadataProvider: MetadataProvider = {
       : undefined
 
     return {
-      provider: torrent ? "darklyn" : "whatslink",
+      provider: "magnet",
       status: "completed",
       data: {
         ...baseMetadata,
-        title: torrent?.name || whatslink?.name || fallbackTitle,
-        size: torrent?.size ?? whatslink?.size,
-        fileCount: torrent?.fileCount ?? whatslink?.count,
-        fileType: whatslink?.fileType,
-        tree: torrent?.tree ?? [],
+        title: whatslink.value.name || fallbackTitle,
+        size: whatslink.value.size,
+        fileCount: whatslink.value.count,
+        fileType: whatslink.value.fileType,
+        tree: torrent?.value.tree ?? [],
         ...(media ? { media } : {}),
         identifiers: {
           infoHash: parsed.infoHash,
         },
-        source: whatslink
-          ? {
-              name: "whatslink",
-              url: WHATSLINK_API_URL,
-              attribution: WHATSLINK_ATTRIBUTION,
-            }
-          : {
-              name: "darklyn",
-              url: MAGNET_METADATA_API_URL,
-            },
+        source: {
+          name: "whatslink.info",
+          url: WHATSLINK_API_URL,
+          attribution: WHATSLINK_ATTRIBUTION,
+        },
         extra: {
           magnet: {
             infoHash: parsed.infoHash,
+            sources: {
+              whatslink: { status: "available" },
+              darklyn: {
+                status: torrent ? "available" : "unavailable",
+                ...(metadataError ? { error: metadataError } : {}),
+              },
+            },
           },
-          ...(whatslink
-            ? {
-                whatslink: {
-                  type: whatslink.type,
-                  fileType: whatslink.fileType,
-                },
-              }
-            : {}),
-          ...(torrent
-            ? {
-                magnetMetadata: {
-                  provider: "darklyn",
-                  infoHash: torrent.infoHash,
-                  name: torrent.name,
-                  size: torrent.size,
-                  fileCount: torrent.fileCount,
-                  createdAt: torrent.createdAt,
-                },
-              }
-            : metadataError
-              ? { magnetMetadata: { provider: "darklyn", error: metadataError } }
-              : {}),
+          whatslink: {
+            type: whatslink.value.type,
+            fileType: whatslink.value.fileType,
+          },
         },
       },
     }
@@ -157,6 +184,11 @@ type WhatsLinkMetadata = {
   screenshots?: string[]
 }
 
+type WhatsLinkFetchResult = {
+  raw: unknown
+  value: WhatsLinkMetadata
+}
+
 type TorrentMetadata = {
   infoHash?: string
   name?: string
@@ -166,6 +198,23 @@ type TorrentMetadata = {
   tree: ResourceFileTreeNode[]
 }
 
+type TorrentFetchResult = {
+  raw: unknown
+  value: TorrentMetadata
+}
+
+type MagnetCacheEntry = {
+  version: 1
+  infoHash: string
+  whatslink: {
+    status: "available"
+    raw: unknown
+  }
+  darklyn:
+    | { status: "available"; raw: unknown }
+    | { status: "unavailable"; error?: string }
+}
+
 type MutableTreeEntry = {
   name: string
   type: ResourceFileType
@@ -173,7 +222,22 @@ type MutableTreeEntry = {
   children?: Map<string, MutableTreeEntry>
 }
 
-async function fetchWhatsLinkMetadata(infoHash: string): Promise<WhatsLinkMetadata> {
+async function fetchWhatsLinkMetadata(infoHash: string): Promise<WhatsLinkFetchResult> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < WHATSLINK_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await fetchWhatsLinkMetadataAttempt(infoHash)
+    } catch (error) {
+      if (!(error instanceof RetryableMetadataError)) throw error
+      lastError = error
+      const delay = WHATSLINK_RETRY_DELAYS_MS[attempt]
+      if (delay !== undefined) await wait(delay)
+    }
+  }
+  throw lastError ?? new RetryableMetadataError("Whatslink metadata request failed.")
+}
+
+async function fetchWhatsLinkMetadataAttempt(infoHash: string): Promise<WhatsLinkFetchResult> {
   const endpoint = new URL(WHATSLINK_API_URL)
   endpoint.searchParams.set("url", createCanonicalMagnetUrl(infoHash))
 
@@ -190,7 +254,13 @@ async function fetchWhatsLinkMetadata(infoHash: string): Promise<WhatsLinkMetada
       throw new Error(message)
     }
 
-    return normalizeWhatsLinkResponse(await response.json())
+    let payload: unknown
+    try {
+      payload = JSON.parse(await readBoundedResponseBody(response, WHATSLINK_RESPONSE_MAX_BYTES))
+    } catch {
+      throw new RetryableMetadataError("Whatslink response is not valid JSON.")
+    }
+    return { raw: payload, value: normalizeWhatsLinkResponse(payload) }
   } catch (error) {
     if (error instanceof RetryableMetadataError) throw error
     if (isTransientNetworkError(error)) {
@@ -205,7 +275,7 @@ async function fetchWhatsLinkMetadata(infoHash: string): Promise<WhatsLinkMetada
 async function fetchTorrentMetadata(
   magnet: string,
   expectedInfoHash: string,
-): Promise<TorrentMetadata> {
+): Promise<TorrentFetchResult> {
   try {
     const response = await fetch(MAGNET_METADATA_API_URL, {
       method: "POST",
@@ -217,7 +287,7 @@ async function fetchTorrentMetadata(
       signal: AbortSignal.timeout(MAGNET_METADATA_TIMEOUT_MS),
     })
 
-    const body = await readBoundedResponseBody(response)
+    const body = await readBoundedResponseBody(response, MAGNET_METADATA_RESPONSE_MAX_BYTES)
     if (!response.ok) {
       const upstreamMessage = getUpstreamErrorMessage(body)
       const message = `Magnet metadata request failed with HTTP ${response.status}${
@@ -235,7 +305,10 @@ async function fetchTorrentMetadata(
     } catch {
       throw new RetryableMetadataError("Magnet metadata response is not valid JSON.")
     }
-    return normalizeTorrentMetadata(payload, expectedInfoHash)
+    return {
+      raw: payload,
+      value: normalizeTorrentMetadata(payload, expectedInfoHash),
+    }
   } catch (error) {
     if (error instanceof RetryableMetadataError) throw error
     if (isTransientNetworkError(error)) {
@@ -247,13 +320,13 @@ async function fetchTorrentMetadata(
   }
 }
 
-async function readBoundedResponseBody(response: Response) {
+async function readBoundedResponseBody(response: Response, maxBytes: number) {
   const contentLength = numberStringValue(response.headers.get("content-length"))
-  if (contentLength && contentLength > MAGNET_METADATA_RESPONSE_MAX_BYTES) {
+  if (contentLength && contentLength > maxBytes) {
     throw new Error("Magnet metadata response is too large.")
   }
   const body = await response.text()
-  if (new TextEncoder().encode(body).byteLength > MAGNET_METADATA_RESPONSE_MAX_BYTES) {
+  if (new TextEncoder().encode(body).byteLength > maxBytes) {
     throw new Error("Magnet metadata response is too large.")
   }
   return body
@@ -435,8 +508,9 @@ function getWhatslinkScreenshotId(url: string) {
 }
 
 function normalizeWhatsLinkResponse(payload: unknown): WhatsLinkMetadata {
-  const record = isRecord(payload) ? payload : {}
-  return {
+  const record = isRecord(payload) ? payload : null
+  if (!record) throw new Error("Whatslink metadata response is invalid.")
+  const normalized = {
     type: stringValue(record.type),
     fileType: resourceFileTypeValue(record.file_type),
     name: stringValue(record.name),
@@ -444,14 +518,70 @@ function normalizeWhatsLinkResponse(payload: unknown): WhatsLinkMetadata {
     count: numberValue(record.count),
     screenshots: screenshotArrayValue(record.screenshots),
   }
+  if (!Object.values(normalized).some((value) => value !== undefined)) {
+    throw new Error("Whatslink metadata response contains no metadata.")
+  }
+  return normalized
 }
 
-function fulfilledValue<T>(result: PromiseSettledResult<T>) {
-  return result.status === "fulfilled" ? result.value : undefined
+async function readMagnetCache(cache: KVNamespace | undefined, infoHash: string) {
+  if (!cache) return null
+  try {
+    const value = await cache.get(`magnet:v${MAGNET_CACHE_VERSION}:${infoHash}`, "json")
+    if (!isRecord(value) || value.version !== MAGNET_CACHE_VERSION || value.infoHash !== infoHash) {
+      return null
+    }
+    const whatslink = isRecord(value.whatslink) ? value.whatslink : null
+    const darklyn = isRecord(value.darklyn) ? value.darklyn : null
+    if (
+      whatslink?.status !== "available" ||
+      !Object.prototype.hasOwnProperty.call(whatslink, "raw") ||
+      darklyn?.status !== "available" && darklyn?.status !== "unavailable"
+    ) {
+      return null
+    }
+    normalizeWhatsLinkResponse(whatslink.raw)
+    if (darklyn.status === "available") {
+      normalizeTorrentMetadata(darklyn.raw, infoHash)
+      return {
+        version: 1 as const,
+        infoHash,
+        whatslink: { status: "available" as const, raw: whatslink.raw },
+        darklyn: { status: "available" as const, raw: darklyn.raw },
+      }
+    }
+    return {
+      version: 1 as const,
+      infoHash,
+      whatslink: { status: "available" as const, raw: whatslink.raw },
+      darklyn: {
+        status: "unavailable" as const,
+        ...(stringValue(darklyn.error) ? { error: stringValue(darklyn.error) } : {}),
+      },
+    }
+  } catch (error) {
+    console.warn("Magnet metadata cache read failed", { infoHash, error })
+    return null
+  }
 }
 
-function rejectedReason(result: PromiseSettledResult<unknown>) {
-  return result.status === "rejected" ? result.reason : undefined
+async function writeMagnetCache(
+  cache: KVNamespace | undefined,
+  infoHash: string,
+  value: MagnetCacheEntry,
+) {
+  if (!cache) return
+  try {
+    await cache.put(`magnet:v${MAGNET_CACHE_VERSION}:${infoHash}`, JSON.stringify(value), {
+      expirationTtl: MAGNET_CACHE_TTL_SECONDS,
+    })
+  } catch (error) {
+    console.warn("Magnet metadata cache write failed", { infoHash, error })
+  }
+}
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
 
 function isRetryableMagnetStatus(status: number, message?: string) {

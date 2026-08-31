@@ -50,6 +50,7 @@ export type MetadataResolveOptions = {
     url: string
     sourceId: string
   }) => Promise<string | undefined>
+  magnetCache?: KVNamespace
   captureHttpScreenshot?: (input: {
     resourceId: string
     title: string

@@ -148,6 +148,7 @@ async function resolveSubmissionMetadata(input: {
       probeCloudDriveAvailability: false,
       twitterCookieString: input.twitterCookieString,
       githubToken: getRuntimeBinding(input.env, "GITHUB_TOKEN"),
+      magnetCache: input.env?.CACHE,
     })
     .catch(() => ({
       provider: provider.name,

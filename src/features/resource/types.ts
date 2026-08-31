@@ -87,6 +87,7 @@ export type Resource = {
 export type ResourceTransferTargetVault = {
   id: string;
   title: string;
+  cover?: string;
   spaces: Array<{
     id: string;
     name: string;

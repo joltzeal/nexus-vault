@@ -309,6 +309,7 @@ export async function listResourceTransferTargets(
     .select({
       id: vaults.id,
       title: vaults.title,
+      cover: vaults.cover,
     })
     .from(vaults)
     .where(and(eq(vaults.ownerId, input.actor.id), isNull(vaults.deletedAt)))

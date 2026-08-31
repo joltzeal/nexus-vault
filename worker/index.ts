@@ -11,6 +11,7 @@ import { requestIdMiddleware } from "./middleware/request-id";
 import { errorHandler } from "./middleware/error-handler";
 import { consumeQueueBatch } from "./queues/worker-consumer";
 import { runScheduledCloudDriveChecks } from "./services/cloud-drive-check-service";
+import { runScheduledMagnetMediaRetries } from "./services/metadata-service";
 
 const app =
   new Hono<AppEnv>();
@@ -67,10 +68,27 @@ const handler: ExportedHandler<Env> = {
   },
 
   async scheduled(controller, env) {
-    await runScheduledCloudDriveChecks(env, {
+    const [cloudDriveResult, magnetMediaResult] = await Promise.allSettled([
+      runScheduledCloudDriveChecks(env, {
+        cron: controller.cron,
+        scheduledTime: controller.scheduledTime,
+      }),
+      runScheduledMagnetMediaRetries(env),
+    ])
+    if (cloudDriveResult.status === "rejected") {
+      console.error("Cloud drive scheduled check failed", cloudDriveResult.reason)
+    }
+    if (magnetMediaResult.status === "rejected") {
+      console.error("Magnet media scheduled retry failed", magnetMediaResult.reason)
+    }
+    console.log("Scheduled maintenance completed", {
       cron: controller.cron,
       scheduledTime: controller.scheduledTime,
-    });
+      cloudDrive:
+        cloudDriveResult.status === "fulfilled" ? cloudDriveResult.value : undefined,
+      magnetMedia:
+        magnetMediaResult.status === "fulfilled" ? magnetMediaResult.value : undefined,
+    })
   },
 };
 

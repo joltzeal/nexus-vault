@@ -20,6 +20,7 @@
 		"db:migrate:local": "drizzle-kit migrate"
 	},
 	"dependencies": {
+		"@base-ui-components/react": "1.0.0-rc.0",
 		"@base-ui/react": "^1.7.0",
 		"@better-auth/drizzle-adapter": "^1.7.1",
 		"@dnd-kit/core": "^6.3.1",
