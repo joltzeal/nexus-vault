@@ -200,6 +200,7 @@ export function VaultDetailPage() {
             completedBytes: 338 * 1024 * 1024,
             fileIndex: 0,
             fileProgress: 43,
+            phase: "uploading",
             totalBytes: UPLOAD_TOAST_PREVIEW_FILES.reduce(
               (sum, file) => sum + file.size,
               0,
@@ -891,7 +892,13 @@ export function VaultDetailPage() {
       description: (
         <MediaUploadToastDescription
           files={files}
-          progress={{ completedBytes: 0, fileIndex: -1, fileProgress: 0, totalBytes: files.reduce((sum, file) => sum + file.size, 0) }}
+          progress={{
+            completedBytes: 0,
+            fileIndex: -1,
+            fileProgress: 0,
+            phase: "preparing",
+            totalBytes: files.reduce((sum, file) => sum + file.size, 0),
+          }}
         />
       ),
     });
@@ -939,7 +946,13 @@ export function VaultDetailPage() {
     return (
       <div className="min-w-0 space-y-2">
         <p className="truncate text-xs" title={currentFile}>
-          {currentFile ? `Uploading ${currentFile}` : "Preparing upload..."}
+          {progress.phase === "preparing"
+            ? "Preparing upload..."
+            : progress.phase === "finalizing"
+              ? "Finalizing upload..."
+              : currentFile
+                ? `Uploading ${currentFile}`
+                : "Uploading media..."}
         </p>
         <ProgressBar label="Upload progress" value={percent} />
         <p className="text-xs text-muted-foreground">
