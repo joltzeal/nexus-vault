@@ -71,6 +71,16 @@ export const completeLocalMediaMultipartSchema = z.object({
     .max(10_000),
 })
 
+export const signLocalMediaMultipartSchema = z.object({
+  uploads: z.array(
+    z.object({
+      key: objectKeySchema,
+      uploadId: z.string().trim().min(1).max(1000),
+      partNumbers: z.array(z.number().int().min(1).max(10_000)).min(1).max(10_000),
+    }),
+  ).min(1).max(20),
+})
+
 export const abortLocalMediaMultipartSchema = completeLocalMediaMultipartSchema.pick({
   key: true,
   uploadId: true,

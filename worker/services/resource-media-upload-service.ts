@@ -148,6 +148,49 @@ export async function signResourceMediaPart(
   return signS3MultipartPart(env, input)
 }
 
+export async function signResourceMediaParts(
+  env: CloudflareEnv,
+  input: {
+    actor: Actor
+    uploads: Array<{
+      key: string
+      partNumbers: number[]
+      uploadId: string
+    }>
+  },
+) {
+  const uploads = input.uploads.map((upload) => {
+    assertActorUploadKey(input.actor, upload.key)
+    if (
+      upload.partNumbers.length === 0 ||
+      new Set(upload.partNumbers).size !== upload.partNumbers.length ||
+      upload.partNumbers.some(
+        (partNumber) => !Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10_000,
+      )
+    ) {
+      throw new ApiError("VALIDATION_ERROR", "上传分片编号无效。", 422)
+    }
+    return upload
+  })
+
+  return Promise.all(
+    uploads.map(async (upload) => ({
+      key: upload.key,
+      uploadId: upload.uploadId,
+      parts: await Promise.all(
+        upload.partNumbers.map(async (partNumber) => ({
+          partNumber,
+          ...(await signS3MultipartPart(env, {
+            key: upload.key,
+            partNumber,
+            uploadId: upload.uploadId,
+          })),
+        })),
+      ),
+    })),
+  )
+}
+
 export async function completeResourceMediaUpload(
   env: CloudflareEnv,
   input: {

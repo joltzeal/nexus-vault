@@ -38,6 +38,8 @@ export type LocalMediaUploadProgress = {
 }
 
 const MULTIPART_CHUNK_BYTES = 8 * 1024 * 1024
+const MULTIPART_SIGN_BATCH_SIZE = 8
+const MULTIPART_UPLOAD_CONCURRENCY = 4
 
 export async function uploadLocalMediaResource(
   vaultId: string,
@@ -142,30 +144,52 @@ async function uploadLocalMediaFiles(
       if (!upload) throw new Error(`未找到文件 ${file.name} 的上传任务。`)
 
       const parts: Array<{ ETag: string; PartNumber: number }> = []
-      let partNumber = 1
-      for (let offset = 0; offset < file.size; offset += MULTIPART_CHUNK_BYTES) {
-        const chunk = file.slice(offset, Math.min(offset + MULTIPART_CHUNK_BYTES, file.size))
-        const signed = await requestJson<{ method: "PUT"; url: string }>(
-          `/api/v1/local-media/multipart?${new URLSearchParams({
-            key: upload.key,
-            partNumber: String(partNumber),
-            uploadId: upload.uploadId,
-          })}`,
-          "GET",
+      const totalParts = Math.ceil(file.size / MULTIPART_CHUNK_BYTES)
+      let nextPartNumber = 1
+      let uploadedFileBytes = 0
+      while (nextPartNumber <= totalParts) {
+        const partNumbers = Array.from(
+          { length: Math.min(MULTIPART_SIGN_BATCH_SIZE, totalParts - nextPartNumber + 1) },
+          (_, index) => nextPartNumber + index,
         )
-        const response = await fetch(signed.url, { body: chunk, method: signed.method })
-        if (!response.ok) throw new Error(`上传 ${file.name} 第 ${partNumber} 个分片失败。`)
-        const etag = response.headers.get("ETag")
-        if (!etag) throw new Error(`上传 ${file.name} 后未返回 ETag。`)
-        parts.push({ ETag: etag, PartNumber: partNumber })
-        completedBytes += chunk.size
-        onProgress?.({
-          completedBytes,
-          fileIndex,
-          fileProgress: ((offset + chunk.size) / file.size) * 100,
-          totalBytes,
+        const signedParts = await requestJson<Array<{
+          key: string
+          parts: Array<{ method: "PUT"; partNumber: number; url: string }>
+          uploadId: string
+        }>>("/api/v1/local-media/multipart/sign", "POST", {
+          uploads: [{ key: upload.key, partNumbers, uploadId: upload.uploadId }],
         })
-        partNumber += 1
+        const signed = signedParts[0]
+        if (!signed || signed.key !== upload.key || signed.uploadId !== upload.uploadId) {
+          throw new Error(`未找到文件 ${file.name} 的分片签名。`)
+        }
+
+        for (let offset = 0; offset < signed.parts.length; offset += MULTIPART_UPLOAD_CONCURRENCY) {
+          const concurrentParts = signed.parts.slice(offset, offset + MULTIPART_UPLOAD_CONCURRENCY)
+          const completed = await Promise.all(
+            concurrentParts.map(async (signedPart) => {
+              const partOffset = (signedPart.partNumber - 1) * MULTIPART_CHUNK_BYTES
+              const chunk = file.slice(partOffset, Math.min(partOffset + MULTIPART_CHUNK_BYTES, file.size))
+              const response = await fetch(signedPart.url, { body: chunk, method: signedPart.method })
+              if (!response.ok) throw new Error(`上传 ${file.name} 第 ${signedPart.partNumber} 个分片失败。`)
+              const etag = response.headers.get("ETag")
+              if (!etag) throw new Error(`上传 ${file.name} 后未返回 ETag。`)
+              return { ETag: etag, PartNumber: signedPart.partNumber, size: chunk.size }
+            }),
+          )
+          completed.forEach((part) => {
+            parts.push({ ETag: part.ETag, PartNumber: part.PartNumber })
+            uploadedFileBytes += part.size
+            completedBytes += part.size
+          })
+          onProgress?.({
+            completedBytes,
+            fileIndex,
+            fileProgress: (uploadedFileBytes / file.size) * 100,
+            totalBytes,
+          })
+        }
+        nextPartNumber += signed.parts.length
       }
 
       await requestJson(
