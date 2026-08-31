@@ -1,6 +1,13 @@
 "use client";
 
-import { Archive, ExternalLink, FileAudio, Save, Upload, X } from "lucide-react";
+import {
+  Archive,
+  ExternalLink,
+  FileAudio,
+  Save,
+  Upload,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, RefObject } from "react";
 
@@ -69,7 +76,10 @@ export function ResourceDetailsSheet({
   busy?: boolean;
   canEdit: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (form: ResourceDetailsForm, media?: ResourceDetailsMediaChange) => void;
+  onSave: (
+    form: ResourceDetailsForm,
+    media?: ResourceDetailsMediaChange,
+  ) => void;
   open: boolean;
   resource?: Resource;
   spaces: Array<Pick<Space, "id" | "name">>;
@@ -112,10 +122,7 @@ export function ResourceDetailsSheet({
     localMediaRef.current = localMedia;
   }, [localMedia]);
 
-  useEffect(
-    () => () => localMediaRef.current.forEach(revokeDraftPreview),
-    [],
-  );
+  useEffect(() => () => localMediaRef.current.forEach(revokeDraftPreview), []);
 
   function update<K extends keyof ResourceDetailsForm>(
     key: K,
@@ -167,7 +174,9 @@ export function ResourceDetailsSheet({
                   }}
                   onRemove={(id) => {
                     setLocalMedia((current) => {
-                      const item = current.find((candidate) => candidate.id === id);
+                      const item = current.find(
+                        (candidate) => candidate.id === id,
+                      );
                       if (item) revokeDraftPreview(item);
                       return current.filter((candidate) => candidate.id !== id);
                     });
@@ -188,40 +197,44 @@ export function ResourceDetailsSheet({
 
               <div className="flex flex-col gap-3">
                 {resource.type !== "local_media" ? (
-                <label className="flex flex-col gap-1.5 text-label text-muted-foreground">
-                  URL
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Input
-                      className="min-w-0 flex-1"
-                      disabled={!canEdit || busy}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) => update("url", event.target.value)}
-                      value={form.url}
-                    />
-                    <Button
-                      aria-label="Open resource URL"
-                      asChild
-                      className="size-8 shrink-0 p-0"
-                      disabled={!form.url.trim()}
-                      size="sm"
-                      variant="outline"
-                    >
-                      <a
-                        href={form.url.trim() || "#"}
-                        rel="noreferrer"
-                        target="_blank"
+                  <label className="flex flex-col gap-1.5 text-label text-muted-foreground">
+                    URL
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Input
+                        className="min-w-0 flex-1"
+                        disabled={!canEdit || busy}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                          update("url", event.target.value)
+                        }
+                        value={form.url}
+                      />
+                      <Button
+                        aria-label="Open resource URL"
+                        asChild
+                        className="size-8 shrink-0 p-0"
+                        disabled={!form.url.trim()}
+                        size="sm"
+                        variant="outline"
                       >
-                        <ExternalLink />
-                      </a>
-                    </Button>
-                  </div>
-                </label>
+                        <a
+                          href={form.url.trim() || "#"}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          <ExternalLink />
+                        </a>
+                      </Button>
+                    </div>
+                  </label>
                 ) : null}
                 <label className="flex flex-col gap-1.5 text-label text-muted-foreground">
                   Title
                   <Textarea
                     className="min-h-16 resize-y"
                     disabled={!canEdit || busy}
-                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) => update("title", event.target.value)}
+                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+                      update("title", event.target.value)
+                    }
                     value={form.title}
                   />
                 </label>
@@ -240,14 +253,18 @@ export function ResourceDetailsSheet({
                   Referer
                   <Input
                     disabled={!canEdit || busy}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => update("referer", event.target.value)}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                      update("referer", event.target.value)
+                    }
                     value={form.referer}
                   />
                 </label>
                 <AndromedaSelect
                   disabled={!canEdit || busy}
                   label="Space"
-                  onChange={(event: ChangeEvent<HTMLSelectElement>) => update("spaceId", event.target.value)}
+                  onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                    update("spaceId", event.target.value)
+                  }
                   value={form.spaceId}
                 >
                   {spaces.map((space) => (
@@ -282,7 +299,9 @@ export function ResourceDetailsSheet({
                 },
                 resource?.type === "local_media"
                   ? {
-                      files: localMedia.flatMap((item) => (item.file ? [item.file] : [])),
+                      files: localMedia.flatMap((item) =>
+                        item.file ? [item.file] : [],
+                      ),
                       order: getLocalMediaOrder(localMedia),
                     }
                   : undefined,
@@ -316,7 +335,9 @@ function LocalMediaEditor({
     <section className="flex flex-col gap-3 border border-border bg-card p-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-label font-medium text-foreground">Media files</h3>
+          <h3 className="text-label font-medium text-foreground">
+            Media files
+          </h3>
           <p className="text-xs text-muted-foreground">{items.length} files</p>
         </div>
         <input
@@ -344,7 +365,10 @@ function LocalMediaEditor({
       {items.length > 0 ? (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {items.map((item) => (
-            <div className="group relative overflow-hidden border border-border" key={item.id}>
+            <div
+              className="group relative overflow-hidden border border-border"
+              key={item.id}
+            >
               <LocalMediaDraftPreview item={item} />
               <button
                 aria-label={`Remove ${item.fileName}`}
@@ -357,10 +381,15 @@ function LocalMediaEditor({
                 <X className="size-3.5" />
               </button>
               <div className="border-t border-border px-2 py-1.5">
-                <p className="truncate text-xs text-foreground" title={item.fileName}>
+                <p
+                  className="truncate text-xs text-foreground"
+                  title={item.fileName}
+                >
                   {item.fileName}
                 </p>
-                <p className="text-[10px] text-muted-foreground">{formatMediaSize(item.size)}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {formatMediaSize(item.size)}
+                </p>
               </div>
             </div>
           ))}
@@ -373,16 +402,36 @@ function LocalMediaEditor({
 
 function LocalMediaDraftPreview({ item }: { item: LocalMediaDraft }) {
   if (item.kind === "image" && item.previewUrl) {
-    return <img alt="" className="aspect-[4/3] w-full object-cover" src={item.previewUrl} />;
+    return (
+      <img
+        alt=""
+        className="aspect-[4/3] w-full object-cover"
+        src={item.previewUrl}
+      />
+    );
   }
   if (item.kind === "video" && item.previewUrl) {
-    return <video className="aspect-[4/3] w-full object-cover" muted preload="metadata" src={item.previewUrl} />;
+    return (
+      <video
+        className="aspect-[4/3] w-full object-cover"
+        muted
+        preload="metadata"
+        src={item.previewUrl}
+      />
+    );
   }
   if (item.kind === "audio" && item.previewUrl) {
     return (
       <div className="flex aspect-[4/3] flex-col items-center justify-center gap-2 bg-muted px-2">
         <FileAudio className="size-7 text-primary" />
-        {item.file ? <audio className="h-7 w-full" controls preload="metadata" src={item.previewUrl} /> : null}
+        {item.file ? (
+          <audio
+            className="h-7 w-full"
+            controls
+            preload="metadata"
+            src={item.previewUrl}
+          />
+        ) : null}
       </div>
     );
   }
@@ -403,26 +452,35 @@ function toLocalMediaDraft(resource?: Resource): LocalMediaDraft[] {
     const value = item as Record<string, unknown>;
     const itemMetadata = value.metadata;
     const objectKey =
-      itemMetadata && typeof itemMetadata === "object" &&
+      itemMetadata &&
+      typeof itemMetadata === "object" &&
       typeof (itemMetadata as Record<string, unknown>).objectKey === "string"
-        ? (itemMetadata as Record<string, unknown>).objectKey as string
+        ? ((itemMetadata as Record<string, unknown>).objectKey as string)
         : undefined;
     const url = typeof value.url === "string" ? value.url : undefined;
     if (!objectKey || !url) return [];
     const kind = getLocalMediaKind(value.kind);
-    return [{
-      fileName: typeof value.fileName === "string" ? value.fileName : `Media ${index + 1}`,
-      id: `existing:${objectKey}`,
-      kind,
-      objectKey,
-      previewUrl: url,
-      size: typeof value.size === "number" ? value.size : 0,
-    }];
+    return [
+      {
+        fileName:
+          typeof value.fileName === "string"
+            ? value.fileName
+            : `Media ${index + 1}`,
+        id: `existing:${objectKey}`,
+        kind,
+        objectKey,
+        previewUrl: url,
+        size: typeof value.size === "number" ? value.size : 0,
+      },
+    ];
   });
 }
 
 function addLocalMediaFiles(current: LocalMediaDraft[], selected: FileList) {
-  const candidates = Array.from(selected).slice(0, LOCAL_MEDIA_MAX_FILES - current.length);
+  const candidates = Array.from(selected).slice(
+    0,
+    LOCAL_MEDIA_MAX_FILES - current.length,
+  );
   const items = [...current];
   const rejected: string[] = [];
   let totalSize = current.reduce((sum, item) => sum + item.size, 0);
@@ -468,16 +526,56 @@ function getLocalMediaKind(value: unknown, fileName = "") {
   if (mimeType.startsWith("video/")) return "video" as const;
   if (mimeType.startsWith("audio/")) return "audio" as const;
   const extension = fileName.match(/\.([a-z0-9]{1,12})$/i)?.[1]?.toLowerCase();
-  if (extension && ["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "heic", "heif", "tif", "tiff"].includes(extension)) return "image" as const;
-  if (extension && ["avi", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "webm"].includes(extension)) return "video" as const;
-  if (extension && ["aac", "flac", "m4a", "mp3", "oga", "ogg", "opus", "wav"].includes(extension)) return "audio" as const;
+  if (
+    extension &&
+    [
+      "jpg",
+      "jpeg",
+      "png",
+      "gif",
+      "webp",
+      "avif",
+      "bmp",
+      "heic",
+      "heif",
+      "tif",
+      "tiff",
+    ].includes(extension)
+  )
+    return "image" as const;
+  if (
+    extension &&
+    ["avi", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "webm"].includes(
+      extension,
+    )
+  )
+    return "video" as const;
+  if (
+    extension &&
+    ["aac", "flac", "m4a", "mp3", "oga", "ogg", "opus", "wav"].includes(
+      extension,
+    )
+  )
+    return "audio" as const;
   return "archive" as const;
 }
 
 function isArchiveFile(fileName: string, mimeType: string) {
   if (mimeType.startsWith("application/")) return true;
   const extension = fileName.match(/\.([a-z0-9]{1,12})$/i)?.[1]?.toLowerCase();
-  return ["7z", "bz2", "gz", "iso", "rar", "tar", "tbz", "tgz", "txz", "xz", "zip"].includes(extension ?? "");
+  return [
+    "7z",
+    "bz2",
+    "gz",
+    "iso",
+    "rar",
+    "tar",
+    "tbz",
+    "tgz",
+    "txz",
+    "xz",
+    "zip",
+  ].includes(extension ?? "");
 }
 
 function revokeDraftPreview(item: LocalMediaDraft) {
