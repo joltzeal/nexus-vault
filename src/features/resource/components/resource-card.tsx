@@ -903,11 +903,7 @@ export function ResourceCard({
           />
           {/* processing status bar  */}
           {isResolvingMetadata && (
-            <ProgressBar
-              className="w-full"
-              isIndeterminate
-              label="Loading…"
-            />
+            <ProgressBar className="w-full" isIndeterminate />
           )}
           {/* media  */}
           {mediaVisible && media.length > 0 && !isResolvingMetadata && (

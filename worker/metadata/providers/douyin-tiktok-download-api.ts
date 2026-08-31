@@ -12,6 +12,7 @@ import {
 
 export const DOUYIN_TIKTOK_DOWNLOAD_API_PROVIDER = "douyin-tiktok-download-api"
 const VIDEO_DATA_ENDPOINT = "https://api.tikhub.io/api/v1/hybrid/video_data"
+const DOUYIN_PLAY_ENDPOINT = "https://aweme.snssdk.com/aweme/v1/play/"
 
 type SocialVideoPlatform = "douyin" | "tiktok" | "bilibili" | "unknown"
 
@@ -118,8 +119,8 @@ function createMetadataResult(
   const author = recordValue(data.author) ?? recordValue(data.owner) ?? {}
   const video = recordValue(data.video) ?? {}
   const statistics = recordValue(data.statistics) ?? recordValue(data.stats) ?? {}
-  const mediaClassification = classifyPostMedia(data)
-  const media = extractMedia(data, video, sourceUrl, mediaClassification)
+  const mediaClassification = classifyPostMedia(data, platform)
+  const media = extractMedia(data, video, sourceUrl, mediaClassification, platform)
   const previewMedia = media
     .filter((item) => item.kind === "video" || item.kind === "image")
     .map((item, index) => ({
@@ -133,7 +134,7 @@ function createMetadataResult(
       width: item.width,
     }))
   const videoTags = getVideoTags(data)
-  const videoAddress = getVideoAddress(video)
+  const videoAddress = getVideoAddress(video, platform)
   const durationSeconds = mediaClassification.contentType === "video"
     ? millisecondsToSeconds(numberValue(data.duration) ?? numberValue(video.duration))
     : undefined
@@ -237,9 +238,10 @@ function extractMedia(
   video: Record<string, unknown>,
   sourceUrl: string,
   classification: PostMediaClassification,
+  platform: SocialVideoPlatform,
 ) {
   const media: ResourceMediaMetadata[] = []
-  const videoAddress = getVideoAddress(video)
+  const videoAddress = getVideoAddress(video, platform)
   const duration = millisecondsToSeconds(numberValue(data.duration) ?? numberValue(video.duration))
   const covers = uniqueUrls([
     ...mediaUrls(video.cover),
@@ -274,6 +276,7 @@ function extractMedia(
     media.push({
       kind: "video",
       provider: DOUYIN_TIKTOK_DOWNLOAD_API_PROVIDER,
+      ...(videoAddress.uri ? { sourceId: videoAddress.uri } : {}),
       sourceUrl,
       url: videoAddress.url,
       ...(thumbnailUrl ? { thumbnailUrl } : {}),
@@ -291,7 +294,10 @@ function extractMedia(
   return media
 }
 
-function getVideoAddress(video: Record<string, unknown>) {
+function getVideoAddress(
+  video: Record<string, unknown>,
+  platform: SocialVideoPlatform = "unknown",
+) {
   const candidates: unknown[] = [
     video.play_addr_h264,
     video.play_addr,
@@ -305,10 +311,15 @@ function getVideoAddress(video: Record<string, unknown>) {
   for (const candidate of candidates) {
     const record = recordValue(candidate)
     const urls = mediaUrls(candidate)
-    const url = urls.find(isOfficialDouyinPlayUrl) ?? urls[0]
+    const uri = firstString(record?.uri, record?.video_id, record?.videoId)
+    if (platform === "douyin" && !uri) continue
+    const url = platform === "douyin" && uri
+      ? createDouyinPlayUrl(uri, record)
+      : urls[0]
     if (!url) continue
     return {
       url,
+      ...(uri ? { uri } : {}),
       height: numberValue(record?.height),
       width: numberValue(record?.width),
       size: numberValue(record?.data_size),
@@ -318,6 +329,7 @@ function getVideoAddress(video: Record<string, unknown>) {
 
   return {
     url: undefined,
+    uri: undefined,
     height: numberValue(video.height),
     width: numberValue(video.width),
     size: undefined,
@@ -325,21 +337,28 @@ function getVideoAddress(video: Record<string, unknown>) {
   }
 }
 
-function isOfficialDouyinPlayUrl(value: string) {
-  try {
-    const url = new URL(value)
-    return url.hostname.endsWith("douyin.com") && url.pathname === "/aweme/v1/play/"
-  } catch {
-    return false
-  }
+function createDouyinPlayUrl(uri: string, video: Record<string, unknown> | undefined) {
+  const endpoint = new URL(DOUYIN_PLAY_ENDPOINT)
+  endpoint.searchParams.set("video_id", uri)
+  endpoint.searchParams.set("ratio", getDouyinPlayRatio(video))
+  endpoint.searchParams.set("line", "0")
+  return endpoint.toString()
 }
 
-function classifyPostMedia(data: Record<string, unknown>): PostMediaClassification {
+function getDouyinPlayRatio(video: Record<string, unknown> | undefined) {
+  const ratio = firstString(video?.ratio, video?.url_key, video?.quality)
+  return ratio && /^\d{3,4}p$/i.test(ratio) ? ratio : "1080p"
+}
+
+function classifyPostMedia(
+  data: Record<string, unknown>,
+  platform: SocialVideoPlatform,
+): PostMediaClassification {
   const awemeType = numberValue(data.aweme_type)
   const images = dedupePostImages([
-    ...extractPostImages(data.images, awemeType === 68),
-    ...extractPostImages(data.image_list),
-    ...extractPostImages(data.image_infos),
+    ...extractPostImages(data.images, awemeType === 68, platform),
+    ...extractPostImages(data.image_list, false, platform),
+    ...extractPostImages(data.image_infos, false, platform),
   ])
 
   return {
@@ -351,7 +370,11 @@ function classifyPostMedia(data: Record<string, unknown>): PostMediaClassificati
   }
 }
 
-function extractPostImages(value: unknown, allowLivePhoto = false): PostImage[] {
+function extractPostImages(
+  value: unknown,
+  allowLivePhoto = false,
+  platform: SocialVideoPlatform = "unknown",
+): PostImage[] {
   if (!Array.isArray(value)) return []
   return value.flatMap((item) => {
     if (!isRecord(item)) return []
@@ -363,7 +386,7 @@ function extractPostImages(value: unknown, allowLivePhoto = false): PostImage[] 
     )
     if (!url) return []
     const nestedVideo = allowLivePhoto ? recordValue(item.video) : undefined
-    const livePhotoAddress = nestedVideo ? getVideoAddress(nestedVideo) : undefined
+    const livePhotoAddress = nestedVideo ? getVideoAddress(nestedVideo, platform) : undefined
     const livePhotoDuration = nestedVideo
       ? strictMillisecondsToSeconds(numberValue(nestedVideo.duration))
       : undefined

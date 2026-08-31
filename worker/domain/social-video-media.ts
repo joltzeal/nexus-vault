@@ -1,4 +1,5 @@
 const SOCIAL_VIDEO_MEDIA_HOST_SUFFIXES = [
+  "aweme.snssdk.com",
   "biliapi.net",
   "bilibili.com",
   "bilivideo.com",

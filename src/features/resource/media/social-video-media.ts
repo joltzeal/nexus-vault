@@ -1,4 +1,4 @@
-const ALLOWED_HOSTS = ["biliapi.net", "bilibili.com", "bilivideo.com", "douyin.com", "douyinvod.com", "tiktokcdn.com", "tiktokv.com", "zjcdn.com"]
+const ALLOWED_HOSTS = ["aweme.snssdk.com", "biliapi.net", "bilibili.com", "bilivideo.com", "douyin.com", "douyinvod.com", "tiktokcdn.com", "tiktokv.com", "zjcdn.com"]
 
 export function createSocialVideoMediaProxyUrl(value: string) {
   try {
