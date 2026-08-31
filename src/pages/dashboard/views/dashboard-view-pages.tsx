@@ -1,39 +1,37 @@
-import { useEffect, useState } from "react"
-import { Archive, Eye, FolderKanban, LoaderCircle, Star, Users } from "lucide-react"
-import { Link, useOutletContext } from "react-router-dom"
+import { useEffect, useState } from "react";
+import { Archive, Eye, FolderKanban, Star, Users } from "lucide-react";
+import { Link, useOutletContext } from "react-router-dom";
 
-import { DashboardPageHeader } from "@/components/dashboard/dashboard-page-header"
+import { DashboardPageHeader } from "@/components/dashboard/dashboard-page-header";
 import {
   Card,
   CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/aicanvas/andromeda/components/Card"
-import { toast } from "@/components/ui/toast"
-import type { DashboardOutletContext } from "@/app/dashboard-shell"
+} from "@/components/aicanvas/andromeda/components/Card";
+import { toast } from "@/components/ui/toast";
+import type { DashboardOutletContext } from "@/app/dashboard-shell";
 import {
   listDashboardVaults,
   listSharedDashboardVaults,
   type DashboardVault,
-} from "@/features/dashboard/api"
-import type { DashboardView } from "@/features/dashboard/types"
-import { useDocumentTitle } from "@/hooks/use-document-title"
-import {
-  ResourceCard,
-} from "@/features/resource/components"
+} from "@/features/dashboard/api";
+import type { DashboardView } from "@/features/dashboard/types";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { ResourceCard } from "@/features/resource/components";
 import {
   listReadLaterResources,
   listStarredResources,
   setResourceReadLater,
   setResourceStarred,
-} from "@/features/resource/api"
+} from "@/features/resource/api";
 import type {
   ReadLaterResourceItem,
   Resource,
   ResourceMetadataEnvelope,
   StarredResourceItem,
-} from "@/features/resource/types"
+} from "@/features/resource/types";
+import { Spinner } from "@/components/aicanvas/andromeda/components/Spinner";
+import { Avatar } from "@/components/aicanvas/andromeda/components/Avatar";
+import { ShaderBackground } from "@/components/motion/shader-background";
 
 const viewCopy: Record<
   DashboardView,
@@ -63,20 +61,24 @@ const viewCopy: Record<
     title: "Shared vaults",
     body: "Vaults that collaborators shared with you.",
   },
-}
+};
+
+// Keep this fallback aligned with the semantic palette in index.css.
+const VAULT_CARD_SHADER_COLORS = ["#3fd8b0", "#5cb9f0", "#e8b34a", "#f0697a"];
 
 export function DashboardViewPage({ view }: { view: DashboardView }) {
-  const copy = viewCopy[view]
-  useDocumentTitle(`${copy.title} · Nexus Vault`)
-  const [vaults, setVaults] = useState<DashboardVault[]>([])
-  const [readLater, setReadLater] = useState<ReadLaterResourceItem[]>([])
-  const [starred, setStarred] = useState<StarredResourceItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
-  const [updatingResourceId, setUpdatingResourceId] = useState("")
+  const copy = viewCopy[view];
+  const { mediaVisible } = useOutletContext<DashboardOutletContext>();
+  useDocumentTitle(`${copy.title} · Nexus Vault`);
+  const [vaults, setVaults] = useState<DashboardVault[]>([]);
+  const [readLater, setReadLater] = useState<ReadLaterResourceItem[]>([]);
+  const [starred, setStarred] = useState<StarredResourceItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [updatingResourceId, setUpdatingResourceId] = useState("");
 
   useEffect(() => {
-    const controller = new AbortController()
+    const controller = new AbortController();
     const request =
       view === "all-vaults"
         ? listDashboardVaults(controller.signal).then(setVaults)
@@ -84,84 +86,110 @@ export function DashboardViewPage({ view }: { view: DashboardView }) {
           ? listSharedDashboardVaults(controller.signal).then(setVaults)
           : view === "starred-vaults"
             ? listStarredResources(controller.signal).then(setStarred)
-            : listReadLaterResources(controller.signal).then(setReadLater)
+            : listReadLaterResources(controller.signal).then(setReadLater);
 
     void request
       .then(() => setError(""))
       .catch((reason: unknown) => {
         if (!(reason instanceof DOMException && reason.name === "AbortError")) {
-          setError(reason instanceof Error ? reason.message : "Could not load this page.")
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "Could not load this page.",
+          );
         }
       })
-      .finally(() => setLoading(false))
+      .finally(() => setLoading(false));
 
-    return () => controller.abort()
-  }, [view])
+    return () => controller.abort();
+  }, [view]);
 
   async function updateStar(resource: Resource) {
-    if (updatingResourceId) return
+    if (updatingResourceId) return;
     try {
-      setUpdatingResourceId(resource.id)
-      await setResourceStarred(resource.id, !resource.isStarred)
+      setUpdatingResourceId(resource.id);
+      await setResourceStarred(resource.id, !resource.isStarred);
       if (resource.isStarred) {
-        setStarred((items) => items.filter((item) => item.sourceResourceId !== resource.id))
+        setStarred((items) =>
+          items.filter((item) => item.sourceResourceId !== resource.id),
+        );
       } else {
-        setReadLater((items) => items.map((item) =>
-          item.resourceId === resource.id
-            ? { ...item, resource: { ...item.resource, isStarred: true } }
-            : item,
-        ))
+        setReadLater((items) =>
+          items.map((item) =>
+            item.resourceId === resource.id
+              ? { ...item, resource: { ...item.resource, isStarred: true } }
+              : item,
+          ),
+        );
       }
       toast.add({
         title: resource.isStarred ? "Removed from starred" : "Resource starred",
         type: "success",
-      })
+      });
     } catch (reason) {
       toast.add({
-        title: reason instanceof Error ? reason.message : "Could not update resource.",
+        title:
+          reason instanceof Error
+            ? reason.message
+            : "Could not update resource.",
         type: "error",
-      })
+      });
     } finally {
-      setUpdatingResourceId("")
+      setUpdatingResourceId("");
     }
   }
 
   async function updateReadLater(resource: Resource) {
-    if (updatingResourceId) return
+    if (updatingResourceId) return;
     try {
-      setUpdatingResourceId(resource.id)
-      await setResourceReadLater(resource.id, !resource.isReadLater)
+      setUpdatingResourceId(resource.id);
+      await setResourceReadLater(resource.id, !resource.isReadLater);
       if (resource.isReadLater) {
-        setReadLater((items) => items.filter((item) => item.resourceId !== resource.id))
-        setStarred((items) => items.map((item) =>
-          item.sourceResourceId === resource.id ? { ...item, isReadLater: false } : item,
-        ))
+        setReadLater((items) =>
+          items.filter((item) => item.resourceId !== resource.id),
+        );
+        setStarred((items) =>
+          items.map((item) =>
+            item.sourceResourceId === resource.id
+              ? { ...item, isReadLater: false }
+              : item,
+          ),
+        );
       } else {
-        setStarred((items) => items.map((item) =>
-          item.sourceResourceId === resource.id ? { ...item, isReadLater: true } : item,
-        ))
+        setStarred((items) =>
+          items.map((item) =>
+            item.sourceResourceId === resource.id
+              ? { ...item, isReadLater: true }
+              : item,
+          ),
+        );
       }
       toast.add({
-        title: resource.isReadLater ? "Removed from watch later" : "Saved to watch later",
+        title: resource.isReadLater
+          ? "Removed from watch later"
+          : "Saved to watch later",
         type: "success",
-      })
+      });
     } catch (reason) {
       toast.add({
-        title: reason instanceof Error ? reason.message : "Could not update resource.",
+        title:
+          reason instanceof Error
+            ? reason.message
+            : "Could not update resource.",
         type: "error",
-      })
+      });
     } finally {
-      setUpdatingResourceId("")
+      setUpdatingResourceId("");
     }
   }
 
   const resourceEntries =
     view === "starred-vaults"
       ? starred.map(toStarredResourceEntry)
-      : readLater.map(toReadLaterResourceEntry)
+      : readLater.map(toReadLaterResourceEntry);
 
   return (
-    <section className="mx-auto w-full max-w-[100rem]">
+    <section className="mx-auto w-full max-w-[112rem]">
       <DashboardPageHeader
         breadcrumb={copy.breadcrumb}
         description={copy.body}
@@ -169,7 +197,7 @@ export function DashboardViewPage({ view }: { view: DashboardView }) {
       />
       {loading ? (
         <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
-          <LoaderCircle className="size-4 animate-spin text-primary" />
+          <Spinner variant="accent" size="sm" label="Loading" />
           Loading...
         </div>
       ) : error ? (
@@ -186,31 +214,47 @@ export function DashboardViewPage({ view }: { view: DashboardView }) {
         ) : (
           <EmptyState
             icon={copy.icon}
-            message={view === "starred-vaults" ? "Star a resource in any vault to find it here." : "Save a resource from any vault to find it here."}
+            message={
+              view === "starred-vaults"
+                ? "Star a resource in any vault to find it here."
+                : "Save a resource from any vault to find it here."
+            }
             title="Nothing saved yet"
           />
         )
       ) : vaults.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {vaults.map((vault) => <VaultCard key={vault.id} vault={vault} />)}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          {vaults.map((vault) => (
+            <VaultCard
+              key={vault.id}
+              mediaVisible={mediaVisible}
+              vault={vault}
+            />
+          ))}
         </div>
       ) : (
-        <EmptyState icon={copy.icon} message={copy.body} title={`No ${copy.title.toLowerCase()} yet`} />
+        <EmptyState
+          icon={copy.icon}
+          message={copy.body}
+          title={`No ${copy.title.toLowerCase()} yet`}
+        />
       )}
     </section>
-  )
+  );
 }
 
 type DashboardResourceEntry = {
-  id: string
-  resource: Resource
-  spaceId: string
-  spaceName: string
-  vaultId: string
-  vaultName: string
-}
+  id: string;
+  resource: Resource;
+  spaceId: string;
+  spaceName: string;
+  vaultId: string;
+  vaultName: string;
+};
 
-function toReadLaterResourceEntry(item: ReadLaterResourceItem): DashboardResourceEntry {
+function toReadLaterResourceEntry(
+  item: ReadLaterResourceItem,
+): DashboardResourceEntry {
   return {
     id: item.id,
     resource: item.resource,
@@ -218,10 +262,12 @@ function toReadLaterResourceEntry(item: ReadLaterResourceItem): DashboardResourc
     spaceName: item.spaceName,
     vaultId: item.vaultId,
     vaultName: item.vaultName,
-  }
+  };
 }
 
-function toStarredResourceEntry(item: StarredResourceItem): DashboardResourceEntry {
+function toStarredResourceEntry(
+  item: StarredResourceItem,
+): DashboardResourceEntry {
   return {
     id: item.id,
     resource: {
@@ -251,7 +297,7 @@ function toStarredResourceEntry(item: StarredResourceItem): DashboardResourceEnt
     spaceName: item.sourceSpaceName ?? "Unsorted",
     vaultId: item.sourceVaultId,
     vaultName: item.sourceVaultTitle ?? "Vault",
-  }
+  };
 }
 
 function DashboardResourceCards({
@@ -260,12 +306,12 @@ function DashboardResourceCards({
   onToggleStar,
   updatingResourceId,
 }: {
-  entries: DashboardResourceEntry[]
-  onToggleReadLater: (resource: Resource) => Promise<void>
-  onToggleStar: (resource: Resource) => Promise<void>
-  updatingResourceId: string
+  entries: DashboardResourceEntry[];
+  onToggleReadLater: (resource: Resource) => Promise<void>;
+  onToggleStar: (resource: Resource) => Promise<void>;
+  updatingResourceId: string;
 }) {
-  const { mediaVisible } = useOutletContext<DashboardOutletContext>()
+  const { mediaVisible } = useOutletContext<DashboardOutletContext>();
 
   return (
     <div className="grid gap-2">
@@ -298,58 +344,98 @@ function DashboardResourceCards({
         />
       ))}
     </div>
-  )
+  );
 }
 
-function VaultCard({ vault }: { vault: DashboardVault }) {
+function VaultCard({
+  mediaVisible,
+  vault,
+}: {
+  mediaVisible: boolean;
+  vault: DashboardVault;
+}) {
   return (
-    <Card bordered className="min-w-0 transition-colors hover:border-primary/60">
-      <CardHeader>
-        <div className="flex min-w-0 items-center gap-2">
-          {vault.cover?.startsWith("http://") || vault.cover?.startsWith("https://") ? (
-            <img
-              alt=""
-              className="size-8 shrink-0 border border-border object-cover"
-              src={vault.cover}
-            />
-          ) : vault.cover ? (
-            <span
-              aria-label={`${vault.title} cover`}
-              className="grid size-8 shrink-0 place-items-center border border-border bg-background text-xl leading-none"
-              role="img"
-            >
-              {vault.cover}
+    <Link
+      aria-label={`Open ${vault.title}`}
+      className="group block h-76 w-full overflow-hidden "
+      to={`/dashboard/vault/${encodeURIComponent(vault.id)}`}
+    >
+      <div className="relative h-full overflow-hidden rounded-md border border-border bg-ink-900 transition-colors duration-300 group-hover:border-primary/70">
+        {mediaVisible && vault.cardBackgroundImage ? (
+          <img
+            alt=""
+            className="absolute inset-0 size-full scale-[1.03] object-cover blur-[3px] transition-[filter,transform] duration-300 ease-out group-hover:scale-100 group-hover:blur-[1px]"
+            src={vault.cardBackgroundImage}
+          />
+        ) : (
+          <ShaderBackground
+            className="absolute inset-0 size-full"
+            colorBack="#0c1116"
+            colors={VAULT_CARD_SHADER_COLORS}
+            softness={0.7}
+            speed={0.4}
+            variant="grain-gradient"
+          />
+        )}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/20" />
+
+        <div className="absolute inset-x-0 top-0 flex min-w-0 items-center gap-2 p-4 text-white">
+          <VaultCover cover={vault.cover} />
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+            {vault.title}
+          </span>
+          {vault.role ? (
+            <span className="mono shrink-0 text-[10px] uppercase text-white/65">
+              {vault.role}
             </span>
-          ) : (
-            <span className="grid size-8 shrink-0 place-items-center border border-border bg-background text-primary">
-              <FolderKanban className="size-4" />
-            </span>
-          )}
-          <CardTitle className="min-w-0 truncate normal-case tracking-normal">{vault.title}</CardTitle>
+          ) : null}
         </div>
-        {vault.role ? <span className="mono text-[10px] uppercase text-primary">{vault.role}</span> : null}
-      </CardHeader>
-      <CardContent className="grid min-h-24 gap-2">
-        <p className="line-clamp-3 text-sm leading-5 text-muted-foreground">
-          {vault.description || "No description"}
-        </p>
-        <p className="mono text-[10px] uppercase text-muted-foreground">
-          {vault.resourceCount ?? 0} resources{vault.ownerName ? ` · ${vault.ownerName}` : ""}
-        </p>
-      </CardContent>
-      <CardFooter className="justify-end">
-        <Link
-          className="mono text-xs uppercase tracking-wide text-primary hover:text-foreground"
-          to={`/dashboard/vault/${encodeURIComponent(vault.id)}`}
-        >
-          Open vault
-        </Link>
-      </CardFooter>
-    </Card>
-  )
+
+        <CardContent className="absolute inset-x-0 bottom-0 grid gap-2 p-4 text-white">
+          {vault.description ? (
+            <p className="line-clamp-5 whitespace-pre-wrap break-words text-sm leading-5 text-white/75">
+              {vault.description}
+            </p>
+          ) : null}
+          <div className="flex min-w-0 items-center justify-between gap-3 mono text-[10px] uppercase text-white/65">
+            <span className="shrink-0">
+              {vault.resourceCount ?? 0} resources
+            </span>
+            {vault.ownerName ? (
+              <span className="truncate">{vault.ownerName}</span>
+            ) : null}
+          </div>
+        </CardContent>
+      </div>
+    </Link>
+  );
 }
 
-function EmptyState({ icon: Icon, message, title }: { icon: typeof Archive; message: string; title: string }) {
+function VaultCover({ cover }: { cover: string }) {
+  return (
+    <Avatar
+      className="border-white/25 bg-black/80 text-base text-white hover:scale-100"
+      name={cover || "🗂️"}
+      size="md"
+      status="online"
+      src={
+        cover.startsWith("http://") || cover.startsWith("https://")
+          ? cover
+          : undefined
+      }
+    />
+  );
+}
+
+function EmptyState({
+  icon: Icon,
+  message,
+  title,
+}: {
+  icon: typeof Archive;
+  message: string;
+  title: string;
+}) {
   return (
     <Card bordered className="grid min-h-48 place-items-center">
       <CardContent className="grid max-w-sm justify-items-center gap-2 text-center">
@@ -358,5 +444,5 @@ function EmptyState({ icon: Icon, message, title }: { icon: typeof Archive; mess
         <p className="text-sm leading-5 text-muted-foreground">{message}</p>
       </CardContent>
     </Card>
-  )
+  );
 }

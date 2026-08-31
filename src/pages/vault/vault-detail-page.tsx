@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, LoaderCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
@@ -90,6 +90,7 @@ import {
 } from "@/features/vault/components";
 import type { VaultForm } from "@/features/vault/types";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { Spinner } from "@/components/aicanvas/andromeda/components/Spinner";
 import type { VaultViewMode } from "@/features/vault/components/vault-outline";
 import "@/features/vault/styles/vault-detail-layout.css";
 
@@ -818,14 +819,14 @@ export function VaultDetailPage() {
     return (
       <section className="grid min-h-[18rem] place-items-center">
         <div className="flex items-center gap-2 font-mono text-label text-muted-foreground">
-          <LoaderCircle className="size-4 animate-spin text-primary" />
+          <Spinner variant="accent" size="sm" label="Loading vault" />
           Loading vault...
         </div>
       </section>
     );
   return (
     <section className="vault-detail-page">
-      <div className="w-full shrink-0">
+      <div className="w-full shrink-0 mt-4">
         <div className="mx-auto w-full ">
           <VaultHeader
             detail={detail}

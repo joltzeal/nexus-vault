@@ -55,7 +55,11 @@ const statusDotVariants = cva(
 );
 
 function deriveInitials(name) {
-  if (!name) return '?';
+  const trimmed = String(name ?? '').trim();
+  if (!trimmed) return '?';
+  // Emoji covers are passed through `name` when there is no image source.
+  // Keep the complete grapheme instead of reducing it to a broken surrogate.
+  if (isEmojiValue(trimmed)) return trimmed;
   return name
     .split(' ')
     .map((part) => part[0])
@@ -63,6 +67,13 @@ function deriveInitials(name) {
     .slice(0, 2)
     .join('')
     .toUpperCase();
+}
+
+function isEmojiValue(value) {
+  return (
+    /\p{Extended_Pictographic}/u.test(value) &&
+    !/[A-Za-z\u00c0-\u024f\u3400-\u9fff]/u.test(value)
+  );
 }
 
 /**
@@ -95,7 +106,18 @@ export const Avatar = forwardRef<any, any>(function Avatar(
       <div className={cn(avatarVariants({ size }), className)}>
         {showImage
           ? <img src={src} alt={name} onError={() => setImgFailed(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-          : <span role="img" aria-label={name} style={{ display: 'inline-flex' }}>{initials}</span>
+          : <span
+              role="img"
+              aria-label={name}
+              style={{
+                display: 'inline-flex',
+                fontFamily: isEmojiValue(String(name ?? ''))
+                  ? '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif'
+                  : undefined,
+              }}
+            >
+              {initials}
+            </span>
         }
       </div>
       {status ? <span className={statusDotVariants({ status })} aria-hidden="true" /> : null}

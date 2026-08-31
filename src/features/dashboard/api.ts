@@ -3,6 +3,7 @@ export type DashboardVault = {
   title: string
   description: string
   cover: string
+  cardBackgroundImage: string | null
   resourceCount: number
   ownerName: string | null
   visibility: "public" | "private" | "password"

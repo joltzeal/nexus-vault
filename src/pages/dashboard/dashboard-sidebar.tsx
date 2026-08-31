@@ -7,7 +7,7 @@ import {
   Share2,
   Star,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { SearchField } from "@/components/aicanvas/andromeda/components/SearchField";
 import { UserCard } from "@/components/aicanvas/andromeda/components/UserCard";
@@ -30,6 +30,7 @@ import {
 } from "@/components/motion/animated-sidebar";
 import { Toggle } from "@/components/aicanvas/andromeda/components/Toggle";
 import type { DashboardVaultItem } from "@/features/dashboard/types";
+import { searchWorkspace, type WorkspaceSearchResult } from "@/features/dashboard/search-api";
 
 export type DashboardSidebarUser = {
   email: string;
@@ -60,6 +61,8 @@ export function DashboardSidebar({
   const location = useLocation();
   const navigate = useNavigate();
   const [vaultQuery, setVaultQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<WorkspaceSearchResult>({ vaults: [], spaces: [], resources: [] });
+  const [searching, setSearching] = useState(false);
   const activeVaultId = location.pathname.match(
     /^\/dashboard\/vault\/([^/]+)/,
   )?.[1];
@@ -77,11 +80,25 @@ export function DashboardSidebar({
     active
       ? "dashboard-sidebar-item dashboard-sidebar-item--active"
       : "dashboard-sidebar-item";
-  const filteredVaults = vaults.filter((vault) =>
-    vault.title
-      .toLocaleLowerCase()
-      .includes(vaultQuery.trim().toLocaleLowerCase()),
-  );
+  useEffect(() => {
+    const query = vaultQuery.trim();
+    if (!query) {
+      setSearchResults({ vaults: [], spaces: [], resources: [] });
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      void searchWorkspace(query, controller.signal)
+        .then(setSearchResults)
+        .catch(() => undefined)
+        .finally(() => setSearching(false));
+    }, 180);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [vaultQuery]);
   return (
     <AnimatedSidebar
       ariaLabel="NexusVault navigation"
@@ -129,10 +146,33 @@ export function DashboardSidebar({
           <SearchField
             ariaLabel="Search vaults"
             onValueChange={setVaultQuery}
-            placeholder="Search vaults"
+            placeholder="Search workspace"
             shortcut={null}
             value={vaultQuery}
           />
+          {vaultQuery.trim() ? (
+            <div className="mt-2 max-h-64 overflow-y-auto border border-border bg-sidebar p-1">
+              {searching ? <p className="px-2 py-2 text-label text-muted-foreground">Searching...</p> : null}
+              {!searching && searchResults.vaults.length === 0 && searchResults.spaces.length === 0 && searchResults.resources.length === 0 ? (
+                <p className="px-2 py-2 text-label text-muted-foreground">No matches</p>
+              ) : null}
+              {searchResults.vaults.map((result) => (
+                <button className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent" key={`vault-${result.id}`} onClick={() => navigate(`/dashboard/vault/${encodeURIComponent(result.id)}`)} type="button">
+                  <span className="truncate">{result.title}</span><span className="ml-auto text-label text-muted-foreground">Vault</span>
+                </button>
+              ))}
+              {searchResults.spaces.map((result) => (
+                <button className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent" key={`space-${result.id}`} onClick={() => navigate(`/dashboard/vault/${encodeURIComponent(result.vaultId)}`)} type="button">
+                  <span className="truncate">{result.name}</span><span className="ml-auto truncate pl-2 text-label text-muted-foreground">{result.vaultTitle}</span>
+                </button>
+              ))}
+              {searchResults.resources.map((result) => (
+                <button className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent" key={`resource-${result.id}`} onClick={() => navigate(`/dashboard/vault/${encodeURIComponent(result.vaultId)}`)} type="button">
+                  <span className="min-w-0 truncate">{result.title}</span><span className="ml-auto truncate pl-2 text-label text-muted-foreground">{result.spaceName ?? result.vaultTitle}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
         <AnimatedSidebarGroup className="px-1 py-0">
           <AnimatedSidebarGroupContent>
@@ -191,7 +231,7 @@ export function DashboardSidebar({
           </AnimatedSidebarGroupLabel>
           <AnimatedSidebarGroupContent>
             <AnimatedSidebarMenu>
-              {filteredVaults.map((vault) => (
+              {vaults.map((vault) => (
                 <AnimatedSidebarMenuItem key={vault.id}>
                   <AnimatedSidebarMenuButton
                     badge={vault.resourceCount}
@@ -200,14 +240,22 @@ export function DashboardSidebar({
                         activeVaultId === vault.id,
                     )}
                     icon={
-                      vault.cover?.startsWith("http://") || vault.cover?.startsWith("https://") ? (
+                      vault.cover?.startsWith("http://") ||
+                      vault.cover?.startsWith("https://") ? (
                         <img
                           alt=""
-                          className="size-4 rounded-sm object-cover"
+                          className="size-4 object-cover"
                           src={vault.cover}
                         />
                       ) : vault.cover ? (
-                        <span aria-hidden="true" className="text-sm leading-none">
+                        <span
+                          aria-hidden="true"
+                          className="text-sm leading-none"
+                          style={{
+                            fontFamily:
+                              "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif",
+                          }}
+                        >
                           {vault.cover}
                         </span>
                       ) : (

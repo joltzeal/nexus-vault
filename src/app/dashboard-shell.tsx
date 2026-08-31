@@ -21,6 +21,19 @@ import { authClient } from "@/lib/auth";
 import { toast } from "@/components/ui/toast";
 
 const MEDIA_VISIBILITY_STORAGE_KEY = "nexus-vault:media-visible";
+const DEFAULT_VAULT_COVERS = ["📁", "🗂️", "🧰", "📚", "🧭", "🪐", "🌿"];
+
+function createInitialVaultForm(): VaultForm {
+  return {
+    cover:
+      DEFAULT_VAULT_COVERS[
+        Math.floor(Math.random() * DEFAULT_VAULT_COVERS.length)
+      ],
+    description: "",
+    name: "",
+    visibility: "private",
+  };
+}
 
 function getInitialMediaVisibility() {
   if (typeof window === "undefined") return true;
@@ -74,12 +87,9 @@ export function DashboardShell({
   const [createVaultOpen, setCreateVaultOpen] = useState(false);
   const [createVaultBusy, setCreateVaultBusy] = useState(false);
   const [vaultStatus, setVaultStatus] = useState<DashboardVaultStatus | null>(null);
-  const [createVaultForm, setCreateVaultForm] = useState<VaultForm>({
-    cover: "",
-    description: "",
-    name: "",
-    visibility: "private",
-  });
+  const [createVaultForm, setCreateVaultForm] = useState<VaultForm>(
+    createInitialVaultForm,
+  );
 
   const refreshVaults = useCallback((signal?: AbortSignal) => {
     return listDashboardVaults(signal).then((items) => {
@@ -177,10 +187,13 @@ export function DashboardShell({
     if (!createVaultForm.name.trim()) return;
     try {
       setCreateVaultBusy(true);
-      const created = await createDashboardVault(createVaultForm);
+      const created = await createDashboardVault({
+        ...createVaultForm,
+        cover: createVaultForm.cover || createInitialVaultForm().cover,
+      });
       await refreshVaults();
       setCreateVaultOpen(false);
-      setCreateVaultForm({ cover: "", description: "", name: "", visibility: "private" });
+      setCreateVaultForm(createInitialVaultForm());
       toast.add({ title: "Vault created", type: "success" });
       navigate(`/dashboard/vault/${encodeURIComponent(created.id)}`);
     } catch (error) {
@@ -204,7 +217,14 @@ export function DashboardShell({
         <DashboardSidebar
           mediaVisible={mediaVisible}
           onMediaVisibleChange={handleMediaVisibleChange}
-          onCreateVault={() => setCreateVaultOpen(true)}
+          onCreateVault={() => {
+            setCreateVaultForm((form) =>
+              form.cover
+                ? form
+                : { ...form, cover: createInitialVaultForm().cover },
+            );
+            setCreateVaultOpen(true);
+          }}
           onOpenSettings={() => navigate("/dashboard/settings")}
           onSignOut={() => void authClient.signOut()}
           user={

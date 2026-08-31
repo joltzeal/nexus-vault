@@ -18,6 +18,7 @@ import { Button as ButtonPrimitive } from "@/components/aicanvas/andromeda/compo
 import { PanelMenu as PanelMenuPrimitive } from "@/components/aicanvas/andromeda/components/PanelMenu";
 import { ButtonGroup } from "@/components/ui/button-group";
 import type { VaultDetail } from "../api/vault-api";
+import { Avatar } from "@/components/aicanvas/andromeda/components/Avatar";
 
 const Button: any = ButtonPrimitive;
 const PanelMenu: any = PanelMenuPrimitive;
@@ -109,21 +110,14 @@ export function VaultHeader({
           <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-2 font-mono text-ui">
-                {vault?.cover?.startsWith("http://") ||
-                vault?.cover?.startsWith("https://") ? (
-                  <img
-                    alt=""
-                    className="size-7 shrink-0 border border-border object-cover"
-                    src={vault.cover}
+                {vault?.cover ? (
+                  <Avatar
+                    className="size-7 text-base"
+                    name={vault.cover}
+                    size="md"
+                    src={vault.cover.startsWith("http://") || vault.cover.startsWith("https://") ? vault.cover : undefined}
+                    status="online"
                   />
-                ) : vault?.cover ? (
-                  <span
-                    aria-label={`${vault.title} cover`}
-                    className="grid size-7 shrink-0 place-items-center border border-border bg-background text-lg leading-none"
-                    role="img"
-                  >
-                    {vault.cover}
-                  </span>
                 ) : null}
                 <span className="font-semibold text-primary">$</span>
                 <span className="shrink-0 text-muted-foreground">
@@ -223,7 +217,7 @@ export function VaultHeader({
           {vault?.description?.trim() ? (
             <div className="mt-3 flex min-w-0 items-start gap-2 text-ui text-muted-foreground">
               <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-              <p className="min-w-0 truncate">{vault.description.trim()}</p>
+              <p className="min-w-0 whitespace-pre-wrap break-words">{vault.description.trim()}</p>
             </div>
           ) : null}
         </div>

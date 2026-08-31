@@ -9,10 +9,11 @@ import { PublicShareShell } from "./app/public-share-shell"
 import { SharedVaultPage } from "./pages/share/shared-vault-page"
 import { SettingsPage } from "./pages/settings"
 import type { DashboardOutletContext } from "./app/dashboard-shell"
+import { Spinner } from "./components/aicanvas/andromeda/components/Spinner"
 
 function ProtectedDashboard() {
   const session = authClient.useSession()
-  if (session.isPending) return <div className="grid min-h-[100dvh] place-items-center bg-background text-sm text-muted-foreground">Loading session...</div>
+  if (session.isPending) return <div className="flex min-h-[100dvh] items-center justify-center gap-2 bg-background text-sm text-muted-foreground"><Spinner variant="accent" size="sm" label="Loading session" />Loading session...</div>
   if (!session.data) return <Navigate replace to="/login" />
   return <DashboardPage />
 }

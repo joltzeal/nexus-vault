@@ -101,12 +101,17 @@ export async function listVaults(
     .from(resources)
     .where(inArray(resources.vaultId, vaultIds))
     .groupBy(resources.vaultId);
+  const cardBackgroundImageByVaultId = await listVaultCardBackgroundImages(
+    db,
+    vaultIds,
+  );
   const resourceCountByVaultId = new Map(
     resourceCountRows.map((row) => [row.vaultId, row.resourceCount]),
   );
 
   return rows.map((vault) => ({
     ...vault,
+    cardBackgroundImage: cardBackgroundImageByVaultId.get(vault.id) ?? null,
     resourceCount: resourceCountByVaultId.get(vault.id) ?? 0,
   }));
 }
@@ -143,14 +148,53 @@ export async function listSharedVaults(
     .from(resources)
     .where(inArray(resources.vaultId, vaultIds))
     .groupBy(resources.vaultId);
+  const cardBackgroundImageByVaultId = await listVaultCardBackgroundImages(
+    db,
+    vaultIds,
+  );
   const resourceCountByVaultId = new Map(
     resourceCounts.map((row) => [row.vaultId, row.resourceCount]),
   );
 
   return rows.map((vault) => ({
     ...vault,
+    cardBackgroundImage: cardBackgroundImageByVaultId.get(vault.id) ?? null,
     resourceCount: resourceCountByVaultId.get(vault.id) ?? 0,
   }));
+}
+
+async function listVaultCardBackgroundImages(db: Db, vaultIds: string[]) {
+  const rows = await db
+    .select({
+      vaultId: resources.vaultId,
+      metadataDataJson: resourceMetadata.dataJson,
+    })
+    .from(resources)
+    .innerJoin(resourceMetadata, eq(resourceMetadata.resourceId, resources.id))
+    .where(inArray(resources.vaultId, vaultIds))
+    .orderBy(desc(resources.createdAt));
+
+  const images = new Map<string, string>();
+  for (const row of rows) {
+    if (images.has(row.vaultId)) continue;
+    const image = getCardBackgroundImage(row.metadataDataJson);
+    if (image) images.set(row.vaultId, image);
+  }
+  return images;
+}
+
+function getCardBackgroundImage(data: unknown) {
+  const metadata = normalizeResourceMetadata(data);
+  for (const media of metadata?.media ?? []) {
+    if (media.kind === "image") {
+      const image = media.thumbnailUrl ?? media.url;
+      if (typeof image === "string" && image.trim()) return image;
+    }
+    if (media.kind === "video" && typeof media.thumbnailUrl === "string" && media.thumbnailUrl.trim()) {
+      return media.thumbnailUrl;
+    }
+  }
+  return null;
 }
 
 export async function createVault(

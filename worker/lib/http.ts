@@ -51,14 +51,17 @@ export async function handleApiRequest(
 			if (authMode === "required" && !actor) throw unauthorized();
 		}
 
-		return await handler({
+    const response = await handler({
 			actor,
 			db: database.db,
 			env: runtime.env,
 			executionCtx: runtime.executionCtx,
 			request,
 			url: new URL(request.url),
-		});
+    });
+    response.headers.set("cache-control", "no-store, max-age=0");
+    response.headers.set("pragma", "no-cache");
+    return response;
 	} catch (error) {
 		if (isAppError(error)) return failure(error);
 		console.error("API request failed", {
@@ -115,7 +118,7 @@ function isAppError(error: unknown): error is AppError {
 
 function failure(error: AppError | Error) {
 	const appError = isAppError(error) ? error : undefined;
-	return Response.json(
+  const response = Response.json(
 		{
 			success: false,
 			data: null,
@@ -126,5 +129,8 @@ function failure(error: AppError | Error) {
 			},
 		},
 		{ status: appError?.status ?? 500 },
-	);
+  );
+  response.headers.set("cache-control", "no-store, max-age=0");
+  response.headers.set("pragma", "no-cache");
+  return response;
 }
