@@ -23,6 +23,7 @@ import {
   abortS3MultipartUpload,
   completeS3MultipartUpload,
   createS3MultipartUpload,
+  deleteS3Object,
   headS3Object,
   signS3MultipartPart,
 } from "./s3-multipart-service"
@@ -283,7 +284,7 @@ export async function createUploadedMediaResource(
       })
     })
   } catch (error) {
-    await Promise.allSettled(uploadedKeys.map((objectKey) => input.media.delete(objectKey)))
+    await deleteStoredMediaObjects(input.env, input.media, uploadedKeys)
     throw error
   }
 
@@ -379,7 +380,7 @@ export async function updateUploadedMediaResource(
         .where(eq(resourceMetadata.resourceId, resourceId))
     })
   } catch (error) {
-    await Promise.allSettled(newObjectKeys.map((key) => input.media.delete(key)))
+    await deleteStoredMediaObjects(input.env, input.media, newObjectKeys)
     throw error
   }
 
@@ -391,9 +392,19 @@ export async function updateUploadedMediaResource(
       (key): key is string => Boolean(key) && !retainedKeys.has(key),
     ),
   )
-  await Promise.allSettled(removedKeys.map((key) => input.media.delete(key)))
+  await deleteStoredMediaObjects(input.env, input.media, removedKeys)
 
   return { id: resourceId, metadataStatus: "completed" as const }
+}
+
+async function deleteStoredMediaObjects(
+  env: CloudflareEnv,
+  media: R2Bucket,
+  keys: string[],
+) {
+  await Promise.allSettled(
+    keys.flatMap((key) => [media.delete(key), deleteS3Object(env, key)]),
+  )
 }
 
 async function createMultipartUploadPlan(

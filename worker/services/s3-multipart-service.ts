@@ -121,6 +121,16 @@ export async function headS3Object(env: S3MultipartEnv, key: string) {
   }
 }
 
+export async function deleteS3Object(env: S3MultipartEnv, key: string) {
+  const response = await getS3Client(env).fetch(getS3ObjectUrl(env, key), {
+    method: "DELETE",
+  })
+  if (response.ok || response.status === 404) return
+
+  const body = await response.text()
+  assertS3Response(response, body, "删除 S3 对象失败。")
+}
+
 function getS3Client(env: S3MultipartEnv) {
   const accessKeyId = requireS3Config(env.S3_UPLOAD_ACCESS_KEY_ID, "S3_UPLOAD_ACCESS_KEY_ID")
   const secretAccessKey = requireS3Config(

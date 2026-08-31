@@ -1,8 +1,8 @@
 "use client";
 
-import { ExternalLink, Save } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import type { ChangeEvent } from "react";
+import { Archive, ExternalLink, FileAudio, Save, Upload, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, RefObject } from "react";
 
 import { Button } from "@/components/aicanvas/andromeda/components/Button";
 import { Input } from "@/components/aicanvas/andromeda/components/Input";
@@ -20,6 +20,34 @@ import { ResourceFileTree } from "@/features/resource/components/resource-file-t
 import type { Resource } from "@/features/resource/types";
 import type { Space } from "@/features/space/types";
 import { getResourceDisplayUrl, getResourceTitle } from "../view-models";
+import type { LocalMediaResourceUpdateInput } from "../api/local-media-api";
+
+const LOCAL_MEDIA_MAX_FILES = 20;
+const LOCAL_MEDIA_MAX_BYTES = 1024 * 1024 * 1024;
+const LOCAL_MEDIA_ACCEPT = [
+  "image/*",
+  "video/*",
+  "audio/*",
+  ".avif,.bmp,.gif,.heic,.heif,.jpeg,.jpg,.png,.tif,.tiff,.webp",
+  ".avi,.m4v,.mkv,.mov,.mp4,.mpeg,.mpg,.webm",
+  ".aac,.flac,.m4a,.mp3,.oga,.ogg,.opus,.wav",
+  ".7z,.bz2,.gz,.iso,.rar,.tar,.tbz,.tgz,.txz,.xz,.zip",
+].join(",");
+
+type LocalMediaDraft = {
+  file?: File;
+  fileName: string;
+  id: string;
+  kind: "image" | "video" | "audio" | "archive";
+  objectKey?: string;
+  previewUrl?: string;
+  size: number;
+};
+
+export type ResourceDetailsMediaChange = Pick<
+  LocalMediaResourceUpdateInput,
+  "files" | "order"
+>;
 
 export type ResourceDetailsForm = {
   title: string;
@@ -41,12 +69,19 @@ export function ResourceDetailsSheet({
   busy?: boolean;
   canEdit: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (form: ResourceDetailsForm) => void;
+  onSave: (form: ResourceDetailsForm, media?: ResourceDetailsMediaChange) => void;
   open: boolean;
   resource?: Resource;
   spaces: Array<Pick<Space, "id" | "name">>;
 }) {
   const [form, setForm] = useState<ResourceDetailsForm>(() => toForm(resource));
+  const [localMedia, setLocalMedia] = useState<LocalMediaDraft[]>(() =>
+    toLocalMediaDraft(resource),
+  );
+  const [localMediaDirty, setLocalMediaDirty] = useState(false);
+  const [mediaError, setMediaError] = useState("");
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const localMediaRef = useRef(localMedia);
   const metadata = resource?.metadata?.data;
   const tree = resource?.type === "magnet" ? (metadata?.tree ?? []) : [];
   const displayUrl = resource ? getResourceDisplayUrl(resource) : "";
@@ -57,15 +92,30 @@ export function ResourceDetailsSheet({
       form.description.trim() !== resource.description ||
       form.url.trim() !== displayUrl ||
       form.referer.trim() !== (resource.referer ?? "") ||
-      form.spaceId !== resource.spaceId
+      form.spaceId !== resource.spaceId ||
+      localMediaDirty
     );
-  }, [displayUrl, form, resource]);
+  }, [displayUrl, form, localMediaDirty, resource]);
 
   useEffect(() => {
     // Sync the draft whenever a different resource is selected.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(toForm(resource));
+    localMediaRef.current.forEach(revokeDraftPreview);
+    const nextMedia = toLocalMediaDraft(resource);
+    localMediaRef.current = nextMedia;
+    setLocalMedia(nextMedia);
+    setLocalMediaDirty(false);
+    setMediaError("");
   }, [resource]);
+
+  useEffect(() => {
+    localMediaRef.current = localMedia;
+  }, [localMedia]);
+
+  useEffect(
+    () => () => localMediaRef.current.forEach(revokeDraftPreview),
+    [],
+  );
 
   function update<K extends keyof ResourceDetailsForm>(
     key: K,
@@ -104,6 +154,29 @@ export function ResourceDetailsSheet({
                 </dl>
               </section>
 
+              {resource.type === "local_media" ? (
+                <LocalMediaEditor
+                  error={mediaError}
+                  inputRef={mediaInputRef}
+                  items={localMedia}
+                  onAdd={(files) => {
+                    const result = addLocalMediaFiles(localMedia, files);
+                    setLocalMedia(result.items);
+                    setLocalMediaDirty(true);
+                    setMediaError(result.error);
+                  }}
+                  onRemove={(id) => {
+                    setLocalMedia((current) => {
+                      const item = current.find((candidate) => candidate.id === id);
+                      if (item) revokeDraftPreview(item);
+                      return current.filter((candidate) => candidate.id !== id);
+                    });
+                    setLocalMediaDirty(true);
+                    setMediaError("");
+                  }}
+                />
+              ) : null}
+
               {tree.length > 0 ? (
                 <section className="overflow-hidden border border-border bg-card">
                   <div className="border-b border-border px-3 py-2 font-mono text-label uppercase tracking-[.12em] text-muted-foreground">
@@ -114,6 +187,7 @@ export function ResourceDetailsSheet({
               ) : null}
 
               <div className="flex flex-col gap-3">
+                {resource.type !== "local_media" ? (
                 <label className="flex flex-col gap-1.5 text-label text-muted-foreground">
                   URL
                   <div className="flex min-w-0 items-center gap-2">
@@ -141,6 +215,7 @@ export function ResourceDetailsSheet({
                     </Button>
                   </div>
                 </label>
+                ) : null}
                 <label className="flex flex-col gap-1.5 text-label text-muted-foreground">
                   Title
                   <Textarea
@@ -194,16 +269,24 @@ export function ResourceDetailsSheet({
               busy ||
               !hasChanges ||
               !form.title.trim() ||
-              !form.url.trim()
+              (resource?.type !== "local_media" && !form.url.trim())
             }
             onClick={() =>
-              onSave({
-                title: form.title.trim(),
-                description: form.description.trim(),
-                url: form.url.trim(),
-                referer: form.referer.trim(),
-                spaceId: form.spaceId,
-              })
+              onSave(
+                {
+                  title: form.title.trim(),
+                  description: form.description.trim(),
+                  url: form.url.trim(),
+                  referer: form.referer.trim(),
+                  spaceId: form.spaceId,
+                },
+                resource?.type === "local_media"
+                  ? {
+                      files: localMedia.flatMap((item) => (item.file ? [item.file] : [])),
+                      order: getLocalMediaOrder(localMedia),
+                    }
+                  : undefined,
+              )
             }
             size="sm"
           >
@@ -214,6 +297,196 @@ export function ResourceDetailsSheet({
       </SheetContent>
     </Sheet>
   );
+}
+
+function LocalMediaEditor({
+  error,
+  inputRef,
+  items,
+  onAdd,
+  onRemove,
+}: {
+  error: string;
+  inputRef: RefObject<HTMLInputElement | null>;
+  items: LocalMediaDraft[];
+  onAdd: (files: FileList) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <section className="flex flex-col gap-3 border border-border bg-card p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-label font-medium text-foreground">Media files</h3>
+          <p className="text-xs text-muted-foreground">{items.length} files</p>
+        </div>
+        <input
+          accept={LOCAL_MEDIA_ACCEPT}
+          className="sr-only"
+          multiple
+          onChange={(event) => {
+            if (event.target.files) onAdd(event.target.files);
+            event.target.value = "";
+          }}
+          ref={inputRef}
+          type="file"
+        />
+        <Button
+          aria-label="Add media files"
+          disabled={items.length >= LOCAL_MEDIA_MAX_FILES}
+          onClick={() => inputRef.current?.click()}
+          size="sm"
+          variant="outline"
+        >
+          <Upload data-icon="inline-start" />
+          Add files
+        </Button>
+      </div>
+      {items.length > 0 ? (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {items.map((item) => (
+            <div className="group relative overflow-hidden border border-border" key={item.id}>
+              <LocalMediaDraftPreview item={item} />
+              <button
+                aria-label={`Remove ${item.fileName}`}
+                className="absolute right-1.5 top-1.5 inline-flex size-7 items-center justify-center bg-black/75 text-white opacity-100 transition hover:bg-destructive sm:opacity-0 sm:group-hover:opacity-100"
+                disabled={items.length <= 1}
+                onClick={() => onRemove(item.id)}
+                title="Remove file"
+                type="button"
+              >
+                <X className="size-3.5" />
+              </button>
+              <div className="border-t border-border px-2 py-1.5">
+                <p className="truncate text-xs text-foreground" title={item.fileName}>
+                  {item.fileName}
+                </p>
+                <p className="text-[10px] text-muted-foreground">{formatMediaSize(item.size)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+    </section>
+  );
+}
+
+function LocalMediaDraftPreview({ item }: { item: LocalMediaDraft }) {
+  if (item.kind === "image" && item.previewUrl) {
+    return <img alt="" className="aspect-[4/3] w-full object-cover" src={item.previewUrl} />;
+  }
+  if (item.kind === "video" && item.previewUrl) {
+    return <video className="aspect-[4/3] w-full object-cover" muted preload="metadata" src={item.previewUrl} />;
+  }
+  if (item.kind === "audio" && item.previewUrl) {
+    return (
+      <div className="flex aspect-[4/3] flex-col items-center justify-center gap-2 bg-muted px-2">
+        <FileAudio className="size-7 text-primary" />
+        {item.file ? <audio className="h-7 w-full" controls preload="metadata" src={item.previewUrl} /> : null}
+      </div>
+    );
+  }
+  return (
+    <div className="flex aspect-[4/3] items-center justify-center bg-muted">
+      <Archive className="size-8 text-muted-foreground" />
+    </div>
+  );
+}
+
+function toLocalMediaDraft(resource?: Resource): LocalMediaDraft[] {
+  if (resource?.type !== "local_media") return [];
+  const media = resource.metadata?.data?.media;
+  if (!Array.isArray(media)) return [];
+
+  return media.flatMap((item, index) => {
+    if (!item || typeof item !== "object") return [];
+    const value = item as Record<string, unknown>;
+    const itemMetadata = value.metadata;
+    const objectKey =
+      itemMetadata && typeof itemMetadata === "object" &&
+      typeof (itemMetadata as Record<string, unknown>).objectKey === "string"
+        ? (itemMetadata as Record<string, unknown>).objectKey as string
+        : undefined;
+    const url = typeof value.url === "string" ? value.url : undefined;
+    if (!objectKey || !url) return [];
+    const kind = getLocalMediaKind(value.kind);
+    return [{
+      fileName: typeof value.fileName === "string" ? value.fileName : `Media ${index + 1}`,
+      id: `existing:${objectKey}`,
+      kind,
+      objectKey,
+      previewUrl: url,
+      size: typeof value.size === "number" ? value.size : 0,
+    }];
+  });
+}
+
+function addLocalMediaFiles(current: LocalMediaDraft[], selected: FileList) {
+  const candidates = Array.from(selected).slice(0, LOCAL_MEDIA_MAX_FILES - current.length);
+  const items = [...current];
+  const rejected: string[] = [];
+  let totalSize = current.reduce((sum, item) => sum + item.size, 0);
+
+  for (const file of candidates) {
+    if (file.size <= 0 || file.size > LOCAL_MEDIA_MAX_BYTES) {
+      rejected.push(`${file.name || "File"} is invalid or exceeds 1 GB.`);
+      continue;
+    }
+    if (totalSize + file.size > LOCAL_MEDIA_MAX_BYTES) {
+      rejected.push("Total media size cannot exceed 1 GB.");
+      continue;
+    }
+    const kind = getLocalMediaKind(file.type, file.name);
+    if (kind === "archive" && !isArchiveFile(file.name, file.type)) {
+      rejected.push(`${file.name} is not a supported media or archive file.`);
+      continue;
+    }
+    totalSize += file.size;
+    items.push({
+      file,
+      fileName: file.name,
+      id: `new:${crypto.randomUUID()}`,
+      kind,
+      previewUrl: kind === "archive" ? undefined : URL.createObjectURL(file),
+      size: file.size,
+    });
+  }
+  if (Array.from(selected).length > candidates.length) {
+    rejected.push(`A maximum of ${LOCAL_MEDIA_MAX_FILES} files is allowed.`);
+  }
+  return { error: rejected.join(" "), items };
+}
+
+function getLocalMediaOrder(items: LocalMediaDraft[]) {
+  let newIndex = 0;
+  return items.map((item) => item.objectKey ?? `new:${newIndex++}`);
+}
+
+function getLocalMediaKind(value: unknown, fileName = "") {
+  const mimeType = typeof value === "string" ? value.toLowerCase() : "";
+  if (mimeType.startsWith("image/")) return "image" as const;
+  if (mimeType.startsWith("video/")) return "video" as const;
+  if (mimeType.startsWith("audio/")) return "audio" as const;
+  const extension = fileName.match(/\.([a-z0-9]{1,12})$/i)?.[1]?.toLowerCase();
+  if (extension && ["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "heic", "heif", "tif", "tiff"].includes(extension)) return "image" as const;
+  if (extension && ["avi", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "webm"].includes(extension)) return "video" as const;
+  if (extension && ["aac", "flac", "m4a", "mp3", "oga", "ogg", "opus", "wav"].includes(extension)) return "audio" as const;
+  return "archive" as const;
+}
+
+function isArchiveFile(fileName: string, mimeType: string) {
+  if (mimeType.startsWith("application/")) return true;
+  const extension = fileName.match(/\.([a-z0-9]{1,12})$/i)?.[1]?.toLowerCase();
+  return ["7z", "bz2", "gz", "iso", "rar", "tar", "tbz", "tgz", "txz", "xz", "zip"].includes(extension ?? "");
+}
+
+function revokeDraftPreview(item: LocalMediaDraft) {
+  if (item.file && item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+}
+
+function formatMediaSize(value: number) {
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function toForm(resource?: Resource): ResourceDetailsForm {

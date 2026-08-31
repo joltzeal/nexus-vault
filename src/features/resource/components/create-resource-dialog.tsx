@@ -155,7 +155,7 @@ export function CreateResourceDialog({
       if (!files.length || !onMediaSubmit) return;
       setMediaError("");
       try {
-        await onMediaSubmit(files.map((item) => item.file), (progress) => {
+        void Promise.resolve(onMediaSubmit(files.map((item) => item.file), (progress) => {
           setUploadProgress(
             progress.totalBytes > 0
               ? Math.round((progress.completedBytes / progress.totalBytes) * 100)
@@ -168,6 +168,8 @@ export function CreateResourceDialog({
                 : item,
             ),
           );
+        })).catch((reason: unknown) => {
+          setMediaError(reason instanceof Error ? reason.message : "媒体上传失败。");
         });
         handleOpenChange(false);
       } catch (reason) {

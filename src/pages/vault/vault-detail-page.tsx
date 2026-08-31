@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/aicanvas/andromeda/components/Dialog";
 import { toast } from "@/components/ui/toast";
+import { ProgressBar } from "@/components/aicanvas/andromeda/components/ProgressBar";
 import {
   CreateResourceDialog,
   ResourceSubmissionReviewDialog,
@@ -26,6 +27,7 @@ import {
 import {
   ResourceCard,
   ResourceDetailsSheet,
+  type ResourceDetailsMediaChange,
   type ResourceDetailsForm,
 } from "@/features/resource/components";
 import {
@@ -39,6 +41,7 @@ import {
   transferResources,
   updateResourceAnnotation,
   updateResourceDetails,
+  updateLocalMediaResource,
   uploadLocalMediaResource,
 } from "@/features/resource/api";
 import type { DashboardOutletContext } from "@/app/dashboard-shell";
@@ -95,6 +98,11 @@ import type { VaultViewMode } from "@/features/vault/components/vault-outline";
 import "@/features/vault/styles/vault-detail-layout.css";
 
 const Button: any = ButtonPrimitive;
+const UPLOAD_TOAST_PREVIEW_FILES = [
+  { name: "holiday-video.mp4", size: 780 * 1024 * 1024 },
+  { name: "cover-image.jpg", size: 14 * 1024 * 1024 },
+  { name: "voice-note.m4a", size: 8 * 1024 * 1024 },
+] as unknown as File[];
 
 export function VaultDetailPage() {
   const { vaultId } = useParams<{ vaultId: string }>();
@@ -129,6 +137,7 @@ export function VaultDetailPage() {
     icon: string;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+  const uploadInProgressRef = useRef(false);
   const [vaultForm, setVaultForm] = useState<VaultForm>({
     cover: "",
     description: "",
@@ -164,6 +173,43 @@ export function VaultDetailPage() {
   >([]);
   const [transferFocusSpaceId, setTransferFocusSpaceId] = useState<string>();
   const [targetSpaceVaultId, setTargetSpaceVaultId] = useState<string>();
+
+  useEffect(() => {
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (!uploadInProgressRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const toastId = "local-media-upload-preview";
+    toast.add({
+      id: toastId,
+      title: "Uploading media",
+      type: "loading",
+      timeout: 0,
+      description: (
+        <MediaUploadToastDescription
+          files={UPLOAD_TOAST_PREVIEW_FILES}
+          progress={{
+            completedBytes: 338 * 1024 * 1024,
+            fileIndex: 0,
+            fileProgress: 43,
+            totalBytes: UPLOAD_TOAST_PREVIEW_FILES.reduce(
+              (sum, file) => sum + file.size,
+              0,
+            ),
+          }}
+        />
+      ),
+    });
+    return () => toast.close(toastId);
+  }, []);
 
   useDocumentTitle(
     detail?.vault.title
@@ -512,17 +558,22 @@ export function VaultDetailPage() {
     if (!vaultId) return;
     setBusy(true);
     try {
-      await uploadLocalMediaResource(
-        vaultId,
-        {
-          description: resourceForm.description,
-          files,
-          referer: resourceForm.referer,
-          spaceId: resourceForm.spaceId || detail?.spaces[0]?.id,
-          title: resourceForm.title,
-        },
-        onProgress,
-      );
+      await runMediaUpload(files, (reportProgress) => {
+        return uploadLocalMediaResource(
+          vaultId,
+          {
+            description: resourceForm.description,
+            files,
+            referer: resourceForm.referer,
+            spaceId: resourceForm.spaceId || detail?.spaces[0]?.id,
+            title: resourceForm.title,
+          },
+          (progress) => {
+            onProgress(progress);
+            reportProgress(progress);
+          },
+        );
+      });
       await loadDetail();
       void refreshVaults().catch(() => {
         // The current Vault refreshed successfully; the aggregate count retries later.
@@ -536,13 +587,6 @@ export function VaultDetailPage() {
         url: "",
       });
       toast.add({ title: "Resource added", type: "success" });
-    } catch (reason) {
-      toast.add({
-        title:
-          reason instanceof Error ? reason.message : "Media upload failed.",
-        type: "error",
-      });
-      throw reason;
     } finally {
       setBusy(false);
     }
@@ -801,17 +845,110 @@ export function VaultDetailPage() {
     return () => onVaultStatusChange(null);
   }, [detail, onVaultStatusChange, openResourceEditor, vaultId]);
 
-  async function handleSaveResourceDetails(form: ResourceDetailsForm) {
+  async function handleSaveResourceDetails(
+    form: ResourceDetailsForm,
+    mediaChange?: ResourceDetailsMediaChange,
+  ) {
     if (!resourceToEdit) return;
+    const isLocalMedia = resourceToEdit.type === "local_media" && Boolean(mediaChange);
     if (
       await runMutation(
-        () => updateResourceDetails(resourceToEdit.id, form),
+        () =>
+          isLocalMedia
+            ? runMediaUpload(mediaChange!.files, (reportProgress) =>
+                updateLocalMediaResource(
+                  resourceToEdit.id,
+                  {
+                    ...form,
+                    files: mediaChange!.files,
+                    order: mediaChange!.order,
+                  },
+                  reportProgress,
+                ),
+              )
+            : updateResourceDetails(resourceToEdit.id, form),
         "Resource updated",
       )
     ) {
       setResourceEditOpen(false);
       setResourceToEdit(undefined);
     }
+  }
+
+  async function runMediaUpload<T>(
+    files: File[],
+    upload: (onProgress: (progress: LocalMediaUploadProgress) => void) => Promise<T>,
+  ) {
+    if (files.length === 0) return upload(() => undefined);
+
+    const toastId = `local-media-upload-${crypto.randomUUID()}`;
+    uploadInProgressRef.current = true;
+    toast.add({
+      id: toastId,
+      title: "Uploading media",
+      type: "loading",
+      timeout: 0,
+      description: (
+        <MediaUploadToastDescription
+          files={files}
+          progress={{ completedBytes: 0, fileIndex: -1, fileProgress: 0, totalBytes: files.reduce((sum, file) => sum + file.size, 0) }}
+        />
+      ),
+    });
+
+    try {
+      const result = await upload((progress) => {
+        toast.update(toastId, {
+          description: <MediaUploadToastDescription files={files} progress={progress} />,
+        });
+      });
+      toast.update(toastId, {
+        title: "Media upload complete",
+        type: "success",
+        timeout: 4000,
+        description: `${files.length} ${files.length === 1 ? "file" : "files"} uploaded.`,
+      });
+      return result;
+    } catch (reason) {
+      toast.update(toastId, {
+        title: "Media upload failed",
+        type: "error",
+        timeout: 8000,
+        description: reason instanceof Error ? reason.message : "Media upload failed.",
+      });
+      throw reason;
+    } finally {
+      uploadInProgressRef.current = false;
+    }
+  }
+
+  function MediaUploadToastDescription({
+    files,
+    progress,
+  }: {
+    files: File[];
+    progress: LocalMediaUploadProgress;
+  }) {
+    const percent =
+      progress.totalBytes > 0
+        ? Math.round((progress.completedBytes / progress.totalBytes) * 100)
+        : 0;
+    const currentFile =
+      progress.fileIndex >= 0 ? files[progress.fileIndex]?.name : undefined;
+
+    return (
+      <div className="min-w-0 space-y-2">
+        <p className="truncate text-xs" title={currentFile}>
+          {currentFile ? `Uploading ${currentFile}` : "Preparing upload..."}
+        </p>
+        <ProgressBar label="Upload progress" value={percent} />
+        <p className="text-xs text-muted-foreground">
+          {progress.fileIndex >= 0
+            ? `${Math.min(progress.fileIndex + 1, files.length)} / ${files.length} files`
+            : `${files.length} ${files.length === 1 ? "file" : "files"}`}
+        </p>
+      </div>
+    );
   }
   if (!vaultId) return <VaultDetailError message="Vault id is missing." />;
   if (error) return <VaultDetailError message={error} />;
@@ -1069,7 +1206,7 @@ export function VaultDetailPage() {
           setResourceEditOpen(open);
           if (!open) setResourceToEdit(undefined);
         }}
-        onSave={(form) => void handleSaveResourceDetails(form)}
+        onSave={(form, media) => void handleSaveResourceDetails(form, media)}
         open={resourceEditOpen}
         resource={resourceToEdit}
         spaces={detail.spaces}
