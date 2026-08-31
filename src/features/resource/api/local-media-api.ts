@@ -38,8 +38,7 @@ export type LocalMediaUploadProgress = {
 }
 
 const MULTIPART_CHUNK_BYTES = 8 * 1024 * 1024
-const MULTIPART_SIGN_BATCH_SIZE = 8
-const MULTIPART_UPLOAD_CONCURRENCY = 4
+const MULTIPART_UPLOAD_CONCURRENCY = 8
 
 export async function uploadLocalMediaResource(
   vaultId: string,
@@ -137,80 +136,105 @@ async function uploadLocalMediaFiles(
     },
   )
 
-  const uploadedFiles: UploadedLocalMediaFile[] = []
   try {
-    for (const [fileIndex, { clientId, file }] of files.entries()) {
+    const signedUploads = await requestJson<Array<{
+      key: string
+      parts: Array<{ method: "PUT"; partNumber: number; url: string }>
+      uploadId: string
+    }>>("/api/v1/local-media/multipart/sign", "POST", {
+      uploads: files.map(({ clientId, file }) => {
+        const upload = plan.uploads.find((item) => item.clientId === clientId)
+        if (!upload) throw new Error(`未找到文件 ${file.name} 的上传任务。`)
+        return {
+          key: upload.key,
+          partNumbers: Array.from(
+            { length: Math.ceil(file.size / MULTIPART_CHUNK_BYTES) },
+            (_, index) => index + 1,
+          ),
+          uploadId: upload.uploadId,
+        }
+      }),
+    })
+
+    const tasks = files.flatMap(({ clientId, file }, fileIndex) => {
       const upload = plan.uploads.find((item) => item.clientId === clientId)
       if (!upload) throw new Error(`未找到文件 ${file.name} 的上传任务。`)
+      const signed = signedUploads.find((item) => item.key === upload.key && item.uploadId === upload.uploadId)
+      if (!signed) throw new Error(`未找到文件 ${file.name} 的分片签名。`)
+      return signed.parts.map((signedPart) => ({ file, fileIndex, signedPart }))
+    })
 
-      const parts: Array<{ ETag: string; PartNumber: number }> = []
-      const totalParts = Math.ceil(file.size / MULTIPART_CHUNK_BYTES)
-      let nextPartNumber = 1
-      let uploadedFileBytes = 0
-      while (nextPartNumber <= totalParts) {
-        const partNumbers = Array.from(
-          { length: Math.min(MULTIPART_SIGN_BATCH_SIZE, totalParts - nextPartNumber + 1) },
-          (_, index) => nextPartNumber + index,
-        )
-        const signedParts = await requestJson<Array<{
-          key: string
-          parts: Array<{ method: "PUT"; partNumber: number; url: string }>
-          uploadId: string
-        }>>("/api/v1/local-media/multipart/sign", "POST", {
-          uploads: [{ key: upload.key, partNumbers, uploadId: upload.uploadId }],
-        })
-        const signed = signedParts[0]
-        if (!signed || signed.key !== upload.key || signed.uploadId !== upload.uploadId) {
-          throw new Error(`未找到文件 ${file.name} 的分片签名。`)
-        }
-
-        for (let offset = 0; offset < signed.parts.length; offset += MULTIPART_UPLOAD_CONCURRENCY) {
-          const concurrentParts = signed.parts.slice(offset, offset + MULTIPART_UPLOAD_CONCURRENCY)
-          const completed = await Promise.all(
-            concurrentParts.map(async (signedPart) => {
-              const partOffset = (signedPart.partNumber - 1) * MULTIPART_CHUNK_BYTES
-              const chunk = file.slice(partOffset, Math.min(partOffset + MULTIPART_CHUNK_BYTES, file.size))
-              const response = await fetch(signedPart.url, { body: chunk, method: signedPart.method })
-              if (!response.ok) throw new Error(`上传 ${file.name} 第 ${signedPart.partNumber} 个分片失败。`)
-              const etag = response.headers.get("ETag")
-              if (!etag) throw new Error(`上传 ${file.name} 后未返回 ETag。`)
-              return { ETag: etag, PartNumber: signedPart.partNumber, size: chunk.size }
-            }),
+    const partsByFileIndex = files.map(() => [] as Array<{ ETag: string; PartNumber: number }>)
+    const uploadedBytesByFileIndex = files.map(() => 0)
+    let nextTaskIndex = 0
+    await Promise.all(
+      Array.from({ length: Math.min(MULTIPART_UPLOAD_CONCURRENCY, tasks.length) }, async () => {
+        while (nextTaskIndex < tasks.length) {
+          const task = tasks[nextTaskIndex++]!
+          const partOffset = (task.signedPart.partNumber - 1) * MULTIPART_CHUNK_BYTES
+          const chunk = task.file.slice(
+            partOffset,
+            Math.min(partOffset + MULTIPART_CHUNK_BYTES, task.file.size),
           )
-          completed.forEach((part) => {
-            parts.push({ ETag: part.ETag, PartNumber: part.PartNumber })
-            uploadedFileBytes += part.size
-            completedBytes += part.size
+          const response = await fetch(task.signedPart.url, {
+            body: chunk,
+            method: task.signedPart.method,
           })
+          if (!response.ok) {
+            throw new Error(`上传 ${task.file.name} 第 ${task.signedPart.partNumber} 个分片失败。`)
+          }
+          const etag = response.headers.get("ETag")
+          if (!etag) throw new Error(`上传 ${task.file.name} 后未返回 ETag。`)
+          partsByFileIndex[task.fileIndex]!.push({
+            ETag: etag,
+            PartNumber: task.signedPart.partNumber,
+          })
+          uploadedBytesByFileIndex[task.fileIndex]! += chunk.size
+          completedBytes += chunk.size
           onProgress?.({
             completedBytes,
-            fileIndex,
-            fileProgress: (uploadedFileBytes / file.size) * 100,
+            fileIndex: task.fileIndex,
+            fileProgress: (uploadedBytesByFileIndex[task.fileIndex]! / task.file.size) * 100,
             totalBytes,
           })
         }
-        nextPartNumber += signed.parts.length
-      }
+      }),
+    )
 
-      await requestJson(
-        "/api/v1/local-media/multipart",
-        "POST",
-        { key: upload.key, parts, uploadId: upload.uploadId },
-      )
-      uploadedFiles.push({
+    const completionTasks = files.map(({ clientId, file }, fileIndex) => {
+      const upload = plan.uploads.find((item) => item.clientId === clientId)!
+      return {
         clientId,
         fileName: file.name,
         mimeType: file.type,
         objectKey: upload.key,
         size: file.size,
-      })
+        parts: partsByFileIndex[fileIndex],
+        uploadId: upload.uploadId,
+      }
+    })
+    await Promise.all(completionTasks.map(({ objectKey, parts, uploadId }) =>
+      requestJson("/api/v1/local-media/multipart", "POST", {
+        key: objectKey,
+        parts,
+        uploadId,
+      }),
+    ))
+    const uploadedFiles: UploadedLocalMediaFile[] = completionTasks.map((file) => ({
+      clientId: file.clientId,
+      fileName: file.fileName,
+      mimeType: file.mimeType,
+      objectKey: file.objectKey,
+      size: file.size,
+    }))
+    return {
+      plan,
+      uploadedFiles,
     }
   } catch (error) {
     await abortUploads(plan)
     throw error
   }
-
-  return { plan, uploadedFiles }
 }
 
 async function abortUploads(plan: LocalMediaUploadPlan) {

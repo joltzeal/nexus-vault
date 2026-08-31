@@ -45,7 +45,7 @@ export async function signS3MultipartPart(
   const url = getS3ObjectUrl(env, input.key)
   url.searchParams.set("partNumber", String(input.partNumber))
   url.searchParams.set("uploadId", input.uploadId)
-  url.searchParams.set("X-Amz-Expires", "900")
+  url.searchParams.set("X-Amz-Expires", "3600")
   const request = await getS3Client(env).sign(url, {
     method: "PUT",
     aws: { signQuery: true },

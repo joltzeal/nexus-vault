@@ -463,34 +463,52 @@ async function createMultipartUploadPlan(
   const created: Array<{ key: string; uploadId: string }> = []
 
   try {
-    for (const [index, file] of input.files.entries()) {
-      const objectKey =
-        input.mode === "create"
-          ? `${getActorResourcePrefix(input.actor, input.resourceId)}${getObjectFileName(file.fileName, index)}`
-          : `${getActorResourcePrefix(input.actor, input.resourceId)}media/${newId()}.${getFileExtension(file.fileName) ?? "bin"}`
-      created.push(
-        await createS3MultipartUpload(env, {
-          key: objectKey,
-          contentType: file.mimeType,
-          customMetadata: getMultipartMetadata(input, file.clientId, "media"),
-        }),
-      )
-
-      if (file.thumbnail) {
-        const thumbnailKey = `${getActorResourcePrefix(input.actor, input.resourceId)}thumbnails/${newId()}.jpg`
-        created.push(
-          await createS3MultipartUpload(env, {
-            key: thumbnailKey,
-            contentType: file.thumbnail.mimeType,
-            customMetadata: getMultipartMetadata(
-              input,
-              file.thumbnail.clientId,
-              "thumbnail",
-            ),
+    const results = await Promise.allSettled(
+      input.files.map(async (file, index) => {
+        const objectKey =
+          input.mode === "create"
+            ? `${getActorResourcePrefix(input.actor, input.resourceId)}${getObjectFileName(file.fileName, index)}`
+            : `${getActorResourcePrefix(input.actor, input.resourceId)}media/${newId()}.${getFileExtension(file.fileName) ?? "bin"}`
+        const uploads = [
+          createS3MultipartUpload(env, {
+            key: objectKey,
+            contentType: file.mimeType,
+            customMetadata: getMultipartMetadata(input, file.clientId, "media"),
           }),
+        ]
+        if (file.thumbnail) {
+          const thumbnailKey = `${getActorResourcePrefix(input.actor, input.resourceId)}thumbnails/${newId()}.jpg`
+          uploads.push(
+            createS3MultipartUpload(env, {
+              key: thumbnailKey,
+              contentType: file.thumbnail.mimeType,
+              customMetadata: getMultipartMetadata(
+                input,
+                file.thumbnail.clientId,
+                "thumbnail",
+              ),
+            }),
+          )
+        }
+        const fileResults = await Promise.allSettled(uploads)
+        const fulfilled = fileResults.flatMap((result) =>
+          result.status === "fulfilled" ? [result.value] : [],
         )
-      }
-    }
+        const rejected = fileResults.find((result) => result.status === "rejected")
+        if (rejected) {
+          await Promise.allSettled(fulfilled.map((upload) => abortS3MultipartUpload(env, upload)))
+          throw rejected.reason
+        }
+        return fulfilled
+      }),
+    )
+    created.push(
+      ...results.flatMap((result) =>
+        result.status === "fulfilled" ? result.value : [],
+      ),
+    )
+    const rejected = results.find((result) => result.status === "rejected")
+    if (rejected) throw rejected.reason
   } catch (error) {
     await Promise.allSettled(created.map((upload) => abortS3MultipartUpload(env, upload)))
     throw error
