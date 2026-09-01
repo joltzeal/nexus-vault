@@ -238,7 +238,9 @@ export async function abortResourceMediaUpload(
   const referenced = await isStoredMediaObjectKey(db, input.key)
   await Promise.allSettled([
     abortS3MultipartUpload(env, input),
-    ...(referenced ? [] : [env.MEDIA.delete(input.key)]),
+    ...(referenced
+      ? []
+      : [env.MEDIA.delete(input.key), deleteS3Object(env, input.key)]),
   ])
 }
 

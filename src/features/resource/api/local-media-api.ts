@@ -35,14 +35,15 @@ export type LocalMediaUploadProgress = {
   fileIndex: number
   fileProgress: number
   phase: "finalizing" | "preparing" | "uploading"
+  speedBytesPerSecond: number
   totalBytes: number
 }
 
-const MULTIPART_CHUNK_BYTES = 8 * 1024 * 1024
-const MULTIPART_UPLOAD_CONCURRENCY = 8
+const MULTIPART_CHUNK_BYTES = 16 * 1024 * 1024
+const MULTIPART_UPLOAD_CONCURRENCY = 6
 const MULTIPART_UPLOAD_MAX_ATTEMPTS = 3
 const MULTIPART_PART_TIMEOUT_MS = 180_000
-const UPLOAD_PROGRESS_THROTTLE_MS = 100
+const UPLOAD_PROGRESS_THROTTLE_MS = 250
 
 export async function uploadLocalMediaResource(
   vaultId: string,
@@ -62,6 +63,7 @@ export async function uploadLocalMediaResource(
     `/api/v1/vaults/${encodeURIComponent(vaultId)}/resources/local-media/multipart`,
     onProgress,
   )
+  const removePagehideCleanup = registerPagehideCleanup(session.plan)
 
   try {
     return await requestJson<{ id: string; metadataStatus: "completed" }>(
@@ -79,6 +81,8 @@ export async function uploadLocalMediaResource(
   } catch (error) {
     await abortUploads(session.plan)
     throw error
+  } finally {
+    removePagehideCleanup()
   }
 }
 
@@ -93,6 +97,9 @@ export async function updateLocalMediaResource(
         `/api/v1/resources/${encodeURIComponent(resourceId)}/local-media/multipart`,
         onProgress,
       )
+    : undefined
+  const removePagehideCleanup = session
+    ? registerPagehideCleanup(session.plan)
     : undefined
 
   try {
@@ -111,6 +118,8 @@ export async function updateLocalMediaResource(
   } catch (error) {
     if (session) await abortUploads(session.plan)
     throw error
+  } finally {
+    removePagehideCleanup?.()
   }
 }
 
@@ -130,6 +139,7 @@ async function uploadLocalMediaFiles(
     fileIndex: -1,
     fileProgress: 0,
     phase: "preparing",
+    speedBytesPerSecond: 0,
     totalBytes,
   })
 
@@ -145,6 +155,7 @@ async function uploadLocalMediaFiles(
       })),
     },
   )
+  const removePagehideCleanup = registerPagehideCleanup(plan)
 
   try {
     const signedUploads = await requestJson<Array<{
@@ -183,6 +194,8 @@ async function uploadLocalMediaFiles(
     let progressTimer: number | undefined
     let lastProgressAt = 0
     let lastProgressFileIndex = -1
+    let lastSpeedAt = Date.now()
+    let lastSpeedBytes = 0
 
     const publishProgress = (fileIndex: number, force = false) => {
       if (!onProgress) return
@@ -202,6 +215,13 @@ async function uploadLocalMediaFiles(
         progressTimer = undefined
       }
       lastProgressAt = now
+      const elapsed = now - lastSpeedAt
+      const speedBytesPerSecond =
+        phase === "uploading" && elapsed > 0
+          ? Math.max(0, ((completedBytes - lastSpeedBytes) * 1000) / elapsed)
+          : 0
+      lastSpeedAt = now
+      lastSpeedBytes = completedBytes
       onProgress({
         completedBytes,
         fileIndex,
@@ -210,6 +230,7 @@ async function uploadLocalMediaFiles(
             ? (uploadedBytesByFileIndex[fileIndex]! / files[fileIndex]!.file.size) * 100
             : 0,
         phase,
+        speedBytesPerSecond,
         totalBytes,
       })
     }
@@ -326,6 +347,8 @@ async function uploadLocalMediaFiles(
   } catch (error) {
     await abortUploads(plan)
     throw error
+  } finally {
+    removePagehideCleanup()
   }
 }
 
@@ -372,18 +395,31 @@ function waitForRetry(attempt: number) {
   })
 }
 
-async function abortUploads(plan: LocalMediaUploadPlan) {
+function registerPagehideCleanup(plan: LocalMediaUploadPlan) {
+  const handler = () => {
+    void abortUploads(plan, true)
+  }
+  window.addEventListener("pagehide", handler)
+  return () => window.removeEventListener("pagehide", handler)
+}
+
+async function abortUploads(plan: LocalMediaUploadPlan, keepalive = false) {
   await Promise.allSettled(
     plan.uploads.map((upload) =>
       requestJson("/api/v1/local-media/multipart", "DELETE", {
         key: upload.key,
         uploadId: upload.uploadId,
-      }),
+      }, keepalive),
     ),
   )
 }
 
-async function requestJson<T = unknown>(path: string, method: "DELETE" | "GET" | "PATCH" | "POST", body?: unknown) {
+async function requestJson<T = unknown>(
+  path: string,
+  method: "DELETE" | "GET" | "PATCH" | "POST",
+  body?: unknown,
+  keepalive = false,
+) {
   const response = await fetch(path, {
     ...(body === undefined
       ? {}
@@ -392,6 +428,7 @@ async function requestJson<T = unknown>(path: string, method: "DELETE" | "GET" |
           headers: { "Content-Type": "application/json" },
         }),
     credentials: "include",
+    keepalive,
     method,
   })
   const payload = (await response.json().catch(() => null)) as ApiEnvelope<T> | null

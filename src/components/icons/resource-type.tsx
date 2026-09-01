@@ -1,4 +1,5 @@
 import type { ComponentType, SVGProps } from "react";
+import { HardDrives } from "@phosphor-icons/react";
 import type { ResourceType } from "@/features/resource/types";
 
 export function IconTwitter(props: SVGProps<SVGSVGElement>) {
@@ -184,6 +185,10 @@ export function IconMagnet(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function IconLocalMedia(props: SVGProps<SVGSVGElement>) {
+  return <HardDrives {...props} weight="duotone" />;
+}
+
 export function IconLink(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
@@ -270,9 +275,9 @@ export function IconEmule(props: SVGProps<SVGSVGElement>) {
 
 /** Central mapping for resource types with dedicated icons. Add new entries here. */
 // This map intentionally lives beside the icon components as their public registry.
-// eslint-disable-next-line react-refresh/only-export-components
 export const resourceTypeIconMap = {
   baidu_pan: IconBaiduPan,
+  local_media: IconLocalMedia,
   magnet: IconMagnet,
   quark_pan: IconQuarkPan,
   telegram: IconTelegram,

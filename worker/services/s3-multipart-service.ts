@@ -26,6 +26,9 @@ export async function createS3MultipartUpload(
     "cache-control": "public, max-age=31536000, immutable",
     "content-type": input.contentType,
   })
+  if (/^(audio|image|video)\//i.test(input.contentType)) {
+    headers.set("content-disposition", "inline")
+  }
   for (const [name, value] of Object.entries(input.customMetadata)) {
     headers.set(`x-amz-meta-${name}`, value)
   }

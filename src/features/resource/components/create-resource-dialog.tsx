@@ -412,7 +412,13 @@ export function CreateResourceDialog({
 
 function ResourceUploadPreview({ item }: { item: ResourceUploadFile }) {
   if (item.kind === "image" && item.previewUrl) {
-    return <img alt="" className="aspect-[4/3] w-full object-cover" src={item.previewUrl} />;
+    return (
+      <img
+        alt={item.file.name}
+        className="block aspect-[4/3] w-full object-cover"
+        src={item.previewUrl}
+      />
+    );
   }
   if (item.kind === "video" && item.previewUrl) {
     return <video className="aspect-[4/3] w-full object-cover" muted preload="metadata" src={item.previewUrl} />;

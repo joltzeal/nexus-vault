@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { FormEvent } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle } from "lucide-react";
 import { useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react";
@@ -201,6 +201,7 @@ export function VaultDetailPage() {
             fileIndex: 0,
             fileProgress: 43,
             phase: "uploading",
+            speedBytesPerSecond: 12.4 * 1024 * 1024,
             totalBytes: UPLOAD_TOAST_PREVIEW_FILES.reduce(
               (sum, file) => sum + file.size,
               0,
@@ -210,6 +211,7 @@ export function VaultDetailPage() {
       ),
     });
     return () => toast.close(toastId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useDocumentTitle(
@@ -851,28 +853,32 @@ export function VaultDetailPage() {
     mediaChange?: ResourceDetailsMediaChange,
   ) {
     if (!resourceToEdit) return;
-    const isLocalMedia = resourceToEdit.type === "local_media" && Boolean(mediaChange);
-    if (
-      await runMutation(
-        () =>
-          isLocalMedia
-            ? runMediaUpload(mediaChange!.files, (reportProgress) =>
-                updateLocalMediaResource(
-                  resourceToEdit.id,
-                  {
-                    ...form,
-                    files: mediaChange!.files,
-                    order: mediaChange!.order,
-                  },
-                  reportProgress,
-                ),
-              )
-            : updateResourceDetails(resourceToEdit.id, form),
-        "Resource updated",
-      )
-    ) {
+    const resource = resourceToEdit;
+    setResourceEditOpen(false);
+
+    const saved = await runMutation(
+      () =>
+        resource.type === "local_media" && mediaChange
+          ? runMediaUpload(mediaChange.files, (reportProgress) =>
+              updateLocalMediaResource(
+                resource.id,
+                {
+                  ...form,
+                  files: mediaChange.files,
+                  order: mediaChange.order,
+                },
+                reportProgress,
+              ),
+            )
+          : updateResourceDetails(resource.id, form),
+      "Resource updated",
+    );
+
+    if (saved) {
       setResourceEditOpen(false);
       setResourceToEdit(undefined);
+    } else {
+      setResourceEditOpen(true);
     }
   }
 
@@ -897,6 +903,7 @@ export function VaultDetailPage() {
             fileIndex: -1,
             fileProgress: 0,
             phase: "preparing",
+            speedBytesPerSecond: 0,
             totalBytes: files.reduce((sum, file) => sum + file.size, 0),
           }}
         />
@@ -936,6 +943,18 @@ export function VaultDetailPage() {
     files: File[];
     progress: LocalMediaUploadProgress;
   }) {
+    const imagePreviews = useMemo(
+      () =>
+        files
+          .filter((file) => file instanceof Blob && isUploadImageFile(file))
+          .map((file) => ({ file, url: URL.createObjectURL(file) })),
+      [files],
+    );
+    useEffect(
+      () => () => imagePreviews.forEach(({ url }) => URL.revokeObjectURL(url)),
+      [imagePreviews],
+    );
+
     const percent =
       progress.totalBytes > 0
         ? Math.round((progress.completedBytes / progress.totalBytes) * 100)
@@ -945,6 +964,19 @@ export function VaultDetailPage() {
 
     return (
       <div className="min-w-0 space-y-2">
+        {imagePreviews.length > 0 ? (
+          <div className="flex gap-1.5 overflow-hidden">
+            {imagePreviews.slice(0, 6).map(({ file, url }) => (
+              <img
+                alt={file.name}
+                className="size-10 shrink-0 object-cover"
+                decoding="async"
+                key={url}
+                src={url}
+              />
+            ))}
+          </div>
+        ) : null}
         <p className="truncate text-xs" title={currentFile}>
           {progress.phase === "preparing"
             ? "Preparing upload..."
@@ -956,6 +988,13 @@ export function VaultDetailPage() {
         </p>
         <ProgressBar label="Upload progress" value={percent} />
         <p className="text-xs text-muted-foreground">
+          {progress.phase === "uploading"
+            ? `${formatUploadSpeed(progress.speedBytesPerSecond)} · ${formatUploadSize(progress.completedBytes)} / ${formatUploadSize(progress.totalBytes)}`
+            : progress.phase === "finalizing"
+              ? "Completing uploaded files..."
+              : "Preparing files and upload session..."}
+        </p>
+        <p className="text-xs text-muted-foreground">
           {progress.fileIndex >= 0
             ? `${Math.min(progress.fileIndex + 1, files.length)} / ${files.length} files`
             : `${files.length} ${files.length === 1 ? "file" : "files"}`}
@@ -963,6 +1002,23 @@ export function VaultDetailPage() {
       </div>
     );
   }
+
+  function isUploadImageFile(file: File) {
+    if (typeof file.type === "string" && file.type.toLowerCase().startsWith("image/")) return true;
+    return /\.(avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(file.name);
+  }
+  function formatUploadSpeed(value: number) {
+    if (!Number.isFinite(value) || value <= 0) return "-- MB/s";
+    return `${(value / (1024 * 1024)).toFixed(1)} MB/s`;
+  }
+
+  function formatUploadSize(value: number) {
+    if (!Number.isFinite(value) || value < 1024 * 1024) {
+      return `${Math.max(0, Math.round(value / 1024))} KB`;
+    }
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
   if (!vaultId) return <VaultDetailError message="Vault id is missing." />;
   if (error) return <VaultDetailError message={error} />;
   if (!detail)

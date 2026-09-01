@@ -4,6 +4,7 @@ import {
   Archive,
   ExternalLink,
   FileAudio,
+  GripVertical,
   Save,
   Upload,
   X,
@@ -16,6 +17,16 @@ import { Input } from "@/components/aicanvas/andromeda/components/Input";
 import { Select as AndromedaSelect } from "@/components/aicanvas/andromeda/components/Select";
 import { Textarea } from "@/components/aicanvas/andromeda/components/Textarea";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -23,6 +34,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Sortable, SortableItem, SortableItemHandle } from "@/components/reui/sortable";
 import { ResourceFileTree } from "@/features/resource/components/resource-file-tree";
 import type { Resource } from "@/features/resource/types";
 import type { Space } from "@/features/space/types";
@@ -90,6 +102,8 @@ export function ResourceDetailsSheet({
   );
   const [localMediaDirty, setLocalMediaDirty] = useState(false);
   const [mediaError, setMediaError] = useState("");
+  const [pendingMediaRemoval, setPendingMediaRemoval] =
+    useState<LocalMediaDraft | null>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const localMediaRef = useRef(localMedia);
   const metadata = resource?.metadata?.data;
@@ -116,6 +130,7 @@ export function ResourceDetailsSheet({
     setLocalMedia(nextMedia);
     setLocalMediaDirty(false);
     setMediaError("");
+    setPendingMediaRemoval(null);
   }, [resource]);
 
   useEffect(() => {
@@ -131,8 +146,22 @@ export function ResourceDetailsSheet({
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  function confirmRemoveMedia() {
+    if (!pendingMediaRemoval) return;
+    const removalId = pendingMediaRemoval.id;
+    setLocalMedia((current) => {
+      const item = current.find((candidate) => candidate.id === removalId);
+      if (item) revokeDraftPreview(item);
+      return current.filter((candidate) => candidate.id !== removalId);
+    });
+    setLocalMediaDirty(true);
+    setMediaError("");
+    setPendingMediaRemoval(null);
+  }
+
   return (
-    <Sheet open={open && Boolean(resource)} onOpenChange={onOpenChange}>
+    <>
+      <Sheet open={open && Boolean(resource)} onOpenChange={onOpenChange}>
       <SheetContent className="w-[min(100vw,42rem)] gap-0 border-border bg-card p-0 text-foreground sm:max-w-[42rem]">
         <SheetHeader className="border-b border-border px-5 py-4">
           <SheetTitle className="break-words pr-8 text-heading">
@@ -163,6 +192,7 @@ export function ResourceDetailsSheet({
 
               {resource.type === "local_media" ? (
                 <LocalMediaEditor
+                  disabled={!canEdit || busy}
                   error={mediaError}
                   inputRef={mediaInputRef}
                   items={localMedia}
@@ -172,16 +202,14 @@ export function ResourceDetailsSheet({
                     setLocalMediaDirty(true);
                     setMediaError(result.error);
                   }}
-                  onRemove={(id) => {
-                    setLocalMedia((current) => {
-                      const item = current.find(
-                        (candidate) => candidate.id === id,
-                      );
-                      if (item) revokeDraftPreview(item);
-                      return current.filter((candidate) => candidate.id !== id);
-                    });
+                  onRemove={(id) =>
+                    setPendingMediaRemoval(
+                      localMedia.find((item) => item.id === id) ?? null,
+                    )
+                  }
+                  onReorder={(next) => {
+                    setLocalMedia(next);
                     setLocalMediaDirty(true);
-                    setMediaError("");
                   }}
                 />
               ) : null}
@@ -314,22 +342,49 @@ export function ResourceDetailsSheet({
           </Button>
         </SheetFooter>
       </SheetContent>
-    </Sheet>
+      </Sheet>
+      <AlertDialog
+        open={Boolean(pendingMediaRemoval)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setPendingMediaRemoval(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove this media file?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingMediaRemoval?.fileName ?? "This file"} will be removed
+              from the resource and deleted from object storage after saving.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmRemoveMedia}>
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
 function LocalMediaEditor({
+  disabled,
   error,
   inputRef,
   items,
   onAdd,
   onRemove,
+  onReorder,
 }: {
+  disabled: boolean;
   error: string;
   inputRef: RefObject<HTMLInputElement | null>;
   items: LocalMediaDraft[];
   onAdd: (files: FileList) => void;
   onRemove: (id: string) => void;
+  onReorder: (items: LocalMediaDraft[]) => void;
 }) {
   return (
     <section className="flex flex-col gap-3 border border-border bg-card p-3">
@@ -343,6 +398,7 @@ function LocalMediaEditor({
         <input
           accept={LOCAL_MEDIA_ACCEPT}
           className="sr-only"
+          disabled={disabled}
           multiple
           onChange={(event) => {
             if (event.target.files) onAdd(event.target.files);
@@ -353,7 +409,7 @@ function LocalMediaEditor({
         />
         <Button
           aria-label="Add media files"
-          disabled={items.length >= LOCAL_MEDIA_MAX_FILES}
+          disabled={disabled || items.length >= LOCAL_MEDIA_MAX_FILES}
           onClick={() => inputRef.current?.click()}
           size="sm"
           variant="outline"
@@ -363,37 +419,59 @@ function LocalMediaEditor({
         </Button>
       </div>
       {items.length > 0 ? (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <Sortable
+          className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+          getItemValue={(item) => item.id}
+          onValueChange={onReorder}
+          strategy="grid"
+          value={items}
+        >
           {items.map((item) => (
-            <div
-              className="group relative overflow-hidden border border-border"
-              key={item.id}
-            >
-              <LocalMediaDraftPreview item={item} />
-              <button
-                aria-label={`Remove ${item.fileName}`}
-                className="absolute right-1.5 top-1.5 inline-flex size-7 items-center justify-center bg-black/75 text-white opacity-100 transition hover:bg-destructive sm:opacity-0 sm:group-hover:opacity-100"
-                disabled={items.length <= 1}
-                onClick={() => onRemove(item.id)}
-                title="Remove file"
-                type="button"
-              >
-                <X className="size-3.5" />
-              </button>
-              <div className="border-t border-border px-2 py-1.5">
-                <p
-                  className="truncate text-xs text-foreground"
-                  title={item.fileName}
-                >
-                  {item.fileName}
-                </p>
-                <p className="text-[10px] text-muted-foreground">
-                  {formatMediaSize(item.size)}
-                </p>
+            <SortableItem disabled={disabled} key={item.id} value={item.id}>
+              <div className="group relative overflow-hidden border border-border">
+                <LocalMediaDraftPreview item={item} />
+                <div className="absolute left-1.5 top-1.5 flex gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100">
+                  <SortableItemHandle>
+                    <Button
+                      aria-label={`Reorder ${item.fileName}`}
+                      className="size-7 bg-black/75 text-white"
+                      disabled={disabled}
+                      size="icon"
+                      title="Reorder media"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <GripVertical className="size-3.5" />
+                    </Button>
+                  </SortableItemHandle>
+                  <Button
+                    aria-label={`Remove ${item.fileName}`}
+                    className="size-7 bg-black/75 text-white hover:bg-destructive"
+                    disabled={disabled || items.length <= 1}
+                    onClick={() => onRemove(item.id)}
+                    size="icon"
+                    title="Remove file"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <X className="size-3.5" />
+                  </Button>
+                </div>
+                <div className="border-t border-border px-2 py-1.5">
+                  <p
+                    className="truncate text-xs text-foreground"
+                    title={item.fileName}
+                  >
+                    {item.fileName}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {formatMediaSize(item.size)}
+                  </p>
+                </div>
               </div>
-            </div>
+            </SortableItem>
           ))}
-        </div>
+        </Sortable>
       ) : null}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </section>
