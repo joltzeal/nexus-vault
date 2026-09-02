@@ -182,7 +182,7 @@ export async function getUnlockedSharedVaultDetail(
   env: CloudflareEnv,
   slug: string,
   unlockToken?: string,
-  input: { actor?: Actor } = {}
+  input: { actor?: Actor; secret?: string } = {}
 ) {
   const share = await findActiveShareBySlug(db, slug)
 
@@ -196,6 +196,14 @@ export async function getUnlockedSharedVaultDetail(
     }
   }
   if (share.vaultVisibility === "password") {
+    if (input.secret && timingSafeEqual(input.secret, share.shareToken)) {
+      return {
+        passwordRequired: false as const,
+        unavailable: false as const,
+        actorRole: await getVaultRoleForActor(db, share.vaultId, input.actor),
+        detail: await readVaultDetail(db, share.vaultId, { actor: input.actor }),
+      }
+    }
     const isUnlocked = await verifyShareUnlockToken(env, unlockToken, {
       slug,
       vaultId: share.vaultId,
@@ -264,6 +272,7 @@ async function findActiveShareBySlug(db: Db, slug: string) {
       vaultId: shares.vaultId,
       vaultVisibility: vaults.visibility,
       vaultPasswordHash: vaults.passwordHash,
+      shareToken: shares.token,
       deletedAt: shares.deletedAt,
     })
     .from(shares)

@@ -31,11 +31,13 @@ export function AuthDialog({
   defaultMode = "sign-in",
   onOpenChange,
   open,
+  redirectTo,
   registrationMode,
 }: {
   defaultMode?: AuthMode
   onOpenChange: (open: boolean) => void
   open: boolean
+  redirectTo?: string | null
   registrationMode: RegistrationMode
   turnstileSiteKey?: string
 }) {
@@ -81,7 +83,7 @@ export function AuthDialog({
       }
 
       onOpenChange(false)
-      window.location.assign("/dashboard")
+      if (redirectTo !== null) window.location.assign(redirectTo ?? "/dashboard")
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Authentication failed.")
     } finally {

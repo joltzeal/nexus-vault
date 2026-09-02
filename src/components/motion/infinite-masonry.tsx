@@ -287,7 +287,7 @@ export function InfiniteMasonry<T>({
               ref={virtualizer.measureElement}
               data-index={virtualItem.index}
               className={cn(
-                "absolute left-0 top-0 will-change-transform",
+                "absolute left-0 top-0 will-change-transform m-1",
                 !isTail && itemClassName,
               )}
               style={{
@@ -300,7 +300,9 @@ export function InfiniteMasonry<T>({
                   <div className="flex min-h-36 flex-col items-start justify-center rounded-2xl border border-destructive/20 bg-destructive/5 p-4">
                     <div className="flex items-center gap-2 text-destructive">
                       <AlertCircle className="size-4" aria-hidden="true" />
-                      <p className="text-sm font-medium">Couldn&apos;t load more</p>
+                      <p className="text-sm font-medium">
+                        Couldn&apos;t load more
+                      </p>
                     </div>
                     <div className="mt-2 text-xs leading-5 text-muted-foreground">
                       {error}

@@ -1,5 +1,4 @@
 import { forbidden } from "../../../../../lib/errors"
-import { resolveViewerFromRequest } from "../../../../../auth/session"
 import { handleApiRequest, ok, parseJson, serializeCookie } from "../../../../../lib/http"
 import { unlockShareSchema } from "../../../../../schemas/vault"
 import {
@@ -28,13 +27,11 @@ export async function POST(request: Request, { params }: Context) {
       if (!turnstile.success) throw forbidden("请完成人机验证后再解锁。")
     }
     const share = await unlockSharedVaultBySlug(db, env, slug, input)
-    const viewer = await resolveViewerFromRequest(request, env, db)
     const unlocked = await getUnlockedSharedVaultDetail(
       db,
       env,
       slug,
       share.unlockToken ?? undefined,
-      { actor: viewer ?? undefined },
     )
 
     if (!unlocked || unlocked.passwordRequired || !unlocked.detail) {
@@ -56,14 +53,7 @@ export async function POST(request: Request, { params }: Context) {
     return ok(
       {
         ...unlocked.detail,
-        actorRole: unlocked.actorRole,
-        ...(viewer
-          ? {
-              actorId: viewer.id,
-              actorEmail: viewer.email,
-              actorName: viewer.name,
-            }
-          : {}),
+        actorRole: "anonymous" as const,
       },
       200,
       headers,

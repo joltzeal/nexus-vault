@@ -1,8 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   ChevronRight,
-  Eye,
-  EyeOff,
   FolderPlus,
   GitFork,
   Inbox,
@@ -19,6 +17,7 @@ import { PanelMenu as PanelMenuPrimitive } from "@/components/aicanvas/andromeda
 import { ButtonGroup } from "@/components/ui/button-group";
 import type { VaultDetail } from "../api/vault-api";
 import { Avatar } from "@/components/aicanvas/andromeda/components/Avatar";
+import { Toggle } from "@/components/aicanvas/andromeda/components/Toggle";
 
 const Button: any = ButtonPrimitive;
 const PanelMenu: any = PanelMenuPrimitive;
@@ -66,15 +65,6 @@ export function VaultHeader({
     ["forks", vault?.forkCount ?? 0],
   ] as const;
   const menuItems = [
-    ...(isShareMode
-      ? [
-          {
-            label: mediaVisible ? "Hide NSFW media" : "Show NSFW media",
-            icon: mediaVisible ? Eye : EyeOff,
-            onSelect: () => onToggleMediaVisibility?.(!mediaVisible),
-          },
-        ]
-      : []),
     ...(owner
       ? [
           { label: "Add space", icon: FolderPlus, onSelect: onCreateSpace },
@@ -132,6 +122,13 @@ export function VaultHeader({
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+              {isShareMode && onToggleMediaVisibility ? (
+                <Toggle
+                  checked={mediaVisible}
+                  label="NSFW media"
+                  onCheckedChange={onToggleMediaVisibility}
+                />
+              ) : null}
               {canAddResource ? (
                 <Button
                   disabled={disabled || !vault}
@@ -205,13 +202,13 @@ export function VaultHeader({
                   </Button>
                 </>
               ) : null}
-              <div className="flex items-center gap-0.5">
+              {!isShareMode ? <div className="flex items-center gap-0.5">
                 <PanelMenu
                   align="right"
                   ariaLabel="More vault actions"
                   items={menuItems}
                 />
-              </div>
+              </div> : null}
             </div>
           </div>
           {vault?.description?.trim() ? (

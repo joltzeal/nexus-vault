@@ -65,6 +65,21 @@ export function deleteDashboardVault(vaultId: string) {
   return mutateVault<{ archived: boolean; id: string }>(`/api/v1/vaults/${encodeURIComponent(vaultId)}`, "DELETE")
 }
 
+export function setVaultStarred(vaultId: string, starred: boolean) {
+  return mutateVault<{ starred: boolean }>(
+    `/api/v1/vaults/${encodeURIComponent(vaultId)}/star`,
+    starred ? "POST" : "DELETE",
+    {},
+  )
+}
+
+export function forkDashboardVault(vaultId: string) {
+  return mutateVault<{ id: string; forkId: string }>(
+    `/api/v1/vaults/${encodeURIComponent(vaultId)}/fork`,
+    "POST",
+  )
+}
+
 export function createVaultSpace(vaultId: string, form: SpaceForm) {
   return mutateVault<{ id: string }>(`/api/v1/vaults/${encodeURIComponent(vaultId)}/spaces`, "POST", form)
 }

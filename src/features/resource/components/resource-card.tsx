@@ -151,6 +151,7 @@ export function ResourceCard({
   onUpdateAnnotation,
   resource,
   showAnnotationActions = true,
+  showManagementActions = true,
   showReadLaterAction = true,
   showSelectionControl = false,
   showStarAction = true,
@@ -191,6 +192,7 @@ export function ResourceCard({
   ) => void;
   resource: Resource;
   showAnnotationActions?: boolean;
+  showManagementActions?: boolean;
   showReadLaterAction?: boolean;
   showSelectionControl?: boolean;
   showStarAction?: boolean;
@@ -441,7 +443,7 @@ export function ResourceCard({
   }
 
   function renderCardHeaderActions() {
-    if (showSelectionControl) return undefined;
+    if (showSelectionControl || !showAnnotationActions) return undefined;
     return renderSharedAnnotationActions();
   }
 
@@ -469,6 +471,7 @@ export function ResourceCard({
   }
 
   function renderSharedManagementActions() {
+    if (!showManagementActions) return undefined;
     if (
       showSelectionControl ||
       (downloadableMedia.length === 0 &&

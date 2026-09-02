@@ -25,6 +25,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { toast } from "@/lib/toast";
 import { ResourceMarkdown } from "@/features/resource/components/resource-description";
 import type { ResourceTransferTargetVault } from "@/features/resource/types";
 import {
@@ -129,10 +130,28 @@ export function SpaceSection({
 
   async function copyLinks() {
     const links = resources
-      .map((resource) => resource.url)
+      .map((resource) => resource.url ?? resource.referer)
       .filter((url): url is string => Boolean(url));
-    if (!links.length) return;
-    await navigator.clipboard.writeText(links.join("\n"));
+    if (!links.length) {
+      toast.info("No links to copy");
+      return;
+    }
+    const value = links.join("\n");
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+      await navigator.clipboard.writeText(value);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = value;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+    toast.success(`${links.length} link${links.length === 1 ? "" : "s"} copied`);
   }
 
   function changeIcon(nextIcon: string) {
@@ -210,10 +229,7 @@ export function SpaceSection({
             <Badge variant="accent">{selectedCount} selected</Badge>
           ) : null}
           {space.description ? (
-            <Popover
-              open={descriptionOpen}
-              onOpenChange={setDescriptionOpen}
-            >
+            <Popover open={descriptionOpen} onOpenChange={setDescriptionOpen}>
               <PopoverTrigger
                 onBlur={scheduleDescriptionClose}
                 onFocus={openDescription}
@@ -297,7 +313,9 @@ export function SpaceSection({
                 <SpaceTransferDialog
                   disabled={disabled}
                   onLoadTargets={onLoadTransferTargets}
-                  onMove={(targetVaultId) => onTransferSpace(space.id, targetVaultId)}
+                  onMove={(targetVaultId) =>
+                    onTransferSpace(space.id, targetVaultId)
+                  }
                   sourceVaultId={sourceVaultId}
                   spaceName={space.name}
                   targets={transferTargets}
@@ -387,8 +405,8 @@ export function SpaceSection({
               <Plus className="size-5" />
               <span className="text-ui font-medium">
                 {canAddResource
-                  ? "Add a resource to this space"
-                  : "No resources in this space yet"}
+                  ? `Add a resource to ${space.name}`
+                  : `No resources in ${space.name} yet`}
               </span>
             </button>
           ) : null}
