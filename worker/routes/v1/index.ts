@@ -20,6 +20,7 @@ import * as resourceLocalMedia from "./resources/[resourceId]/local-media/route"
 import * as resourceLocalMediaMultipart from "./resources/[resourceId]/local-media/multipart/route";
 import * as resourceMediaDownload from "./resources/[resourceId]/media/[mediaIndex]/download/route";
 import * as resourceMetadataResolve from "./resources/[resourceId]/metadata/resolve/route";
+import * as resourceMetadataStream from "./resources/[resourceId]/metadata/stream/route";
 import * as resourceReadLater from "./resources/[resourceId]/read-later/route";
 import * as resourceStar from "./resources/[resourceId]/star/route";
 import * as resourceTransfer from "./resources/[resourceId]/transfer/route";
@@ -80,6 +81,7 @@ registerLegacyRoute(apiV1, "/resources/:resourceId/local-media", resourceLocalMe
 registerLegacyRoute(apiV1, "/resources/:resourceId/local-media/multipart", resourceLocalMediaMultipart);
 registerLegacyRoute(apiV1, "/resources/:resourceId/media/:mediaIndex/download", resourceMediaDownload);
 registerLegacyRoute(apiV1, "/resources/:resourceId/metadata/resolve", resourceMetadataResolve);
+registerLegacyRoute(apiV1, "/resources/:resourceId/metadata/stream", resourceMetadataStream);
 registerLegacyRoute(apiV1, "/resources/:resourceId/read-later", resourceReadLater);
 registerLegacyRoute(apiV1, "/resources/:resourceId/star", resourceStar);
 registerLegacyRoute(apiV1, "/resources/:resourceId/transfer", resourceTransfer);

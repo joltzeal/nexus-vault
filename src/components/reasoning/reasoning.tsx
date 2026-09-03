@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { Streamdown } from "streamdown";
 
 import { cn } from "@/lib/utils";
@@ -204,25 +205,40 @@ export const ReasoningContent = ({
   children,
   className,
   ...props
-}: ReasoningContentProps) => (
-  <Collapsible.Panel
-    className={cn(
-      "h-[var(--collapsible-panel-height)] overflow-hidden transition-[height] duration-200 ease-out data-[ending-style]:h-0 data-[starting-style]:h-0 motion-reduce:transition-none",
-      className
-    )}
-    data-slot="reasoning-content"
-    {...props}
-  >
-    <div
+}: ReasoningContentProps) => {
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <Collapsible.Panel
       className={cn(
-        "pt-1 pb-0.5 text-muted-foreground text-sm leading-relaxed",
-        "[&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold",
-        "[&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-xs",
-        "[&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5",
-        "[&_p+p]:mt-2"
+        "h-[var(--collapsible-panel-height)] overflow-hidden transition-[height] duration-200 ease-out data-[ending-style]:h-0 data-[starting-style]:h-0 motion-reduce:transition-none",
+        className
       )}
+      data-slot="reasoning-content"
+      {...props}
     >
-      <Streamdown>{children}</Streamdown>
-    </div>
-  </Collapsible.Panel>
-);
+      <motion.div
+        animate={reduceMotion ? { opacity: 1 } : { opacity: 1, filter: "blur(0px)", y: 0 }}
+        className={cn(
+          "pt-1 pb-0.5 text-muted-foreground text-sm leading-relaxed",
+          "[&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold",
+          "[&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-xs",
+          "[&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5",
+          "[&_p+p]:mt-2"
+        )}
+        initial={
+          reduceMotion
+            ? { opacity: 1 }
+            : { opacity: 0.68, filter: "blur(2px)", y: 2 }
+        }
+        key={children}
+        transition={{
+          duration: reduceMotion ? 0 : 0.16,
+          ease: [0.22, 1, 0.36, 1],
+        }}
+      >
+        <Streamdown>{children}</Streamdown>
+      </motion.div>
+    </Collapsible.Panel>
+  );
+};

@@ -5,6 +5,10 @@ import {
   parseTwitterProfileLink,
   parseWechatMpArticleLink,
 } from "@/features/resource/parsers/resource-link-parser"
+import {
+  isCloudDriveResourceType,
+  parseCloudDriveLink,
+} from "@/features/resource/input"
 import type { MediaItem, Resource } from "@/features/resource/types"
 import type { Tweet } from "react-tweet/api"
 
@@ -22,7 +26,7 @@ import type {
 } from "./types"
 
 export type ResourcePillItem =
-  | { key: string; kind: "status"; label: string; status: "online" | "degraded" | "offline" | "unknown"; title?: string }
+  | { key: string; kind: "status"; label: string; status: "online" | "warning" | "degraded" | "offline" | "unknown"; title?: string }
   | { key: string; kind: "copy"; label: string; value: string; ariaLabel: string }
   | { key: string; kind: "label"; label: string }
 
@@ -86,7 +90,81 @@ export function getResourcePillItems(resource: Resource): ResourcePillItem[] {
     items.push({ key: "size", kind: "label", label: formatResourceBytes(metadata.size) })
   }
 
+  items.push(...getCloudDrivePillItems(resource))
+
   return items
+}
+
+type CloudDriveAvailabilityStatus =
+  | "available"
+  | "unavailable"
+  | "password_required"
+  | "rate_limited"
+  | "unknown"
+
+function getCloudDrivePillItems(resource: Resource): ResourcePillItem[] {
+  const metadata = resource.metadata?.data
+  const extra = isRecord(metadata?.extra) ? metadata.extra : undefined
+  const cloudDrive = extra && isRecord(extra.cloudDrive) ? extra.cloudDrive : {}
+  const provider = typeof cloudDrive.provider === "string" ? cloudDrive.provider : ""
+  const metadataType = typeof metadata?.type === "string" ? metadata.type : ""
+  if (!isCloudDriveResourceType(resource.type) &&
+    !isCloudDriveResourceType(metadataType) &&
+    !isCloudDriveResourceType(provider)) return []
+
+  const availability = isRecord(cloudDrive.availability) ? cloudDrive.availability : {}
+  const rawStatus = availability.status
+  const status: CloudDriveAvailabilityStatus =
+    rawStatus === "available" ||
+    rawStatus === "unavailable" ||
+    rawStatus === "password_required" ||
+    rawStatus === "rate_limited" ||
+    rawStatus === "unknown"
+      ? rawStatus
+      : "unknown"
+  const statusPill = toAvailabilityPillStatus(status)
+  const reason = typeof availability.reason === "string"
+    ? availability.reason
+    : "Cloud drive availability has not been checked."
+  const metadataPassword = typeof cloudDrive.password === "string"
+    ? cloudDrive.password.trim()
+    : ""
+  const password = metadataPassword || parseCloudDriveLink(resource.url ?? "")?.password
+
+  return [
+    {
+      key: "cloud-drive-availability",
+      kind: "status",
+      label: statusPill.label,
+      status: statusPill.status,
+      title: reason,
+    },
+    ...(password
+      ? [{
+          key: "cloud-drive-extraction-code",
+          kind: "copy" as const,
+          label: "提取码",
+          value: password,
+          ariaLabel: "Copy cloud drive extraction code",
+        }]
+      : []),
+  ]
+}
+
+function toAvailabilityPillStatus(status: CloudDriveAvailabilityStatus) {
+  if (status === "available") {
+    return { label: "Available", status: "online" as const }
+  }
+  if (status === "unavailable") {
+    return { label: "Unavailable", status: "offline" as const }
+  }
+  if (status === "password_required") {
+    return { label: "Password required", status: "warning" as const }
+  }
+  if (status === "rate_limited") {
+    return { label: "Rate limited", status: "warning" as const }
+  }
+  return { label: "Unknown", status: "unknown" as const }
 }
 
 function formatResourceBytes(value: number) {

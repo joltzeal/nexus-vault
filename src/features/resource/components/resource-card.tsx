@@ -303,8 +303,14 @@ export function ResourceCard({
       120,
     );
   }
-  const copyPillValue = (value: string) => {
-    void navigator.clipboard?.writeText(value);
+  const copyPillValue = async (value: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(value);
+      toast.success("Extraction code copied");
+    } catch {
+      toast.error("Could not copy extraction code");
+    }
   };
 
   async function handleDownloadAllMedia() {
@@ -951,9 +957,11 @@ function ResourceMetadataPill({
         variant={
           pill.status === "offline"
             ? "fault"
-            : pill.status === "online"
-              ? "accent"
-              : "outline"
+            : pill.status === "warning"
+              ? "warning"
+              : pill.status === "online"
+                ? "accent"
+                : "outline"
         }
       >
         {pill.label}
@@ -969,7 +977,10 @@ function ResourceMetadataPill({
         <button
           aria-label={pill.ariaLabel}
           className="-mr-0.5 inline-flex size-3.5 shrink-0 items-center justify-center text-muted-foreground transition hover:bg-muted hover:text-primary [&_svg]:size-2"
-          onClick={() => onCopy(pill.value)}
+          onClick={(event: MouseEvent<HTMLButtonElement>) => {
+            event.stopPropagation();
+            onCopy(pill.value);
+          }}
           type="button"
         >
           <Copy />

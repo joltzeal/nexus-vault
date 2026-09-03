@@ -2,6 +2,7 @@ import type {
   ResourceAnnotation,
   ResourceAnnotationPatch,
   ReadLaterResourceItem,
+  Resource,
   StarredResourceItem,
   ResourceTransferTargetVault,
 } from "../types"
@@ -166,6 +167,132 @@ export async function transferResource(
   }
 
   return payload?.data
+}
+
+export type ResourceAiSummaryStreamUpdate = {
+  aiSummary: {
+    error?: string
+    status: Resource["metadataStatus"]
+    text?: string
+  } | null
+  description: string
+  id: string
+  metadataStatus: Resource["metadataStatus"]
+}
+
+export async function streamResourceAiSummary(
+  resourceId: string,
+  options: {
+    onUpdate: (update: ResourceAiSummaryStreamUpdate) => void
+    signal?: AbortSignal
+  },
+): Promise<boolean> {
+  const response = await fetch(
+    `/api/v1/resources/${encodeURIComponent(resourceId)}/metadata/stream`,
+    { credentials: "include", signal: options.signal },
+  )
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiEnvelope<unknown> | null
+    throw new Error(payload?.error?.message ?? "Could not stream AI summary.")
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error("AI summary stream returned no body.")
+
+  const decoder = new TextDecoder()
+  let buffer = ""
+  let receivedTerminalUpdate = false
+
+  const handleUpdate = (update: ResourceAiSummaryStreamUpdate) => {
+    if (
+      update.aiSummary?.status === "completed" ||
+      update.aiSummary?.status === "failed"
+    ) {
+      receivedTerminalUpdate = true
+    }
+    options.onUpdate(update)
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      buffer = consumeSseEvents(buffer, handleUpdate)
+    }
+
+    buffer += decoder.decode()
+    consumeSseEvents(buffer, handleUpdate, true)
+  } finally {
+    reader.releaseLock()
+  }
+  return receivedTerminalUpdate
+}
+
+function consumeSseEvents(
+  value: string,
+  onUpdate: (update: ResourceAiSummaryStreamUpdate) => void,
+  flush = false,
+) {
+  let buffer = value
+  while (true) {
+    const match = buffer.match(/\r?\n\r?\n/)
+    if (!match || match.index === undefined) break
+    const block = buffer.slice(0, match.index)
+    buffer = buffer.slice(match.index + match[0].length)
+    dispatchSseEvent(block, onUpdate)
+  }
+
+  if (flush && buffer.trim()) {
+    dispatchSseEvent(buffer, onUpdate)
+    return ""
+  }
+  return buffer
+}
+
+function dispatchSseEvent(
+  block: string,
+  onUpdate: (update: ResourceAiSummaryStreamUpdate) => void,
+) {
+  const data = block
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trimStart())
+    .join("\n")
+  if (!data) return
+
+  const parsed = JSON.parse(data) as ResourceAiSummaryStreamUpdate | { message?: string }
+  if (!isResourceAiSummaryStreamUpdate(parsed)) {
+    throw new Error(
+      typeof parsed === "object" && parsed && "message" in parsed && typeof parsed.message === "string"
+        ? parsed.message
+        : "AI summary stream returned invalid data.",
+    )
+  }
+  onUpdate(parsed)
+}
+
+function isResourceAiSummaryStreamUpdate(
+  value: unknown,
+): value is ResourceAiSummaryStreamUpdate {
+  if (!value || typeof value !== "object") return false
+  const update = value as Record<string, unknown>
+  if (
+    typeof update.id !== "string" ||
+    typeof update.description !== "string" ||
+    !isMetadataStatus(update.metadataStatus)
+  ) {
+    return false
+  }
+  if (update.aiSummary === null) return true
+  if (!update.aiSummary || typeof update.aiSummary !== "object") return false
+  const summary = update.aiSummary as Record<string, unknown>
+  return isMetadataStatus(summary.status) &&
+    (summary.text === undefined || typeof summary.text === "string")
+}
+
+function isMetadataStatus(value: unknown): value is Resource["metadataStatus"] {
+  return value === "pending" || value === "processing" || value === "completed" || value === "failed"
 }
 
 export async function transferResources(input: {

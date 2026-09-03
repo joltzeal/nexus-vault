@@ -1,6 +1,7 @@
 "use client";
 
 import { Copy } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import ReactMarkdown from "react-markdown";
 import { useEffect, useRef, useState } from "react";
 
@@ -23,6 +24,7 @@ export function ResourceDescription({
   description: string;
 }) {
   const [open, setOpen] = useState(false);
+  const reduceMotion = useReducedMotion();
   const previousAiStatusRef = useRef(aiSummary?.status);
   const isStreaming =
     aiSummary?.status === "pending" || aiSummary?.status === "processing";
@@ -32,7 +34,6 @@ export function ResourceDescription({
 
   useEffect(() => {
     // Reset the reader position when a refreshed resource description arrives.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOpen(false);
   }, [description]);
 
@@ -47,67 +48,88 @@ export function ResourceDescription({
     previousAiStatusRef.current = aiSummary?.status;
   }, [aiSummary?.status]);
 
-  if (isStreaming) {
-    return <ResourceAiSummaryTransition text={aiSummary?.text ?? ""} />;
-  }
-  if (!displayDescription) return null;
-
   return (
-    <div
-      className={cn(
-        "group/description relative min-w-0 cursor-pointer rounded-input border border-line-soft bg-ink-850/45 px-2 py-1 text-left outline-none transition hover:border-line hover:bg-ink-850 focus-visible:border-jade-dim focus-visible:shadow-[0_0_0_3px_var(--jade-glow)]",
-        open && "border-line bg-ink-850",
-      )}
-      onClick={(event) => {
-        if (event.target instanceof Element && event.target.closest("a,button"))
-          return;
-        event.stopPropagation();
-        setOpen((value) => !value);
-      }}
-      onKeyDown={(event) => {
-        if (event.target instanceof Element && event.target.closest("button"))
-          return;
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        event.stopPropagation();
-        setOpen((value) => !value);
-      }}
-      role="button"
-      tabIndex={0}
-    >
-      {!open ? (
-        <ResourceMarkdown
-          className="text-xs leading-5 text-fg-dim"
-          singleLine
-          value={displayDescription}
-        />
-      ) : (
-        <ResourceMarkdown
-          className="text-xs leading-5 text-fg-muted"
-          value={displayDescription}
-        />
-      )}
-      <Button
-        className={cn(
-          "pointer-events-none absolute right-1 size-6 rounded-sm bg-ink-900/90 text-fg-dim opacity-0 shadow-sm backdrop-blur transition-opacity group-focus-within/description:pointer-events-auto group-focus-within/description:opacity-100 group-hover/description:pointer-events-auto group-hover/description:opacity-100 hover:text-jade",
-          open
-            ? "top-1"
-            : "inset-y-0 my-auto",
-        )}
-        onClick={(event) => {
-          event.stopPropagation();
-          void navigator.clipboard?.writeText(displayDescription);
-          toast.success("Description copied");
-        }}
-        size="icon-xs"
-        title="Copy description"
-        type="button"
-        variant="ghost"
-      >
-        <Copy />
-        <span className="sr-only">Copy description</span>
-      </Button>
-    </div>
+    <AnimatePresence initial={isStreaming} mode="wait">
+      {isStreaming ? (
+        <motion.div
+          animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
+          exit={{ opacity: 0, filter: "blur(3px)", y: -3 }}
+          initial={{ opacity: 0, filter: "blur(4px)", y: 4 }}
+          key="ai-summary-stream"
+          transition={{
+            duration: reduceMotion ? 0 : 0.22,
+            ease: [0.22, 1, 0.36, 1],
+          }}
+        >
+          <ResourceAiSummaryTransition text={aiSummary?.text ?? ""} />
+        </motion.div>
+      ) : displayDescription ? (
+        <motion.div
+          animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
+          exit={{ opacity: 0, filter: "blur(3px)", y: -3 }}
+          initial={{ opacity: 0, filter: "blur(4px)", y: 4 }}
+          key={`resource-description:${displayDescription}`}
+          transition={{
+            duration: reduceMotion ? 0 : 0.28,
+            ease: [0.22, 1, 0.36, 1],
+          }}
+        >
+          <div
+            className={cn(
+              "group/description relative min-w-0 cursor-pointer rounded-input border border-line-soft bg-ink-850/45 px-2 py-1 text-left outline-none transition hover:border-line hover:bg-ink-850 focus-visible:border-jade-dim focus-visible:shadow-[0_0_0_3px_var(--jade-glow)]",
+              open && "border-line bg-ink-850",
+            )}
+            onClick={(event) => {
+              if (event.target instanceof Element && event.target.closest("a,button"))
+                return;
+              event.stopPropagation();
+              setOpen((value) => !value);
+            }}
+            onKeyDown={(event) => {
+              if (event.target instanceof Element && event.target.closest("button"))
+                return;
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              event.stopPropagation();
+              setOpen((value) => !value);
+            }}
+            role="button"
+            tabIndex={0}
+          >
+            {!open ? (
+              <ResourceMarkdown
+                className="text-xs leading-5 text-fg-dim"
+                singleLine
+                value={displayDescription}
+              />
+            ) : (
+              <ResourceMarkdown
+                className="text-xs leading-5 text-fg-muted"
+                value={displayDescription}
+              />
+            )}
+            <Button
+              className={cn(
+                "pointer-events-none absolute right-1 size-6 rounded-sm bg-ink-900/90 text-fg-dim opacity-0 shadow-sm backdrop-blur transition-opacity group-focus-within/description:pointer-events-auto group-focus-within/description:opacity-100 group-hover/description:pointer-events-auto group-hover/description:opacity-100 hover:text-jade",
+                open ? "top-1" : "inset-y-0 my-auto",
+              )}
+              onClick={(event) => {
+                event.stopPropagation();
+                void navigator.clipboard?.writeText(displayDescription);
+                toast.success("Description copied");
+              }}
+              size="icon-xs"
+              title="Copy description"
+              type="button"
+              variant="ghost"
+            >
+              <Copy />
+              <span className="sr-only">Copy description</span>
+            </Button>
+          </div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 }
 

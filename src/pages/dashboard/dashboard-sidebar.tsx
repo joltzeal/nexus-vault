@@ -10,6 +10,7 @@ import {
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { SearchField } from "@/components/aicanvas/andromeda/components/SearchField";
+import { Spinner } from "@/components/aicanvas/andromeda/components/Spinner";
 import { UserCard } from "@/components/aicanvas/andromeda/components/UserCard";
 import { UserMenu } from "@/components/aicanvas/andromeda/components/UserMenu";
 import {
@@ -39,7 +40,9 @@ export type DashboardSidebarUser = {
 };
 type DashboardSidebarProps = {
   disabled?: boolean;
+  loadingVaultId?: string | null;
   mediaVisible?: boolean;
+  onVaultLoadingChange?: (vaultId: string, loading: boolean) => void;
   onCreateVault?: () => void;
   onMediaVisibleChange?: (visible: boolean) => void;
   onOpenSettings?: () => void;
@@ -50,7 +53,9 @@ type DashboardSidebarProps = {
 
 export function DashboardSidebar({
   disabled = false,
+  loadingVaultId = null,
   mediaVisible = true,
+  onVaultLoadingChange,
   onCreateVault,
   onMediaVisibleChange,
   onOpenSettings,
@@ -80,6 +85,11 @@ export function DashboardSidebar({
     active
       ? "dashboard-sidebar-item dashboard-sidebar-item--active"
       : "dashboard-sidebar-item";
+  function handleVaultSelect(vaultId: string) {
+    if (activeVaultId === vaultId) return;
+    onVaultLoadingChange?.(vaultId, true);
+    navigate(`/dashboard/vault/${encodeURIComponent(vaultId)}`);
+  }
   useEffect(() => {
     const query = vaultQuery.trim();
     if (!query) {
@@ -157,17 +167,17 @@ export function DashboardSidebar({
                 <p className="px-2 py-2 text-label text-muted-foreground">No matches</p>
               ) : null}
               {searchResults.vaults.map((result) => (
-                <button className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent" key={`vault-${result.id}`} onClick={() => navigate(`/dashboard/vault/${encodeURIComponent(result.id)}`)} type="button">
+                <button className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent" key={`vault-${result.id}`} onClick={() => handleVaultSelect(result.id)} type="button">
                   <span className="truncate">{result.title}</span><span className="ml-auto text-label text-muted-foreground">Vault</span>
                 </button>
               ))}
               {searchResults.spaces.map((result) => (
-                <button className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent" key={`space-${result.id}`} onClick={() => navigate(`/dashboard/vault/${encodeURIComponent(result.vaultId)}`)} type="button">
+                <button className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent" key={`space-${result.id}`} onClick={() => handleVaultSelect(result.vaultId)} type="button">
                   <span className="truncate">{result.name}</span><span className="ml-auto truncate pl-2 text-label text-muted-foreground">{result.vaultTitle}</span>
                 </button>
               ))}
               {searchResults.resources.map((result) => (
-                <button className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent" key={`resource-${result.id}`} onClick={() => navigate(`/dashboard/vault/${encodeURIComponent(result.vaultId)}`)} type="button">
+                <button className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent" key={`resource-${result.id}`} onClick={() => handleVaultSelect(result.vaultId)} type="button">
                   <span className="min-w-0 truncate">{result.title}</span><span className="ml-auto truncate pl-2 text-label text-muted-foreground">{result.spaceName ?? result.vaultTitle}</span>
                 </button>
               ))}
@@ -239,8 +249,11 @@ export function DashboardSidebar({
                       activePage === "vault-document" &&
                         activeVaultId === vault.id,
                     )}
+                    disabled={disabled || loadingVaultId === vault.id}
                     icon={
-                      vault.cover?.startsWith("http://") ||
+                      loadingVaultId === vault.id ? (
+                        <Spinner variant="accent" size="sm" label="Loading vault" />
+                      ) : vault.cover?.startsWith("http://") ||
                       vault.cover?.startsWith("https://") ? (
                         <img
                           alt=""
@@ -266,11 +279,7 @@ export function DashboardSidebar({
                       activePage === "vault-document" &&
                       activeVaultId === vault.id
                     }
-                    onSelect={() =>
-                      navigate(
-                        `/dashboard/vault/${encodeURIComponent(vault.id)}`,
-                      )
-                    }
+                    onSelect={() => handleVaultSelect(vault.id)}
                     tooltip={vault.title}
                   >
                     {vault.title}

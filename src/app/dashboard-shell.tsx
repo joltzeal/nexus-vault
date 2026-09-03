@@ -47,6 +47,7 @@ function getInitialMediaVisibility() {
 export type DashboardOutletContext = {
   mediaVisible: boolean;
   onMediaVisibleChange: (visible: boolean) => void;
+  onVaultLoadingChange: (vaultId: string, loading: boolean) => void;
   onVaultStatusChange: (status: DashboardVaultStatus | null) => void;
   refreshVaults: () => Promise<void>;
   user?: { email: string; image?: string | null; name: string };
@@ -84,6 +85,7 @@ export function DashboardShell({
   const [loadedVaults, setLoadedVaults] =
     useState<DashboardVaultItem[]>(vaults);
   const [mediaVisible, setMediaVisible] = useState(getInitialMediaVisibility);
+  const [loadingVaultId, setLoadingVaultId] = useState<string | null>(null);
   const [createVaultOpen, setCreateVaultOpen] = useState(false);
   const [createVaultBusy, setCreateVaultBusy] = useState(false);
   const [vaultStatus, setVaultStatus] = useState<DashboardVaultStatus | null>(null);
@@ -115,6 +117,15 @@ export function DashboardShell({
 
   const handleVaultStatusChange = useCallback(
     (status: DashboardVaultStatus | null) => setVaultStatus(status),
+    [],
+  );
+  const handleVaultLoadingChange = useCallback(
+    (vaultId: string, loading: boolean) => {
+      setLoadingVaultId((current) => {
+        if (loading) return vaultId;
+        return current === vaultId ? null : current;
+      });
+    },
     [],
   );
   const activeVaultId = location.pathname.match(
@@ -215,8 +226,10 @@ export function DashboardShell({
     >
       <div className="flex min-h-0 w-full flex-1">
         <DashboardSidebar
+          loadingVaultId={loadingVaultId}
           mediaVisible={mediaVisible}
           onMediaVisibleChange={handleMediaVisibleChange}
+          onVaultLoadingChange={handleVaultLoadingChange}
           onCreateVault={() => {
             setCreateVaultForm((form) =>
               form.cover
@@ -242,6 +255,7 @@ export function DashboardShell({
                   {
                   mediaVisible,
                   onMediaVisibleChange: handleMediaVisibleChange,
+                  onVaultLoadingChange: handleVaultLoadingChange,
                   onVaultStatusChange: handleVaultStatusChange,
                   refreshVaults: () => refreshVaults(),
                   user: user

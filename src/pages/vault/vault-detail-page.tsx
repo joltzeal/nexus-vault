@@ -44,6 +44,10 @@ import {
   updateLocalMediaResource,
   uploadLocalMediaResource,
 } from "@/features/resource/api";
+import {
+  streamResourceAiSummary,
+  type ResourceAiSummaryStreamUpdate,
+} from "@/features/resource/api/resource-api";
 import type { DashboardOutletContext } from "@/app/dashboard-shell";
 import type { LocalMediaUploadProgress } from "@/features/resource/api/local-media-api";
 import type {
@@ -104,13 +108,25 @@ const UPLOAD_TOAST_PREVIEW_FILES = [
   { name: "voice-note.m4a", size: 8 * 1024 * 1024 },
 ] as unknown as File[];
 
+const AI_SUMMARY_POLL_INTERVAL_MS = 500;
+const METADATA_POLL_INTERVAL_MS = 2500;
+
 export function VaultDetailPage() {
   const { vaultId } = useParams<{ vaultId: string }>();
   const navigate = useNavigate();
-  const { mediaVisible, onVaultStatusChange, refreshVaults } =
+  const {
+    mediaVisible,
+    onVaultLoadingChange,
+    onVaultStatusChange,
+    refreshVaults,
+  } =
     useOutletContext<DashboardOutletContext>();
   const [detail, setDetail] = useState<VaultDetail | null>(null);
   const detailRevisionRef = useRef(0);
+  const detailLoadIdRef = useRef(0);
+  const loadRequestRef = useRef(0);
+  const aiSummaryStreamsRef = useRef(new Map<string, AbortController>());
+  const aiSummaryStreamFallbacksRef = useRef(new Set<string>());
   const [error, setError] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -224,8 +240,13 @@ export function VaultDetailPage() {
     (signal?: AbortSignal) => {
       if (!vaultId) return Promise.resolve();
       const revision = detailRevisionRef.current;
+      const loadId = ++detailLoadIdRef.current;
       return getDashboardVaultDetail(vaultId, signal).then((nextDetail) => {
-        if (revision !== detailRevisionRef.current) return;
+        if (
+          revision !== detailRevisionRef.current ||
+          loadId !== detailLoadIdRef.current
+        )
+          return;
         setDetail(nextDetail);
         setError("");
       });
@@ -233,34 +254,162 @@ export function VaultDetailPage() {
     [vaultId],
   );
 
+  const applyAiSummaryStreamUpdate = useCallback(
+    (update: ResourceAiSummaryStreamUpdate) => {
+      setDetail((current) => {
+        if (!current) return current;
+        const resource = current.resources.find((item) => item.id === update.id);
+        if (!resource) return current;
+
+        const nextMetadata = resource.metadata?.data
+          ? {
+              ...resource.metadata,
+              data: {
+                ...resource.metadata.data,
+                extra: {
+                  ...resource.metadata.data.extra,
+                  ...(update.aiSummary
+                    ? { aiSummary: update.aiSummary }
+                    : {}),
+                },
+              },
+            }
+          : resource.metadata;
+
+        return {
+          ...current,
+          resources: current.resources.map((item) =>
+            item.id === update.id
+              ? {
+                  ...item,
+                  description: update.description,
+                  metadata: nextMetadata,
+                  metadataStatus: update.metadataStatus,
+                }
+              : item,
+          ),
+        };
+      });
+    },
+    [],
+  );
+
+  const startAiSummaryStream = useCallback(
+    (resourceId: string) => {
+      if (aiSummaryStreamsRef.current.has(resourceId)) return;
+
+      const controller = new AbortController();
+      aiSummaryStreamsRef.current.set(resourceId, controller);
+      void streamResourceAiSummary(resourceId, {
+        onUpdate: applyAiSummaryStreamUpdate,
+        signal: controller.signal,
+      })
+        .then((receivedTerminalUpdate) => {
+          if (receivedTerminalUpdate || controller.signal.aborted) return;
+          aiSummaryStreamFallbacksRef.current.add(resourceId);
+          void loadDetail().catch(() => {
+            // The regular metadata refresh remains the fallback transport.
+          });
+        })
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          aiSummaryStreamFallbacksRef.current.add(resourceId);
+          void loadDetail().catch(() => {
+            // The regular metadata refresh remains the fallback transport.
+          });
+        })
+        .finally(() => {
+          if (aiSummaryStreamsRef.current.get(resourceId) === controller) {
+            aiSummaryStreamsRef.current.delete(resourceId);
+          }
+        });
+    },
+    [applyAiSummaryStreamUpdate, loadDetail],
+  );
+
   useEffect(() => {
     if (!vaultId) return;
     const controller = new AbortController();
+    const requestId = ++loadRequestRef.current;
+    onVaultLoadingChange(vaultId, true);
     void loadDetail(controller.signal).catch((reason: unknown) => {
       if (!(reason instanceof DOMException && reason.name === "AbortError"))
         setError(
           reason instanceof Error ? reason.message : "Could not load vault.",
         );
+    }).finally(() => {
+      if (loadRequestRef.current === requestId) {
+        onVaultLoadingChange(vaultId, false);
+      }
     });
-    return () => controller.abort();
-  }, [loadDetail, vaultId]);
+    return () => {
+      controller.abort();
+      if (loadRequestRef.current === requestId) {
+        loadRequestRef.current += 1;
+        onVaultLoadingChange(vaultId, false);
+      }
+    };
+  }, [loadDetail, onVaultLoadingChange, vaultId]);
 
   useEffect(() => {
-    if (
-      !detail ||
-      !detail.resources.some(
-        (resource) =>
-          resource.metadataStatus === "pending" ||
-          resource.metadataStatus === "processing",
-      )
-    )
-      return;
+    if (!detail) return;
+
+    const activeIds = new Set(
+      detail.resources
+        .filter((resource) => isActiveAiSummary(resource))
+        .map((resource) => resource.id),
+    );
+
+    for (const resourceId of activeIds) {
+      if (!aiSummaryStreamFallbacksRef.current.has(resourceId)) {
+        startAiSummaryStream(resourceId);
+      }
+    }
+
+    for (const [resourceId, controller] of aiSummaryStreamsRef.current) {
+      if (!activeIds.has(resourceId)) {
+        controller.abort();
+        aiSummaryStreamsRef.current.delete(resourceId);
+      }
+    }
+
+    for (const resourceId of aiSummaryStreamFallbacksRef.current) {
+      if (!activeIds.has(resourceId)) {
+        aiSummaryStreamFallbacksRef.current.delete(resourceId);
+      }
+    }
+  }, [detail, startAiSummaryStream]);
+
+  useEffect(
+    () => () => {
+      for (const controller of aiSummaryStreamsRef.current.values()) {
+        controller.abort();
+      }
+      aiSummaryStreamsRef.current.clear();
+      aiSummaryStreamFallbacksRef.current.clear();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!detail) return;
+
+    const hasPendingMetadata = detail.resources.some(
+      (resource) =>
+        resource.metadataStatus === "pending" ||
+        resource.metadataStatus === "processing",
+    );
+    const hasAiSummaryFallback = detail.resources.some(
+      (resource) => aiSummaryStreamFallbacksRef.current.has(resource.id),
+    );
+
+    if (!hasPendingMetadata && !hasAiSummaryFallback) return;
 
     const timer = window.setInterval(() => {
       void loadDetail().catch(() => {
         // Keep the current card state visible if a background refresh fails.
       });
-    }, 2500);
+    }, hasAiSummaryFallback ? AI_SUMMARY_POLL_INTERVAL_MS : METADATA_POLL_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
   }, [detail, loadDetail]);
@@ -1308,6 +1457,13 @@ function moveItem<T>(items: T[], fromIndex: number, toIndex: number) {
   if (moved === undefined) return null;
   next.splice(toIndex, 0, moved);
   return next;
+}
+
+function isActiveAiSummary(resource: Resource) {
+  const value = resource.metadata?.data?.extra?.aiSummary;
+  if (!value || typeof value !== "object") return false;
+  const status = (value as Record<string, unknown>).status;
+  return status === "pending" || status === "processing";
 }
 
 function VaultDetailError({ message }: { message: string }) {

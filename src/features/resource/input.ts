@@ -62,3 +62,7 @@ export function parseCloudDriveLink(url: string, extractionCode?: string): Parse
 export function getCloudDriveProviderLabel(provider: CloudDriveProvider) {
   return cloudDriveConfigs.find((item) => item.provider === provider)?.label ?? "网盘"
 }
+
+export function isCloudDriveResourceType(value: string): value is CloudDriveProvider {
+  return cloudDriveConfigs.some((item) => item.provider === value)
+}

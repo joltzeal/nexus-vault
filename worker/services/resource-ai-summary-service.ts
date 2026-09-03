@@ -1,13 +1,15 @@
 import { and, eq, or } from "drizzle-orm"
 
+import { createDbSession } from "../db/index"
 import { resourceMetadata, resources } from "../db/schema"
 import {
   normalizeResourceMetadata,
   type NormalizedResourceMetadata,
 } from "../domain/resources/metadata"
 import type { ResourceType } from "../domain/resources/types"
-import type { Db } from "../types/legacy-api"
+import type { Actor, Db } from "../types/legacy-api"
 import { getResourceOrThrow } from "./resource-service"
+import { requireVaultRead } from "./permission-service"
 
 const DEFAULT_AI_GATEWAY_ID = "default"
 const DEFAULT_AI_SUMMARY_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"
@@ -32,6 +34,21 @@ type ResourceAiSummaryState = {
   status: "pending" | "processing" | "completed" | "failed"
   text?: string
 }
+
+export type ResourceAiSummaryStreamUpdate = {
+  aiSummary: {
+    error?: string
+    status: ResourceAiSummaryState["status"]
+    text?: string
+  } | null
+  description: string
+  id: string
+  metadataStatus: "pending" | "processing" | "completed" | "failed"
+}
+
+const AI_SUMMARY_STREAM_POLL_MS = 250
+const AI_SUMMARY_STREAM_HEARTBEAT_MS = 15_000
+const AI_SUMMARY_STREAM_MAX_MS = 5 * 60 * 1000
 
 type WorkersAiBinding = {
   run(
@@ -105,6 +122,121 @@ export function markResourceAiSummaryPending(
     model: getRuntimeString(env, "AI_SUMMARY_MODEL") ?? DEFAULT_AI_SUMMARY_MODEL,
     requestedAt: new Date().toISOString(),
     status: "pending",
+  })
+}
+
+export async function createResourceAiSummaryStream(
+  db: Db,
+  env: CloudflareEnv,
+  resourceId: string,
+  actor: Actor | undefined,
+  signal: AbortSignal,
+) {
+  const resource = await getResourceOrThrow(db, resourceId)
+  await requireVaultRead(db, { actor, vaultId: resource.vaultId })
+
+  const encoder = new TextEncoder()
+  let cancelled = signal.aborted
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      let controllerClosed = false
+      let session: Awaited<ReturnType<typeof createDbSession>> | undefined
+
+      const closeController = () => {
+        if (controllerClosed) return
+        controllerClosed = true
+        try {
+          controller.close()
+        } catch {
+          // The client may have cancelled the stream before the abort event ran.
+        }
+      }
+
+      if (signal.aborted) {
+        cancelled = true
+        closeController()
+        return
+      }
+
+      const abort = () => {
+        cancelled = true
+        closeController()
+      }
+      signal.addEventListener("abort", abort, { once: true })
+
+      void (async () => {
+        let lastUpdate = ""
+        let lastHeartbeatAt = Date.now()
+        const deadline = Date.now() + AI_SUMMARY_STREAM_MAX_MS
+
+        try {
+          // The request handler closes its short-lived database connection as
+          // soon as this Response is returned. Keep one session for the SSE
+          // lifetime instead of opening a new PostgreSQL connection per poll.
+          session = await createDbSession(env)
+
+          while (!cancelled && !signal.aborted && Date.now() < deadline) {
+            const update = await readResourceAiSummaryStreamUpdate(
+              session.db,
+              resourceId,
+            )
+            if (!update) break
+            if (cancelled || signal.aborted || controllerClosed) break
+
+            const serialized = JSON.stringify(update)
+            if (serialized !== lastUpdate) {
+              controller.enqueue(encoder.encode(`data: ${serialized}\n\n`))
+              lastUpdate = serialized
+            } else if (Date.now() - lastHeartbeatAt >= AI_SUMMARY_STREAM_HEARTBEAT_MS) {
+              controller.enqueue(encoder.encode(": heartbeat\n\n"))
+              lastHeartbeatAt = Date.now()
+            }
+
+            if (
+              update.aiSummary?.status === "completed" ||
+              update.aiSummary?.status === "failed"
+            ) {
+              break
+            }
+
+            await wait(AI_SUMMARY_STREAM_POLL_MS)
+          }
+        } catch (error) {
+          if (!cancelled && !signal.aborted && !controllerClosed) {
+            const message = error instanceof Error
+              ? error.message
+              : "AI summary stream failed."
+            try {
+              controller.enqueue(
+                encoder.encode(`event: error\ndata: ${JSON.stringify({ message })}\n\n`),
+              )
+            } catch {
+              cancelled = true
+            }
+          }
+        } finally {
+          signal.removeEventListener("abort", abort)
+          try {
+            await session?.close()
+          } catch (error) {
+            console.error("AI summary stream database session close failed", error)
+          }
+          if (!cancelled && !signal.aborted) closeController()
+        }
+      })()
+    },
+    cancel() {
+      cancelled = true
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "content-type": "text/event-stream; charset=utf-8",
+      "x-accel-buffering": "no",
+    },
   })
 }
 
@@ -243,6 +375,9 @@ export async function processResourceAiSummaryMessage(
             or(
               eq(resources.description, resource.description),
               eq(resources.description, ""),
+              ...(data.description
+                ? [eq(resources.description, data.description)]
+                : []),
             ),
           ),
         )
@@ -362,6 +497,53 @@ async function persistAiSummaryState(
     .set({ dataJson: nextData as unknown as Record<string, unknown> })
     .where(eq(resourceMetadata.resourceId, resourceId))
   return nextData
+}
+
+async function readResourceAiSummaryStreamUpdate(
+  db: Db,
+  resourceId: string,
+): Promise<ResourceAiSummaryStreamUpdate | null> {
+  const [row] = await db
+    .select({
+      description: resources.description,
+      id: resources.id,
+      metadataDataJson: resourceMetadata.dataJson,
+      metadataStatus: resources.metadataStatus,
+    })
+    .from(resources)
+    .leftJoin(resourceMetadata, eq(resourceMetadata.resourceId, resources.id))
+    .where(eq(resources.id, resourceId))
+    .limit(1)
+
+  if (!row) return null
+  const data = normalizeResourceMetadata(row.metadataDataJson)
+  const aiSummary = getAiSummaryState(data ?? createEmptyMetadata())
+
+  return {
+    aiSummary: aiSummary
+      ? {
+          ...(aiSummary.error ? { error: aiSummary.error } : {}),
+          status: aiSummary.status,
+          ...(aiSummary.text ? { text: aiSummary.text } : {}),
+        }
+      : null,
+    description: row.description,
+    id: row.id,
+    metadataStatus: row.metadataStatus,
+  }
+}
+
+function createEmptyMetadata(): NormalizedResourceMetadata {
+  return {
+    fetchedAt: "",
+    schemaVersion: 1,
+    tree: [],
+    type: "http",
+  }
+}
+
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
 }
 
 function withAiSummaryState(
