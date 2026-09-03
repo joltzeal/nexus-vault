@@ -54,11 +54,13 @@ export function getResourceMedia(resource: Resource): MediaItem[] {
     if (!url) return []
     const kind = value.kind === "video" ? "video" : value.kind === "image" ? "image" : null
     if (!kind) return []
+    const thumbnailUrl = typeof value.thumbnailUrl === "string" ? value.thumbnailUrl : undefined
     return [{
       kind,
       playback: resource.type === "local_media" && kind === "video" ? "inline" : "external",
       src: url,
-      preview: typeof value.thumbnailUrl === "string" ? value.thumbnailUrl : undefined,
+      preview: thumbnailUrl,
+      thumbnailUrl,
       alt: typeof value.fileName === "string" ? value.fileName : "",
       width: typeof value.width === "number" ? value.width : undefined,
       height: typeof value.height === "number" ? value.height : undefined,

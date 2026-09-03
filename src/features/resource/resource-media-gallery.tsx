@@ -316,7 +316,7 @@ export function ResourceMediaGallery({
                     className="block max-h-[calc(100dvh-8rem)] w-full bg-black object-contain"
                     controls
                     playsInline
-                    poster={activeVideo.preview}
+                    poster={activeVideo.thumbnailUrl ?? activeVideo.preview}
                     src={activeVideo.src}
                   />
                 ) : null}
@@ -377,7 +377,7 @@ function MediaPreview({
   variant?: "scroll" | "carousel";
 }) {
   const [failed, setFailed] = useState(false);
-  const previewSrc = item.kind === "video" ? item.preview : item.src;
+  const previewSrc = item.kind === "video" ? item.thumbnailUrl ?? item.preview : item.src;
   const isLivePhoto = item.kind === "image" && Boolean(item.livePhoto);
   const opensInline = item.kind === "video" && item.playback === "inline";
   const mediaClassName = getMediaPreviewClassName(variant, item, aspectRatio);

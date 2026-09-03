@@ -2,6 +2,7 @@ import type { ResourceType } from "./types"
 
 export type ResourceFileType =
   | "unknown"
+  | "multimedia"
   | "folder"
   | "video"
   | "text"

@@ -664,6 +664,7 @@ function screenshotArrayValue(value: unknown) {
 function resourceFileTypeValue(value: unknown): ResourceFileType | undefined {
   const allowed = new Set<ResourceFileType>([
     "unknown",
+    "multimedia",
     "folder",
     "video",
     "text",

@@ -832,9 +832,10 @@ function getResourceTitle(title: string | undefined, files: Array<{ fileName: st
 
 function getSharedFileType(files: Array<{ fileType: ResourceFileType }>): ResourceFileType {
   const [first] = files
-  return first && files.every((file) => file.fileType === first.fileType)
+  if (!first) return "unknown"
+  return files.every((file) => file.fileType === first.fileType)
     ? first.fileType
-    : "unknown"
+    : "multimedia"
 }
 
 function assertActorUploadKey(actor: Actor, key: string) {

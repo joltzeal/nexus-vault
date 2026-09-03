@@ -265,6 +265,7 @@ export type MediaItem = {
   livePhoto?: { videoSrc: string; duration?: string; height?: number; width?: number }
   playback?: "external" | "inline"
   preview?: string
+  thumbnailUrl?: string
   src: string
   width?: number
 }

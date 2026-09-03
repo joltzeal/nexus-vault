@@ -19,6 +19,21 @@ type UploadedLocalMediaFile = {
   mimeType: string
   objectKey: string
   size: number
+  thumbnail?: {
+    clientId: string
+    mimeType: string
+    objectKey: string
+    size: number
+  }
+}
+
+type PreparedMediaFile = {
+  clientId: string
+  file: File
+  thumbnail?: {
+    clientId: string
+    file: File
+  }
 }
 
 export type LocalMediaResourceUpdateInput = {
@@ -128,11 +143,17 @@ async function uploadLocalMediaFiles(
   preparePath: string,
   onProgress?: (progress: LocalMediaUploadProgress) => void,
 ) {
-  const files = inputFiles.map((file) => ({
-    clientId: crypto.randomUUID(),
-    file,
-  }))
-  const totalBytes = files.reduce((sum, item) => sum + item.file.size, 0)
+  const files: PreparedMediaFile[] = await Promise.all(
+    inputFiles.map(async (file) => ({
+      clientId: crypto.randomUUID(),
+      file,
+      thumbnail: await createVideoThumbnail(file),
+    })),
+  )
+  const totalBytes = files.reduce(
+    (sum, item) => sum + item.file.size + (item.thumbnail?.file.size ?? 0),
+    0,
+  )
   let completedBytes = 0
   onProgress?.({
     completedBytes,
@@ -147,11 +168,19 @@ async function uploadLocalMediaFiles(
     preparePath,
     "POST",
     {
-      files: files.map(({ clientId, file }) => ({
+      files: files.map(({ clientId, file, thumbnail }) => ({
         clientId,
         fileName: file.name,
         mimeType: file.type,
         size: file.size,
+        thumbnail: thumbnail
+          ? {
+              clientId: thumbnail.clientId,
+              fileName: thumbnail.file.name,
+              mimeType: thumbnail.file.type,
+              size: thumbnail.file.size,
+            }
+          : undefined,
       })),
     },
   )
@@ -163,29 +192,52 @@ async function uploadLocalMediaFiles(
       parts: Array<{ method: "PUT"; partNumber: number; url: string }>
       uploadId: string
     }>>("/api/v1/local-media/multipart/sign", "POST", {
-      uploads: files.map(({ clientId, file }) => {
-        const upload = plan.uploads.find((item) => item.clientId === clientId)
-        if (!upload) throw new Error(`未找到文件 ${file.name} 的上传任务。`)
-        return {
-          key: upload.key,
-          partNumbers: Array.from(
-            { length: Math.ceil(file.size / MULTIPART_CHUNK_BYTES) },
-            (_, index) => index + 1,
-          ),
-          uploadId: upload.uploadId,
-        }
-      }),
+      uploads: files.flatMap(({ clientId, file, thumbnail }) =>
+        [
+          { clientId, file },
+          ...(thumbnail ? [{ clientId: thumbnail.clientId, file: thumbnail.file }] : []),
+        ].map(({ clientId: targetClientId, file: targetFile }) => {
+          const upload = plan.uploads.find((item) => item.clientId === targetClientId)
+          if (!upload) throw new Error(`未找到文件 ${targetFile.name} 的上传任务。`)
+          return {
+            key: upload.key,
+            partNumbers: Array.from(
+              { length: Math.ceil(targetFile.size / MULTIPART_CHUNK_BYTES) },
+              (_, index) => index + 1,
+            ),
+            uploadId: upload.uploadId,
+          }
+        }),
+      ),
     })
 
-    const tasks = files.flatMap(({ clientId, file }, fileIndex) => {
+    const tasks = files.flatMap(({ clientId, file, thumbnail }, fileIndex) => {
       const upload = plan.uploads.find((item) => item.clientId === clientId)
       if (!upload) throw new Error(`未找到文件 ${file.name} 的上传任务。`)
       const signed = signedUploads.find((item) => item.key === upload.key && item.uploadId === upload.uploadId)
       if (!signed) throw new Error(`未找到文件 ${file.name} 的分片签名。`)
-      return signed.parts.map((signedPart) => ({ file, fileIndex, signedPart }))
+      const thumbnailUpload = thumbnail
+        ? plan.uploads.find((item) => item.clientId === thumbnail.clientId)
+        : undefined
+      const thumbnailSigned = thumbnailUpload
+        ? signedUploads.find((item) => item.key === thumbnailUpload.key && item.uploadId === thumbnailUpload.uploadId)
+        : undefined
+      const targets = [
+        { file, upload, signed, role: "media" as const },
+        ...(thumbnail
+          ? [{ file: thumbnail.file, upload: thumbnailUpload, signed: thumbnailSigned, role: "thumbnail" as const }]
+          : []),
+      ]
+      return targets.flatMap((target) => {
+        if (!target.upload || !target.signed) {
+          throw new Error(`未找到文件 ${file.name} 的预览图上传任务。`)
+        }
+        return target.signed.parts.map((signedPart) => ({ ...target, fileIndex, signedPart }))
+      })
     })
 
     const partsByFileIndex = files.map(() => [] as Array<{ ETag: string; PartNumber: number }>)
+    const thumbnailPartsByFileIndex = files.map(() => [] as Array<{ ETag: string; PartNumber: number }>)
     const uploadedBytesByFileIndex = files.map(() => 0)
     const reportedBytesByTask = new Map<string, number>()
     const activeRequests = new Set<XMLHttpRequest>()
@@ -262,7 +314,7 @@ async function uploadLocalMediaFiles(
               partOffset,
               Math.min(partOffset + MULTIPART_CHUNK_BYTES, task.file.size),
             )
-            const taskId = `${task.fileIndex}:${task.signedPart.partNumber}`
+            const taskId = `${task.fileIndex}:${task.role}:${task.signedPart.partNumber}`
             let etag: string | undefined
             for (let attempt = 1; attempt <= MULTIPART_UPLOAD_MAX_ATTEMPTS; attempt += 1) {
               if (uploadFailed) return
@@ -278,7 +330,7 @@ async function uploadLocalMediaFiles(
                     const delta = next - previous
                     if (delta === 0) return
                     reportedBytesByTask.set(taskId, next)
-                    uploadedBytesByFileIndex[task.fileIndex]! += delta
+                    uploadedBytesByFileIndex[task.fileIndex]! += task.role === "media" ? delta : 0
                     completedBytes += delta
                     publishProgress(task.fileIndex)
                   },
@@ -299,7 +351,10 @@ async function uploadLocalMediaFiles(
               }
             }
             if (!etag) throw new Error(`上传 ${task.file.name} 第 ${task.signedPart.partNumber} 个分片失败。`)
-            partsByFileIndex[task.fileIndex]!.push({
+            const targetParts = task.role === "media"
+              ? partsByFileIndex[task.fileIndex]!
+              : thumbnailPartsByFileIndex[task.fileIndex]!
+            targetParts.push({
               ETag: etag,
               PartNumber: task.signedPart.partNumber,
             })
@@ -314,8 +369,11 @@ async function uploadLocalMediaFiles(
 
     phase = "finalizing"
     publishProgress(-1, true)
-    const completionTasks = files.map(({ clientId, file }, fileIndex) => {
+    const completionTasks = files.map(({ clientId, file, thumbnail }, fileIndex) => {
       const upload = plan.uploads.find((item) => item.clientId === clientId)!
+      const thumbnailUpload = thumbnail
+        ? plan.uploads.find((item) => item.clientId === thumbnail.clientId)
+        : undefined
       return {
         clientId,
         fileName: file.name,
@@ -324,21 +382,48 @@ async function uploadLocalMediaFiles(
         size: file.size,
         parts: partsByFileIndex[fileIndex],
         uploadId: upload.uploadId,
+        thumbnail: thumbnail && thumbnailUpload
+          ? {
+              clientId: thumbnail.clientId,
+              mimeType: thumbnail.file.type,
+              objectKey: thumbnailUpload.key,
+              parts: thumbnailPartsByFileIndex[fileIndex],
+              size: thumbnail.file.size,
+              uploadId: thumbnailUpload.uploadId,
+            }
+          : undefined,
       }
     })
-    await Promise.all(completionTasks.map(({ objectKey, parts, uploadId }) =>
-      requestJson("/api/v1/local-media/multipart", "POST", {
-        key: objectKey,
-        parts,
-        uploadId,
-      }),
-    ))
+    await Promise.all(
+      completionTasks.flatMap(({ objectKey, parts, uploadId, thumbnail }) => [
+        requestJson("/api/v1/local-media/multipart", "POST", {
+          key: objectKey,
+          parts,
+          uploadId,
+        }),
+        ...(thumbnail
+          ? [requestJson("/api/v1/local-media/multipart", "POST", {
+              key: thumbnail.objectKey,
+              parts: thumbnail.parts,
+              uploadId: thumbnail.uploadId,
+            })]
+          : []),
+      ]),
+    )
     const uploadedFiles: UploadedLocalMediaFile[] = completionTasks.map((file) => ({
       clientId: file.clientId,
       fileName: file.fileName,
       mimeType: file.mimeType,
       objectKey: file.objectKey,
       size: file.size,
+      thumbnail: file.thumbnail
+        ? {
+            clientId: file.thumbnail.clientId,
+            mimeType: file.thumbnail.mimeType,
+            objectKey: file.thumbnail.objectKey,
+            size: file.thumbnail.size,
+          }
+        : undefined,
     }))
     return {
       plan,
@@ -350,6 +435,56 @@ async function uploadLocalMediaFiles(
   } finally {
     removePagehideCleanup()
   }
+}
+
+async function createVideoThumbnail(file: File) {
+  if (!isVideoFile(file)) return undefined
+  if (typeof document === "undefined" || typeof URL === "undefined") return undefined
+
+  const sourceUrl = URL.createObjectURL(file)
+  try {
+    const video = document.createElement("video")
+    video.preload = "metadata"
+    video.muted = true
+    video.playsInline = true
+    video.src = sourceUrl
+    await waitForVideoEvent(video, "loadedmetadata")
+    if (!video.videoWidth || !video.videoHeight) return undefined
+    video.currentTime = Math.min(0.1, Math.max(0, video.duration || 0))
+    await waitForVideoEvent(video, "seeked")
+    const maxDimension = 1280
+    const scale = Math.min(1, maxDimension / Math.max(video.videoWidth, video.videoHeight))
+    const canvas = document.createElement("canvas")
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale))
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale))
+    canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height)
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82))
+    if (!blob) return undefined
+    return { clientId: crypto.randomUUID(), file: new File([blob], `${file.name}.jpg`, { type: "image/jpeg" }) }
+  } catch {
+    return undefined
+  } finally {
+    URL.revokeObjectURL(sourceUrl)
+  }
+}
+
+function isVideoFile(file: File) {
+  if (file.type.toLowerCase().startsWith("video/")) return true
+  return /\.(avi|m4v|mkv|mov|mp4|mpeg|mpg|webm)$/i.test(file.name)
+}
+
+function waitForVideoEvent(video: HTMLVideoElement, eventName: "loadedmetadata" | "seeked") {
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      video.removeEventListener(eventName, handleEvent)
+      video.removeEventListener("error", handleError)
+    }
+    const handleEvent = () => { cleanup(); resolve() }
+    const handleError = () => { cleanup(); reject(new Error("Video preview unavailable.")) }
+    video.addEventListener(eventName, handleEvent, { once: true })
+    video.addEventListener("error", handleError, { once: true })
+    video.load()
+  })
 }
 
 function uploadPartWithProgress(
