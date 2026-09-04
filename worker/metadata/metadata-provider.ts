@@ -15,6 +15,7 @@ import { xunleiMetadataProvider } from "./providers/xunlei"
 import { telegramMetadataProvider } from "./providers/telegram"
 import { twitterMetadataProvider } from "./providers/twitter"
 import { wechatMpMetadataProvider } from "./providers/wechat-mp"
+import { youtubeMetadataProvider } from "./providers/youtube"
 
 export type MetadataProviderResource = {
   id: string
@@ -85,6 +86,7 @@ export function isRetryableMetadataError(error: unknown) {
 const metadataProviders: MetadataProvider[] = [
   douyinTiktokDownloadApiMetadataProvider,
   redditMetadataProvider,
+  youtubeMetadataProvider,
   magnetMetadataProvider,
   twitterMetadataProvider,
   telegramMetadataProvider,
@@ -121,4 +123,5 @@ export {
   twitterMetadataProvider,
   wechatMpMetadataProvider,
   xunleiMetadataProvider,
+  youtubeMetadataProvider,
 }

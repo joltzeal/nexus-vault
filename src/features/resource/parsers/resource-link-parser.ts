@@ -2,6 +2,7 @@ export type ParsedTwitterLink = { tweetId: string; username?: string; url: strin
 export type ParsedTwitterProfileLink = { username: string; url: string }
 export type ParsedRedditPostLink = { postId: string; subreddit?: string; url: string }
 export type ParsedRedditSubredditLink = { name: string; url: string }
+export type ParsedYoutubeVideoLink = { videoId: string; url: string }
 export type ParsedGitHubLink =
   | { kind: "user"; login: string; url: string }
   | { kind: "repository"; owner: string; repository: string; url: string }
@@ -88,6 +89,22 @@ export function parseRedditSubredditLink(value: string | null | undefined): Pars
   const name = parts[1]
   if (!name || !/^[A-Za-z0-9][A-Za-z0-9_]{1,20}$/.test(name)) return null
   return { name, url: `https://www.reddit.com/r/${name}` }
+}
+
+export function parseYoutubeVideoLink(value: string | null | undefined): ParsedYoutubeVideoLink | null {
+  const url = httpUrl(value)
+  if (!url) return null
+  const host = url.hostname.replace(/^www\./, "")
+  if (host !== "youtube.com" && host !== "m.youtube.com" && host !== "music.youtube.com" && host !== "youtu.be") return null
+  const videoId = host === "youtu.be"
+    ? url.pathname.split("/").filter(Boolean)[0]
+    : url.searchParams.get("v") ?? (
+        ["shorts", "live", "embed", "v"].includes(url.pathname.split("/").filter(Boolean)[0]?.toLowerCase() ?? "")
+          ? url.pathname.split("/").filter(Boolean)[1]
+          : undefined
+      )
+  if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) return null
+  return { videoId, url: `https://www.youtube.com/watch?v=${videoId}` }
 }
 
 export function parseGitHubLink(value: string | null | undefined): ParsedGitHubLink | null {

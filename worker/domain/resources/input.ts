@@ -49,6 +49,11 @@ export type ParsedRedditSubredditLink = {
   url: string
 }
 
+export type ParsedYoutubeVideoLink = {
+  videoId: string
+  url: string
+}
+
 export type ParsedGitHubLink =
   | { kind: "user"; login: string; url: string }
   | { kind: "repository"; owner: string; repository: string; url: string }
@@ -314,6 +319,37 @@ export function parseRedditSubredditLink(url: string): ParsedRedditSubredditLink
   }
 }
 
+export function parseYoutubeVideoLink(url: string): ParsedYoutubeVideoLink | null {
+  const parsedUrl = parseHttpUrl(url)
+  if (!parsedUrl) return null
+
+  const hostname = normalizeHostname(parsedUrl.hostname)
+  const isYoutubeHost =
+    hostname === "youtube.com" ||
+    hostname.endsWith(".youtube.com") ||
+    hostname === "youtu.be"
+  if (!isYoutubeHost) return null
+
+  let videoId: string | undefined
+  if (hostname === "youtu.be") {
+    videoId = parsedUrl.pathname.split("/").filter(Boolean)[0]
+  } else {
+    const vParam = parsedUrl.searchParams.get("v")
+    const segments = parsedUrl.pathname.split("/").filter(Boolean)
+    const pathId = ["shorts", "live", "embed", "v"].includes(segments[0]?.toLowerCase() ?? "")
+      ? segments[1]
+      : undefined
+    videoId = vParam ?? pathId
+  }
+
+  if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) return null
+
+  return {
+    videoId,
+    url: `https://www.youtube.com/watch?v=${videoId}`,
+  }
+}
+
 function isValidRedditName(value: string) {
   return /^[A-Za-z0-9][A-Za-z0-9_]{1,20}$/.test(value)
 }
@@ -566,6 +602,7 @@ function defaultResourceTitle(type: ResourceType) {
   if (type === "magnet") return "名称未知"
   if (type === "twitter") return "Untitled tweet"
   if (type === "reddit") return "Reddit post"
+  if (type === "youtube") return "YouTube video"
   if (type === "telegram") return "Telegram message"
   if (type === "douyin") return "抖音视频"
   if (type === "wechat_mp") return "微信公众号文章"
@@ -673,6 +710,7 @@ export const httpInputParser: ResourceInputParser = {
       input.type === "http" ||
       input.type === "twitter" ||
       input.type === "reddit" ||
+      input.type === "youtube" ||
       input.type === "douyin" ||
       input.type === "wechat_mp" ||
       input.type === "gofile" ||
@@ -756,6 +794,16 @@ export const httpInputParser: ResourceInputParser = {
               }
             : {}),
         },
+      }
+    }
+
+    const youtube = parseYoutubeVideoLink(input.url)
+    if (input.type === "youtube" || youtube) {
+      return {
+        type: "youtube",
+        url: youtube?.url ?? input.url.trim(),
+        title: normalizeInputTitle(input.title) || defaultResourceTitle("youtube"),
+        metadata: youtube ? { previewKind: "youtube_video", videoId: youtube.videoId } : {},
       }
     }
 

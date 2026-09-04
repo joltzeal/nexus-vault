@@ -6,6 +6,7 @@ import {
   parseTwitterLink,
   parseTwitterProfileLink,
   parseWechatMpArticleLink,
+  parseYoutubeVideoLink,
 } from "@/features/resource/parsers/resource-link-parser"
 import {
   isCloudDriveResourceType,
@@ -27,6 +28,7 @@ import type {
   WechatMpArticleCardData,
   XPostCardData,
   XProfileCardData,
+  YoutubeVideoCardData,
 } from "./types"
 
 export type ResourcePillItem =
@@ -384,6 +386,25 @@ function toPreviewData(
       weeklyContributionsCount: numberValue(data.weeklyContributionsCount),
     } satisfies RedditSubredditCardData
   }
+  if (kind === "youtube_video") {
+    return {
+      category: stringValue(data.category),
+      channelAvatarUrl: stringValue(data.channelAvatarUrl),
+      channelId: stringValue(data.channelId),
+      channelName: stringValue(data.channelName),
+      channelUrl: stringValue(data.channelUrl),
+      description: stringValue(data.description),
+      duration: numberValue(data.duration),
+      isLive: data.isLive === true,
+      publishedAt: stringValue(data.publishedAt),
+      subscribersText: stringValue(data.subscribersText),
+      thumbnailUrl: stringValue(data.thumbnailUrl),
+      title: stringValue(data.title),
+      url,
+      videoId: stringValue(data.videoId) ?? "",
+      views: numberValue(data.views),
+    } satisfies YoutubeVideoCardData
+  }
   if (kind === "wechat_mp_article") {
     const metadata = resource.metadata?.data
     return {
@@ -435,15 +456,31 @@ function deriveLegacyPreview(resource: Resource): ResourceCardPreview | null {
   const telegram = isRecord(metadata?.extra?.telegram) ? metadata.extra.telegram : undefined
   const wechatMp = isRecord(metadata?.extra?.wechatMp) ? metadata.extra.wechatMp : undefined
 
-  if (resource.type === "douyin" || resource.type === "youtube") {
+  if (resource.type === "douyin") {
     return {
       kind: "social_video",
       data: {
         description: metadata?.description ?? resource.description,
         media: normalizePreviewMedia(metadata?.media),
-        platform: resource.type === "douyin" ? "douyin" : "unknown",
+        platform: "douyin",
         title: metadata?.title ?? resource.title,
         url,
+      },
+    }
+  }
+
+  const youtubeVideo = parseYoutubeVideoLink(url)
+  if (youtubeVideo || resource.type === "youtube") {
+    const media = normalizePreviewMedia(metadata?.media)
+    return {
+      kind: "youtube_video",
+      data: {
+        description: metadata?.description ?? resource.description,
+        duration: numberValue(media[0]?.duration),
+        thumbnailUrl: media[0]?.previewUrl ?? media[0]?.url,
+        title: metadata?.title ?? resource.title,
+        url: youtubeVideo?.url ?? url,
+        videoId: youtubeVideo?.videoId ?? "resource",
       },
     }
   }
@@ -677,7 +714,7 @@ function isPreviewKind(value: unknown): value is ResourceCardPreview["kind"] {
   return value === "x_profile" || value === "x_post" || value === "github_user" ||
     value === "github_repository" || value === "github_release" || value === "telegram_message" ||
     value === "wechat_mp_article" || value === "social_video" ||
-    value === "reddit_subreddit" || value === "reddit_post"
+    value === "reddit_subreddit" || value === "reddit_post" || value === "youtube_video"
 }
 
 function stringValue(value: unknown) {

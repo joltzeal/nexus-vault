@@ -141,7 +141,7 @@ export function RedditSubredditCard({
             <p
               className={
                 viewMode === "masonry"
-                  ? "whitespace-normal break-words text-[14px] leading-6 text-muted-foreground"
+                  ? "whitespace-pre-line break-words text-[14px] leading-6 text-muted-foreground"
                   : "whitespace-pre-line text-[14px] leading-6 text-muted-foreground"
               }
             >

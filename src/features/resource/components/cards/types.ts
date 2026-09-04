@@ -247,6 +247,24 @@ export type RedditSubredditCardData = {
   weeklyContributionsCount?: number
 }
 
+export type YoutubeVideoCardData = {
+  category?: string
+  channelAvatarUrl?: string
+  channelId?: string
+  channelName?: string
+  channelUrl?: string
+  description?: string
+  duration?: number
+  isLive?: boolean
+  publishedAt?: string
+  subscribersText?: string
+  thumbnailUrl?: string
+  title?: string
+  url: string
+  videoId: string
+  views?: number
+}
+
 export type ResourceCardPreview =
   | { kind: "x_profile"; data: XProfileCardData }
   | { kind: "x_post"; data: XPostCardData }
@@ -258,3 +276,4 @@ export type ResourceCardPreview =
   | { kind: "social_video"; data: SocialVideoCardData }
   | { kind: "reddit_subreddit"; data: RedditSubredditCardData }
   | { kind: "reddit_post"; data: RedditPostCardData }
+  | { kind: "youtube_video"; data: YoutubeVideoCardData }

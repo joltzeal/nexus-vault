@@ -6,6 +6,7 @@ import { RedditSubredditCard } from "./reddit-subreddit-card"
 import { SocialVideoCard } from "./social-video-card"
 import { TelegramMessageCard } from "./telegram-message-card"
 import { WechatMpArticleCard } from "./wechat-mp-article-card"
+import { YoutubeVideoCard } from "./youtube-video-card"
 import type {
   ResourceCardChromeProps,
   ResourceCardPreview,
@@ -49,5 +50,7 @@ export function ResourcePreviewCard({
       return <RedditSubredditCard {...chrome} resourceCreatedAt={resourceCreatedAt} data={preview.data} mediaVisible={mediaVisible} state={state} viewMode={viewMode} />
     case "reddit_post":
       return <RedditPostCard {...chrome} resourceCreatedAt={resourceCreatedAt} data={preview.data} mediaVisible={mediaVisible} state={state} viewMode={viewMode} />
+    case "youtube_video":
+      return <YoutubeVideoCard {...chrome} resourceCreatedAt={resourceCreatedAt} data={preview.data} mediaVisible={mediaVisible} state={state} viewMode={viewMode} />
   }
 }

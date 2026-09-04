@@ -148,7 +148,7 @@ function createPostMetadataResult(
     width: item.width,
   }))
   const title = normalizeTitle(firstString(post.postTitle) ?? resource.title) || "Reddit post"
-  const text = normalizeText(firstString(post.selftext, post.text, post.body))
+  const text = normalizeMultilineText(firstString(post.selftext, post.text, post.body))
   const createdAt = redditDateToIso(firstString(post.createdAt))
   const subredditName = firstString(subreddit.name)
   const authorName = firstString(author.name)
@@ -288,7 +288,7 @@ function createSubredditMetadataResult(
   const communityStats = recordValue(info.communityStats) ?? {}
   const name = firstString(info.name) ?? subreddit.name
   const prefixedName = firstString(info.prefixedName) ?? `r/${name}`
-  const description = normalizeText(
+  const description = normalizeMultilineText(
     firstString(
       recordValue(info.description)?.markdown,
       info.publicDescriptionText,
@@ -383,8 +383,16 @@ function firstMediaUrl(...values: Array<Record<string, unknown> | undefined>) {
   return undefined
 }
 
-function normalizeText(value?: string) {
-  return value?.replace(/\s+/g, " ").trim().slice(0, 5_000) || undefined
+/** Keep the author's line breaks; only trim each line and squeeze blank runs. */
+function normalizeMultilineText(value?: string) {
+  if (!value) return undefined
+  const normalized = value
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+  return normalized.slice(0, 5_000) || undefined
 }
 
 function normalizeTitle(value?: string) {

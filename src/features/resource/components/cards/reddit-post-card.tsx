@@ -110,13 +110,7 @@ export function RedditPostCard({
           )}
 
           {text && (
-            <p
-              className={
-                viewMode === "masonry"
-                  ? "whitespace-normal break-words text-xs leading-5 text-muted-foreground"
-                  : "whitespace-pre-line break-words text-xs leading-5 text-muted-foreground"
-              }
-            >
+            <p className="whitespace-pre-line break-words text-xs leading-5 text-muted-foreground">
               {text}
             </p>
           )}
