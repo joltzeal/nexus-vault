@@ -21,6 +21,7 @@ export type ResourceType =
   | "telegram"
   | "douyin"
   | "wechat_mp"
+  | "gofile"
   | "baidu_pan"
   | "pan_115"
   | "pan_123"
@@ -276,6 +277,7 @@ export const resourceTypes: Array<{ value: ResourceType; label: string }> = [
   { value: "telegram", label: "Telegram" },
   { value: "douyin", label: "抖音" },
   { value: "wechat_mp", label: "微信公众号" },
+  { value: "gofile", label: "GoFile" },
   { value: "baidu_pan", label: "百度网盘" },
   { value: "pan_115", label: "115 盘" },
   { value: "pan_123", label: "123 云盘" },

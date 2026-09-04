@@ -9,6 +9,7 @@ export const resourceTypeValues = [
 	"telegram",
 	"douyin",
 	"wechat_mp",
+	"gofile",
 	"baidu_pan",
 	"pan_115",
 	"pan_123",

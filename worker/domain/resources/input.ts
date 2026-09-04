@@ -65,6 +65,10 @@ export type ParsedWechatMpArticleLink = {
   url: string
 }
 
+export type ParsedGofileLink = ParsedHttpLink & {
+  contentId: string
+}
+
 export type ParsedDouyinLink = {
   host: string
   shareCode?: string
@@ -366,6 +370,22 @@ export function parseWechatMpArticleLink(url: string): ParsedWechatMpArticleLink
   }
 }
 
+export function parseGofileLink(url: string): ParsedGofileLink | null {
+  const parsedUrl = parseHttpUrl(url)
+  if (!parsedUrl || normalizeHostname(parsedUrl.hostname) !== "gofile.io") return null
+
+  const segments = parsedUrl.pathname.split("/").filter(Boolean)
+  if (segments.length !== 2 || segments[0]?.toLowerCase() !== "d") return null
+  const contentId = decodePathPart(segments[1] ?? "")
+  if (!/^[a-z0-9_-]+$/i.test(contentId)) return null
+
+  return {
+    contentId,
+    host: "gofile.io",
+    url: `https://gofile.io/d/${encodeURIComponent(contentId)}`,
+  }
+}
+
 export function parseDouyinLink(url: string): ParsedDouyinLink | null {
   const parsedUrl = parseHttpUrl(url)
   if (!parsedUrl) return null
@@ -486,6 +506,7 @@ function defaultResourceTitle(type: ResourceType) {
   if (type === "telegram") return "Telegram message"
   if (type === "douyin") return "抖音视频"
   if (type === "wechat_mp") return "微信公众号文章"
+  if (type === "gofile") return "GoFile folder"
   if (type === "ftp") return "FTP link"
   if (isCloudDriveResourceType(type)) return getCloudDriveProviderLabel(type)
   if (type === "http") return "Untitled link"
@@ -590,11 +611,22 @@ export const httpInputParser: ResourceInputParser = {
       input.type === "twitter" ||
       input.type === "douyin" ||
       input.type === "wechat_mp" ||
+      input.type === "gofile" ||
       Boolean(input.type && isCloudDriveResourceType(input.type)) ||
       parseHttpLink(input.url) !== null
     )
   },
   parse(input) {
+    const gofile = parseGofileLink(input.url)
+    if (input.type === "gofile" || gofile) {
+      return {
+        type: "gofile",
+        url: gofile?.url ?? input.url.trim(),
+        title: normalizeInputTitle(input.title) || defaultResourceTitle("gofile"),
+        metadata: gofile ? { contentId: gofile.contentId, host: gofile.host } : {},
+      }
+    }
+
     const douyin = parseDouyinLink(input.url)
     if (input.type === "douyin" || douyin) {
       return {

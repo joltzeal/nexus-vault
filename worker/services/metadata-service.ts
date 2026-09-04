@@ -126,6 +126,8 @@ export async function resolveResourceMetadata(
           retryTransient: options.retryTransient,
           twitterCookieString,
           githubToken: getRuntimeBinding(options.env, "GITHUB_TOKEN"),
+          gofileApiToken: getRuntimeBinding(options.env, "GOFILE_TOKEN") ?? getRuntimeBinding(options.env, "GOFILE_API_TOKEN"),
+          gofileCache: options.env.CACHE,
           tikhubApiToken: getTikhubApiToken(options.env),
           telegramMetadataApiUrl: getTelegramMetadataApiUrl(options.env),
           telegramMetadataApiToken: getTelegramMetadataApiToken(options.env),
@@ -801,7 +803,7 @@ function shouldBackfillResourceTitle(currentTitle: string, metadataTitle?: strin
   return (
     normalizedNext.length > 0 &&
     normalizedNext !== normalizedCurrent &&
-    ["名称未知", "untitled resource", "untitled link", "untitled tweet", "抖音视频"].includes(
+    ["名称未知", "untitled resource", "untitled link", "untitled tweet", "抖音视频", "gofile folder"].includes(
       normalizedCurrent
     )
   )

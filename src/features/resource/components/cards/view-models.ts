@@ -51,7 +51,7 @@ export function getResourceFaviconUrl(resource: Resource) {
 export function getResourceMedia(resource: Resource): MediaItem[] {
   const media = resource.metadata?.data?.media
   if (!Array.isArray(media)) return []
-  return media.flatMap((item) => {
+  return media.flatMap((item, index) => {
     if (!item || typeof item !== "object") return []
     const value = item as Record<string, unknown>
     const url = typeof value.url === "string" ? value.url : typeof value.thumbnailUrl === "string" ? value.thumbnailUrl : ""
@@ -59,12 +59,19 @@ export function getResourceMedia(resource: Resource): MediaItem[] {
     const kind = value.kind === "video" ? "video" : value.kind === "image" ? "image" : null
     if (!kind) return []
     const thumbnailUrl = typeof value.thumbnailUrl === "string" ? value.thumbnailUrl : undefined
+    const isGofileMedia = value.provider === "gofile"
+    const gofileProxyUrl = isGofileMedia
+      ? `/api/v1/resources/${encodeURIComponent(resource.id)}/media/${index}/stream`
+      : undefined
+    const gofileThumbnailProxyUrl = isGofileMedia && thumbnailUrl && kind === "video"
+      ? `${gofileProxyUrl}?variant=thumbnail`
+      : undefined
     return [{
       kind,
-      playback: resource.type === "local_media" && kind === "video" ? "inline" : "external",
-      src: url,
+      playback: (resource.type === "local_media" || isGofileMedia) && kind === "video" ? "inline" : "external",
+      src: gofileProxyUrl ?? url,
       preview: thumbnailUrl,
-      thumbnailUrl,
+      thumbnailUrl: gofileThumbnailProxyUrl ?? thumbnailUrl,
       alt: typeof value.fileName === "string" ? value.fileName : "",
       width: typeof value.width === "number" ? value.width : undefined,
       height: typeof value.height === "number" ? value.height : undefined,
@@ -108,7 +115,10 @@ function getCloudDrivePillItems(resource: Resource): ResourcePillItem[] {
   const cloudDrive = extra && isRecord(extra.cloudDrive) ? extra.cloudDrive : {}
   const provider = typeof cloudDrive.provider === "string" ? cloudDrive.provider : ""
   const metadataType = typeof metadata?.type === "string" ? metadata.type : ""
-  if (!isCloudDriveResourceType(resource.type) &&
+  if (resource.type !== "gofile" &&
+    metadataType !== "gofile" &&
+    provider !== "gofile" &&
+    !isCloudDriveResourceType(resource.type) &&
     !isCloudDriveResourceType(metadataType) &&
     !isCloudDriveResourceType(provider)) return []
 

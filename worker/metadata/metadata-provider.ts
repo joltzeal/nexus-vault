@@ -5,6 +5,7 @@ import { douyinMetadataProvider } from "./providers/douyin"
 import { douyinTiktokDownloadApiMetadataProvider } from "./providers/douyin-tiktok-download-api"
 import { httpPageMetadataProvider } from "./providers/http-page"
 import { githubMetadataProvider } from "./providers/github"
+import { gofileMetadataProvider } from "./providers/gofile"
 import { localLinkMetadataProvider } from "./providers/local-link"
 import { magnetMetadataProvider } from "./providers/magnet"
 import { placeholderMetadataProvider } from "./providers/placeholder"
@@ -35,6 +36,8 @@ export type MetadataResolveOptions = {
   retryTransient?: boolean
   twitterCookieString?: string
   githubToken?: string
+  gofileApiToken?: string
+  gofileCache?: KVNamespace
   tikhubApiToken?: string
   telegramMetadataApiUrl?: string
   telegramMetadataApiToken?: string
@@ -85,6 +88,7 @@ const metadataProviders: MetadataProvider[] = [
   telegramMetadataProvider,
   wechatMpMetadataProvider,
   githubMetadataProvider,
+  gofileMetadataProvider,
   xunleiMetadataProvider,
   cloudDriveMetadataProvider,
   httpPageMetadataProvider,
@@ -104,6 +108,7 @@ export {
   douyinTiktokDownloadApiMetadataProvider,
   douyinMetadataProvider,
   githubMetadataProvider,
+  gofileMetadataProvider,
   httpPageMetadataProvider,
   localLinkMetadataProvider,
   magnetMetadataProvider,

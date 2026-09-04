@@ -10,7 +10,10 @@ const DEFAULT_DAILY_CHECK_LIMIT = 1000
 const CHECK_STALE_AFTER_MS = 20 * 60 * 60 * 1000
 const QUEUE_BATCH_SIZE = 100
 
-export type CloudDriveCheckProvider = Extract<ResourceType, "baidu_pan" | "xunlei_pan">
+export type CloudDriveCheckProvider = Extract<
+  ResourceType,
+  "baidu_pan" | "xunlei_pan" | "gofile"
+>
 
 export type CloudDriveCheckQueueMessage = {
   kind: "cloud-drive.check"
@@ -27,7 +30,9 @@ export function isCloudDriveCheckQueueMessage(
 
   return (
     message.kind === "cloud-drive.check" &&
-    (message.provider === "baidu_pan" || message.provider === "xunlei_pan") &&
+    (message.provider === "baidu_pan" ||
+      message.provider === "xunlei_pan" ||
+      message.provider === "gofile") &&
     typeof message.resourceId === "string" &&
     typeof message.vaultId === "string" &&
     typeof message.requestedAt === "string"
@@ -113,7 +118,7 @@ async function getCloudDriveResourcesToCheck(db: Db, limit: number) {
     .leftJoin(resourceMetadata, eq(resourceMetadata.resourceId, resources.id))
     .where(
       and(
-        inArray(resources.type, ["baidu_pan", "xunlei_pan"]),
+        inArray(resources.type, ["baidu_pan", "xunlei_pan", "gofile"]),
         sql`coalesce(${cloudDriveAvailabilityStatusSql()}, '') <> 'unavailable'`,
         sql`(${checkedAt} is null or ${checkedAt} < ${cutoffIso})`
       )

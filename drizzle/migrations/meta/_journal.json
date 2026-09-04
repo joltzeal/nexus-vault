@@ -15,6 +15,13 @@
       "when": 1788192000000,
       "tag": "0001_normalize_magnet_metadata_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788537315000,
+      "tag": "0002_add_gofile_resource_type",
+      "breakpoints": true
     }
   ]
 }

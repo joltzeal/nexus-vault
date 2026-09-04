@@ -1,4 +1,4 @@
-import { parseCloudDriveLink, parseDouyinLink, parseMagnetLink, parseTelegramMessageLink, parseTwitterLink, parseWechatMpArticleLink, isCloudDriveResourceType, type ResourceType } from "../domain/resources/input"
+import { isCloudDriveResourceType, parseCloudDriveLink, parseDouyinLink, parseGofileLink, parseMagnetLink, parseTelegramMessageLink, parseTwitterLink, parseWechatMpArticleLink, type ResourceType } from "../domain/resources/input"
 
 export type MetadataQueueMessage = {
   kind: "metadata.resolve"
@@ -21,6 +21,7 @@ export function createMetadataQueueMessage(
   const parsedDouyin = type === "douyin" ? parseDouyinLink(url) : null
   const parsedWechatMp = type === "wechat_mp" ? parseWechatMpArticleLink(url) : null
   const parsedCloudDrive = isCloudDriveResourceType(type) ? parseCloudDriveLink(url) : null
+  const parsedGofile = type === "gofile" ? parseGofileLink(url) : null
 
   return {
     kind: "metadata.resolve",
@@ -39,7 +40,9 @@ export function createMetadataQueueMessage(
               ? `wechat_mp:${parsedWechatMp.articleToken ?? `${parsedWechatMp.biz}:${parsedWechatMp.mid}:${parsedWechatMp.idx}:${parsedWechatMp.sn}`}`
               : parsedCloudDrive
                 ? `${parsedCloudDrive.provider}:${parsedCloudDrive.url}`
-                : undefined,
+                : parsedGofile
+                  ? `gofile:${parsedGofile.contentId}`
+                  : undefined,
     requestedAt: new Date().toISOString(),
   }
 }

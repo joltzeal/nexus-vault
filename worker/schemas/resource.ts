@@ -6,6 +6,7 @@ export const resourceTypeSchema = z.enum([
   "telegram",
   "douyin",
   "wechat_mp",
+  "gofile",
   "baidu_pan",
   "pan_115",
   "pan_123",
