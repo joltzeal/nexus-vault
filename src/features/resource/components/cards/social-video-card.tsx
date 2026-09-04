@@ -35,6 +35,7 @@ export function SocialVideoCard({
   leadingControl,
   mediaVisible = true,
   onActivate,
+  resourceCreatedAt,
   state,
   viewMode,
 }: ResourceCardChromeProps & {
@@ -67,6 +68,7 @@ export function SocialVideoCard({
       ) : undefined}
       leadingControl={leadingControl}
       onActivate={onActivate}
+      resourceCreatedAt={resourceCreatedAt}
       sourceIcon={data.platform === "douyin" || data.platform === "tiktok"
         ? <TikTokSourceIcon />
         : <Clapperboard />}

@@ -46,6 +46,7 @@ export function GitHubRepositoryCard({
   footerActions,
   leadingControl,
   onActivate,
+  resourceCreatedAt,
   state,
   viewMode,
 }: ResourceCardChromeProps & {
@@ -66,6 +67,7 @@ export function GitHubRepositoryCard({
       footerActions={footerActions}
       leadingControl={leadingControl}
       onActivate={onActivate}
+      resourceCreatedAt={resourceCreatedAt}
       sourceIcon={<GitHubSourceIcon />}
       sourceName="GitHub Repo"
       state={state}

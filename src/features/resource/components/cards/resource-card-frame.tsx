@@ -31,6 +31,7 @@ export function ResourceCardFrame({
   footerMeta,
   leadingControl,
   onActivate,
+  resourceCreatedAt,
   sourceIcon,
   sourceName,
   sourceLabelVariant = "tag",
@@ -51,6 +52,7 @@ export function ResourceCardFrame({
   footerMeta?: ReactNode;
   leadingControl?: ReactNode;
   onActivate?: MouseEventHandler<HTMLElement>;
+  resourceCreatedAt?: string;
   sourceIcon: ReactNode;
   sourceName: string;
   sourceLabelVariant?: "plain" | "tag";
@@ -59,8 +61,9 @@ export function ResourceCardFrame({
   viewMode: ResourceCardViewMode;
 }) {
   const hasFooter = Boolean(
-    commentAction || commentEditor || footerActions || annotation,
+    commentAction || commentEditor || footerActions || annotation || resourceCreatedAt,
   );
+  const resourceCreatedAtLabel = formatResourceCreatedAt(resourceCreatedAt);
 
   const sourceMark = (
     <span
@@ -156,14 +159,25 @@ export function ResourceCardFrame({
         <>
           <Separator className="h-px w-full shrink-0 bg-border" />
           <footer className="flex min-w-0 flex-col">
-            {(commentAction || footerActions) && (
+            {(commentAction || footerActions || resourceCreatedAtLabel) && (
               <div className="flex min-w-0 items-center justify-between gap-2 px-3 py-1.5 text-[10px]">
                 {commentAction ?? <span />}
-                {footerActions && (
-                  <div className="pointer-events-none opacity-0 transition-opacity group-hover/resource-preview:pointer-events-auto group-hover/resource-preview:opacity-100 group-focus-within/resource-preview:pointer-events-auto group-focus-within/resource-preview:opacity-100">
-                    {footerActions}
-                  </div>
-                )}
+                <div className="ml-auto flex min-w-0 items-center gap-2">
+                  {footerActions && (
+                    <div className="pointer-events-none opacity-0 transition-opacity group-hover/resource-preview:pointer-events-auto group-hover/resource-preview:opacity-100 group-focus-within/resource-preview:pointer-events-auto group-focus-within/resource-preview:opacity-100">
+                      {footerActions}
+                    </div>
+                  )}
+                  {resourceCreatedAtLabel && (
+                    <time
+                      className="mono shrink-0 whitespace-nowrap text-muted-foreground"
+                      dateTime={resourceCreatedAt}
+                      title={formatPreviewDate(resourceCreatedAt)}
+                    >
+                      {resourceCreatedAtLabel}
+                    </time>
+                  )}
+                </div>
               </div>
             )}
 
@@ -274,4 +288,23 @@ export function formatPreviewDate(value?: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+export function formatResourceCreatedAt(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const diff = Date.now() - date.getTime();
+  const oneWeek = 7 * 24 * 60 * 60 * 1000;
+  if (diff >= 0 && diff < oneWeek) {
+    const minutes = Math.floor(diff / 60_000);
+    if (minutes < 1) return "刚刚";
+    if (minutes < 60) return `${minutes}分钟前`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}小时前`;
+    return `${Math.floor(hours / 24)}天前`;
+  }
+
+  return formatPreviewDate(value);
 }

@@ -39,6 +39,7 @@ export function GitHubReleaseCard({
   footerActions,
   leadingControl,
   onActivate,
+  resourceCreatedAt,
   state,
   viewMode,
 }: ResourceCardChromeProps & {
@@ -79,6 +80,7 @@ export function GitHubReleaseCard({
       ) : undefined}
       leadingControl={leadingControl}
       onActivate={onActivate}
+      resourceCreatedAt={resourceCreatedAt}
       sourceIcon={<GitHubSourceIcon />}
       sourceName="GitHub Release"
       state={state}

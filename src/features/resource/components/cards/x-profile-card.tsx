@@ -33,6 +33,7 @@ export function XProfileCard({
   footerActions,
   leadingControl,
   onActivate,
+  resourceCreatedAt,
   state,
   viewMode,
 }: ResourceCardChromeProps & {
@@ -57,6 +58,7 @@ export function XProfileCard({
       footerActions={footerActions}
       leadingControl={leadingControl}
       onActivate={onActivate}
+      resourceCreatedAt={resourceCreatedAt}
       sourceIcon={<XSourceIcon />}
       sourceName="X Profile"
       state={state}

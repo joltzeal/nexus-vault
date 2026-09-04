@@ -36,6 +36,7 @@ export function WechatMpArticleCard({
   leadingControl,
   mediaVisible = true,
   onActivate,
+  resourceCreatedAt,
   state,
   viewMode,
 }: ResourceCardChromeProps & {
@@ -64,6 +65,7 @@ export function WechatMpArticleCard({
       ) : undefined}
       leadingControl={leadingControl}
       onActivate={onActivate}
+      resourceCreatedAt={resourceCreatedAt}
       sourceIcon={<WechatSourceIcon />}
       sourceName="微信公众号"
       state={state}

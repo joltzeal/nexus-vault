@@ -46,6 +46,7 @@ export function TelegramMessageCard({
   leadingControl,
   mediaVisible = true,
   onActivate,
+  resourceCreatedAt,
   state,
   viewMode,
 }: ResourceCardChromeProps & {
@@ -87,6 +88,7 @@ export function TelegramMessageCard({
       ) : undefined}
       leadingControl={leadingControl}
       onActivate={onActivate}
+      resourceCreatedAt={resourceCreatedAt}
       sourceIcon={<TelegramSourceIcon />}
       sourceName="Telegram Message"
       state={state}

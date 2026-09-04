@@ -797,6 +797,7 @@ export function ResourceCard({
           commentAction={renderCommentAction()}
           commentEditor={renderCommentEditor()}
           footerActions={renderSharedManagementActions()}
+          resourceCreatedAt={resource.createdAt}
           leadingControl={
             showSelectionControl || isVaultOwner
               ? renderLeadingControl(
@@ -843,6 +844,7 @@ export function ResourceCard({
         commentAction={renderCommentAction()}
         commentEditor={renderCommentEditor()}
         footerActions={renderSharedManagementActions()}
+        resourceCreatedAt={resource.createdAt}
         leadingControl={renderLeadingControl(
           "size-5 [&_img]:size-4 [&_span.mono]:text-[8px]",
         )}

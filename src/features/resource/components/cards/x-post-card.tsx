@@ -21,6 +21,7 @@ export function XPostCard({
   leadingControl,
   mediaVisible = true,
   onActivate,
+  resourceCreatedAt,
   state,
   viewMode,
 }: ResourceCardChromeProps & {
@@ -48,6 +49,7 @@ export function XPostCard({
       ) : undefined}
       leadingControl={leadingControl}
       onActivate={onActivate}
+      resourceCreatedAt={resourceCreatedAt}
       sourceIcon={<XSourceIcon />}
       sourceName="Tweet"
       state={state}

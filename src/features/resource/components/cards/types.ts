@@ -14,6 +14,7 @@ export type ResourceCardChromeProps = {
   commentEditor?: ReactNode
   descriptionContent?: ReactNode
   footerActions?: ReactNode
+  resourceCreatedAt?: string
   leadingControl?: ReactNode
   onActivate?: MouseEventHandler<HTMLElement>
 }
