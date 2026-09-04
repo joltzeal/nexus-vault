@@ -31,7 +31,12 @@ export function ResourceFileTree({
   }
 
   return (
-    <ScrollArea className={cn("max-h-[min(60vh,28rem)] overflow-hidden", className)}>
+    <ScrollArea
+      className={cn(
+        "h-[min(60vh,28rem)] max-h-[calc(100dvh-8rem)] min-h-0 overflow-hidden",
+        className,
+      )}
+    >
       <TreeProvider
         defaultExpandedIds={collectBranchIds(nodes)}
         showLines={false}

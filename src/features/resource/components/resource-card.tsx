@@ -223,8 +223,8 @@ export function ResourceCard({
   const [downloadingMedia, setDownloadingMedia] = useState(false);
   const [commentEditorOpen, setCommentEditorOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
-  const [magnetTreeOpen, setMagnetTreeOpen] = useState(false);
-  const magnetTreeCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+  const [fileTreeOpen, setFileTreeOpen] = useState(false);
+  const fileTreeCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
   const title = getResourceTitle(resource);
@@ -238,8 +238,10 @@ export function ResourceCard({
     resource.type === "local_media" ? (refererUrl ?? "") : displayUrl;
   const media = getResourceMedia(resource);
   const downloadableMedia = getDownloadableResourceMedia(resource);
-  const magnetFileTree =
-    resource.type === "magnet" ? (resource.metadata?.data?.tree ?? []) : [];
+  const fileTree =
+    resource.type === "magnet" || resource.type === "gofile"
+      ? (resource.metadata?.data?.tree ?? [])
+      : [];
   const resourceTypeLabel = getResourceTypeLabel(resource.type);
   const pills = getResourcePillItems(resource).filter(
     (pill) =>
@@ -283,23 +285,23 @@ export function ResourceCard({
 
   useEffect(
     () => () => {
-      if (magnetTreeCloseTimerRef.current)
-        clearTimeout(magnetTreeCloseTimerRef.current);
+      if (fileTreeCloseTimerRef.current)
+        clearTimeout(fileTreeCloseTimerRef.current);
     },
     [],
   );
 
-  function openMagnetTreeOnHover() {
-    if (magnetTreeCloseTimerRef.current)
-      clearTimeout(magnetTreeCloseTimerRef.current);
-    setMagnetTreeOpen(true);
+  function openFileTreeOnHover() {
+    if (fileTreeCloseTimerRef.current)
+      clearTimeout(fileTreeCloseTimerRef.current);
+    setFileTreeOpen(true);
   }
 
-  function closeMagnetTreeOnHover() {
-    if (magnetTreeCloseTimerRef.current)
-      clearTimeout(magnetTreeCloseTimerRef.current);
-    magnetTreeCloseTimerRef.current = setTimeout(
-      () => setMagnetTreeOpen(false),
+  function closeFileTreeOnHover() {
+    if (fileTreeCloseTimerRef.current)
+      clearTimeout(fileTreeCloseTimerRef.current);
+    fileTreeCloseTimerRef.current = setTimeout(
+      () => setFileTreeOpen(false),
       120,
     );
   }
@@ -441,7 +443,7 @@ export function ResourceCard({
               }
             : undefined
         }
-        leadingAction={renderMagnetTreeAction()}
+        leadingAction={renderFileTreeAction()}
         rating={rating}
         section="annotation"
       />
@@ -609,11 +611,11 @@ export function ResourceCard({
     );
   }
 
-  function renderMagnetTreeAction() {
-    if (magnetFileTree.length === 0) return null;
+  function renderFileTreeAction() {
+    if (fileTree.length === 0) return null;
 
     return (
-      <Popover open={magnetTreeOpen} onOpenChange={setMagnetTreeOpen}>
+      <Popover open={fileTreeOpen} onOpenChange={setFileTreeOpen}>
         <PopoverTrigger
           render={
             <Button
@@ -621,8 +623,8 @@ export function ResourceCard({
               className="size-6 !rounded-sm bg-secondary text-secondary-foreground hover:bg-muted [&_svg]:size-3.5"
               disabled={disabled}
               onClick={(event: MouseEvent) => event.stopPropagation()}
-              onMouseEnter={openMagnetTreeOnHover}
-              onMouseLeave={closeMagnetTreeOnHover}
+              onMouseEnter={openFileTreeOnHover}
+              onMouseLeave={closeFileTreeOnHover}
               size="icon-xs"
               title="View file tree"
               type="button"
@@ -633,18 +635,18 @@ export function ResourceCard({
           }
         />
         <PopoverContent
-          className="w-[min(92vw,32rem)] border-border bg-card p-0 text-foreground"
+          className="max-h-[min(80dvh,36rem)] w-[min(92vw,32rem)] overflow-hidden border-border bg-card p-0 text-foreground"
           onClick={(event) => event.stopPropagation()}
-          onMouseEnter={openMagnetTreeOnHover}
-          onMouseLeave={closeMagnetTreeOnHover}
+          onMouseEnter={openFileTreeOnHover}
+          onMouseLeave={closeFileTreeOnHover}
         >
           <div className="flex h-9 items-center justify-between border-b border-border px-3">
             <PopoverTitle className="font-mono text-label font-normal uppercase tracking-[.12em] text-muted-foreground">
               File tree
             </PopoverTitle>
-            <BaseBadge variant="default">{magnetFileTree.length}</BaseBadge>
+            <BaseBadge variant="default">{fileTree.length}</BaseBadge>
           </div>
-          <ResourceFileTree nodes={magnetFileTree} />
+          <ResourceFileTree nodes={fileTree} />
         </PopoverContent>
       </Popover>
     );
