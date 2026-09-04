@@ -1,5 +1,7 @@
 import {
   parseGitHubLink,
+  parseRedditPostLink,
+  parseRedditSubredditLink,
   parseTelegramMessageLink,
   parseTwitterLink,
   parseTwitterProfileLink,
@@ -16,6 +18,8 @@ import type {
   GitHubReleaseCardData,
   GitHubRepositoryCardData,
   GitHubUserCardData,
+  RedditPostCardData,
+  RedditSubredditCardData,
   ResourceCardPreview,
   ResourcePreviewMedia,
   SocialVideoCardData,
@@ -329,6 +333,57 @@ function toPreviewData(
       width: numberValue(data.width),
     } satisfies SocialVideoCardData
   }
+  if (kind === "reddit_post") {
+    return {
+      authorAvatarUrl: stringValue(data.authorAvatarUrl),
+      authorName: stringValue(data.authorName),
+      authorUrl: stringValue(data.authorUrl),
+      createdAt: stringValue(data.createdAt),
+      domain: stringValue(data.domain),
+      flairText: stringValue(data.flairText),
+      isNsfw: data.isNsfw === true,
+      media: normalizePreviewMedia(data.media),
+      metrics: isRecord(data.metrics)
+        ? {
+            comments: numberValue(data.metrics.comments),
+            score: numberValue(data.metrics.score),
+            shares: numberValue(data.metrics.shares),
+          }
+        : undefined,
+      postHint: stringValue(data.postHint),
+      postId: stringValue(data.postId) ?? "",
+      subredditIconUrl: stringValue(data.subredditIconUrl),
+      subredditIsNsfw: data.subredditIsNsfw === true,
+      subredditName: stringValue(data.subredditName),
+      subredditPrefixedName: stringValue(data.subredditPrefixedName),
+      subredditSubscribersCount: numberValue(data.subredditSubscribersCount),
+      subredditTitle: stringValue(data.subredditTitle),
+      subredditUrl: stringValue(data.subredditUrl),
+      text: stringValue(data.text),
+      title: stringValue(data.title),
+      url,
+    } satisfies RedditPostCardData
+  }
+  if (kind === "reddit_subreddit") {
+    return {
+      activeCount: numberValue(data.activeCount),
+      bannerUrl: stringValue(data.bannerUrl),
+      createdAt: stringValue(data.createdAt),
+      description: stringValue(data.description),
+      detectedLanguage: stringValue(data.detectedLanguage),
+      iconUrl: stringValue(data.iconUrl),
+      isNsfw: data.isNsfw === true,
+      name: stringValue(data.name) ?? "",
+      prefixedName: stringValue(data.prefixedName) ?? "",
+      primaryColor: stringValue(data.primaryColor),
+      subscribersCount: numberValue(data.subscribersCount),
+      title: stringValue(data.title),
+      type: stringValue(data.type),
+      url,
+      weeklyActiveUsersCount: numberValue(data.weeklyActiveUsersCount),
+      weeklyContributionsCount: numberValue(data.weeklyContributionsCount),
+    } satisfies RedditSubredditCardData
+  }
   if (kind === "wechat_mp_article") {
     const metadata = resource.metadata?.data
     return {
@@ -422,6 +477,33 @@ function deriveLegacyPreview(resource: Resource): ResourceCardPreview | null {
         tweet: persistedTweet,
         tweetId: stringValue(twitter?.tweetId) ?? tweet?.tweetId ?? "resource",
         url: tweet?.url ?? url,
+      },
+    }
+  }
+
+  const redditSubreddit = parseRedditSubredditLink(url)
+  const redditPost = parseRedditPostLink(url)
+  if (redditSubreddit && !redditPost) {
+    return {
+      kind: "reddit_subreddit",
+      data: {
+        description: metadata?.description ?? resource.description,
+        name: redditSubreddit.name,
+        prefixedName: `r/${redditSubreddit.name}`,
+        title: metadata?.title ?? resource.title,
+        url: redditSubreddit.url,
+      },
+    }
+  }
+  if (redditPost || resource.type === "reddit") {
+    return {
+      kind: "reddit_post",
+      data: {
+        media: normalizePreviewMedia(metadata?.media),
+        postId: redditPost?.postId ?? "resource",
+        text: metadata?.description ?? resource.description,
+        title: metadata?.title ?? resource.title,
+        url: redditPost?.url ?? url,
       },
     }
   }
@@ -594,7 +676,8 @@ function tweetValue(value: unknown): Tweet | undefined {
 function isPreviewKind(value: unknown): value is ResourceCardPreview["kind"] {
   return value === "x_profile" || value === "x_post" || value === "github_user" ||
     value === "github_repository" || value === "github_release" || value === "telegram_message" ||
-    value === "wechat_mp_article" || value === "social_video"
+    value === "wechat_mp_article" || value === "social_video" ||
+    value === "reddit_subreddit" || value === "reddit_post"
 }
 
 function stringValue(value: unknown) {

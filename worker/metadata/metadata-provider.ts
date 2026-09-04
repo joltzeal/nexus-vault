@@ -9,6 +9,7 @@ import { gofileMetadataProvider } from "./providers/gofile"
 import { localLinkMetadataProvider } from "./providers/local-link"
 import { magnetMetadataProvider } from "./providers/magnet"
 import { placeholderMetadataProvider } from "./providers/placeholder"
+import { redditMetadataProvider } from "./providers/reddit"
 import { snapdouyinMetadataProvider } from "./providers/snapdouyin"
 import { xunleiMetadataProvider } from "./providers/xunlei"
 import { telegramMetadataProvider } from "./providers/telegram"
@@ -83,6 +84,7 @@ export function isRetryableMetadataError(error: unknown) {
 
 const metadataProviders: MetadataProvider[] = [
   douyinTiktokDownloadApiMetadataProvider,
+  redditMetadataProvider,
   magnetMetadataProvider,
   twitterMetadataProvider,
   telegramMetadataProvider,
@@ -113,6 +115,7 @@ export {
   localLinkMetadataProvider,
   magnetMetadataProvider,
   placeholderMetadataProvider,
+  redditMetadataProvider,
   snapdouyinMetadataProvider,
   telegramMetadataProvider,
   twitterMetadataProvider,

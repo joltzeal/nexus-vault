@@ -1,5 +1,5 @@
 import type { ComponentType, SVGProps } from "react";
-import { HardDrives } from "@phosphor-icons/react";
+import { HardDrives, RedditLogo } from "@phosphor-icons/react";
 import type { ResourceType } from "@/features/resource/types";
 
 export function IconTwitter(props: SVGProps<SVGSVGElement>) {
@@ -187,6 +187,10 @@ export function IconMagnet(props: SVGProps<SVGSVGElement>) {
 
 export function IconLocalMedia(props: SVGProps<SVGSVGElement>) {
   return <HardDrives {...props} weight="duotone" />;
+}
+
+export function IconReddit(props: SVGProps<SVGSVGElement>) {
+  return <RedditLogo {...props} weight="fill" />;
 }
 
 export function IconLink(props: SVGProps<SVGSVGElement>) {

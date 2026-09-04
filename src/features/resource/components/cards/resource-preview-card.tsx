@@ -1,6 +1,8 @@
 import { GitHubReleaseCard } from "./github-release-card"
 import { GitHubRepositoryCard } from "./github-repository-card"
 import { GitHubUserCard } from "./github-user-card"
+import { RedditPostCard } from "./reddit-post-card"
+import { RedditSubredditCard } from "./reddit-subreddit-card"
 import { SocialVideoCard } from "./social-video-card"
 import { TelegramMessageCard } from "./telegram-message-card"
 import { WechatMpArticleCard } from "./wechat-mp-article-card"
@@ -43,5 +45,9 @@ export function ResourcePreviewCard({
       return <WechatMpArticleCard {...chrome} resourceCreatedAt={resourceCreatedAt} data={preview.data} mediaVisible={mediaVisible} state={state} viewMode={viewMode} />
     case "social_video":
       return <SocialVideoCard {...chrome} resourceCreatedAt={resourceCreatedAt} data={preview.data} mediaVisible={mediaVisible} state={state} viewMode={viewMode} />
+    case "reddit_subreddit":
+      return <RedditSubredditCard {...chrome} resourceCreatedAt={resourceCreatedAt} data={preview.data} mediaVisible={mediaVisible} state={state} viewMode={viewMode} />
+    case "reddit_post":
+      return <RedditPostCard {...chrome} resourceCreatedAt={resourceCreatedAt} data={preview.data} mediaVisible={mediaVisible} state={state} viewMode={viewMode} />
   }
 }

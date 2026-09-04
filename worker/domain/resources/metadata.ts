@@ -53,6 +53,8 @@ export type ResourcePreviewKind =
   | "telegram_message"
   | "wechat_mp_article"
   | "social_video"
+  | "reddit_subreddit"
+  | "reddit_post"
 
 /**
  * Provider-owned, persisted card data. The UI validates this shape again before
@@ -131,5 +133,7 @@ function isPreviewKind(value: unknown): value is ResourcePreviewKind {
     value === "github_release" ||
     value === "telegram_message" ||
     value === "wechat_mp_article" ||
-    value === "social_video"
+    value === "social_video" ||
+    value === "reddit_subreddit" ||
+    value === "reddit_post"
 }

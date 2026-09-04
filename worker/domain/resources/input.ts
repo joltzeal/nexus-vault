@@ -38,6 +38,17 @@ export type ParsedTwitterProfileLink = {
   url: string
 }
 
+export type ParsedRedditPostLink = {
+  postId: string
+  subreddit?: string
+  url: string
+}
+
+export type ParsedRedditSubredditLink = {
+  name: string
+  url: string
+}
+
 export type ParsedGitHubLink =
   | { kind: "user"; login: string; url: string }
   | { kind: "repository"; owner: string; repository: string; url: string }
@@ -254,6 +265,57 @@ export function parseTwitterProfileLink(url: string): ParsedTwitterProfileLink |
     username,
     url: `https://x.com/${username}`,
   }
+}
+
+export function parseRedditPostLink(url: string): ParsedRedditPostLink | null {
+  const parsedUrl = parseHttpUrl(url)
+  if (!parsedUrl || !isRedditHost(normalizeHostname(parsedUrl.hostname))) return null
+
+  const segments = parsedUrl.pathname.split("/").filter(Boolean)
+  let postId: string | undefined
+  let subreddit: string | undefined
+
+  if (normalizeHostname(parsedUrl.hostname) === "redd.it") {
+    postId = segments[0]
+  } else {
+    const commentsIndex = segments.findIndex((segment) => segment.toLowerCase() === "comments")
+    if (commentsIndex === 0) {
+      postId = segments[1]
+    } else if (commentsIndex === 2 && segments[0]?.toLowerCase() === "r") {
+      subreddit = segments[1]
+      postId = segments[3]
+    }
+  }
+
+  if (!postId || !/^[a-z0-9]{3,12}$/i.test(postId)) return null
+  if (subreddit && !isValidRedditName(subreddit)) return null
+
+  return {
+    postId,
+    ...(subreddit ? { subreddit } : {}),
+    url: subreddit
+      ? `https://www.reddit.com/r/${subreddit}/comments/${postId}`
+      : `https://www.reddit.com/comments/${postId}`,
+  }
+}
+
+export function parseRedditSubredditLink(url: string): ParsedRedditSubredditLink | null {
+  const parsedUrl = parseHttpUrl(url)
+  if (!parsedUrl || !isRedditHost(normalizeHostname(parsedUrl.hostname))) return null
+
+  const segments = parsedUrl.pathname.split("/").filter(Boolean)
+  if (segments.length !== 2 || segments[0]?.toLowerCase() !== "r") return null
+  const name = segments[1]
+  if (!isValidRedditName(name)) return null
+
+  return {
+    name,
+    url: `https://www.reddit.com/r/${name}`,
+  }
+}
+
+function isValidRedditName(value: string) {
+  return /^[A-Za-z0-9][A-Za-z0-9_]{1,20}$/.test(value)
 }
 
 export function parseGitHubLink(url: string): ParsedGitHubLink | null {
@@ -503,6 +565,7 @@ export function parseHttpLink(url: string): ParsedHttpLink | null {
 function defaultResourceTitle(type: ResourceType) {
   if (type === "magnet") return "名称未知"
   if (type === "twitter") return "Untitled tweet"
+  if (type === "reddit") return "Reddit post"
   if (type === "telegram") return "Telegram message"
   if (type === "douyin") return "抖音视频"
   if (type === "wechat_mp") return "微信公众号文章"
@@ -609,6 +672,7 @@ export const httpInputParser: ResourceInputParser = {
     return (
       input.type === "http" ||
       input.type === "twitter" ||
+      input.type === "reddit" ||
       input.type === "douyin" ||
       input.type === "wechat_mp" ||
       input.type === "gofile" ||
@@ -664,6 +728,31 @@ export const httpInputParser: ResourceInputParser = {
             ? {
                 previewKind: "x_profile",
                 username: twitterProfile.username,
+              }
+            : {}),
+        },
+      }
+    }
+
+    const redditPost = parseRedditPostLink(input.url)
+    const redditSubreddit = parseRedditSubredditLink(input.url)
+    if (input.type === "reddit" || redditPost || redditSubreddit) {
+      return {
+        type: "reddit",
+        url: redditPost?.url ?? redditSubreddit?.url ?? input.url.trim(),
+        title: normalizeInputTitle(input.title) || defaultResourceTitle("reddit"),
+        metadata: {
+          ...(redditPost
+            ? {
+                previewKind: "reddit_post",
+                postId: redditPost.postId,
+                ...(redditPost.subreddit ? { subredditName: redditPost.subreddit } : {}),
+              }
+            : {}),
+          ...(redditSubreddit
+            ? {
+                previewKind: "reddit_subreddit",
+                subredditName: redditSubreddit.name,
               }
             : {}),
         },
@@ -965,6 +1054,10 @@ const TWITTER_RESERVED_PATHS = new Set([
 
 function isTwitterHost(hostname: string) {
   return hostname === "x.com" || hostname === "twitter.com" || hostname.endsWith(".x.com") || hostname.endsWith(".twitter.com")
+}
+
+function isRedditHost(hostname: string) {
+  return hostname === "reddit.com" || hostname.endsWith(".reddit.com") || hostname === "redd.it"
 }
 
 function decodePathPart(value: string) {

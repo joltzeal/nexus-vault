@@ -200,6 +200,53 @@ export type SocialVideoCardData = {
   width?: number
 }
 
+export type RedditPostCardData = {
+  authorAvatarUrl?: string
+  authorName?: string
+  authorUrl?: string
+  createdAt?: string
+  domain?: string
+  flairText?: string
+  isNsfw?: boolean
+  media?: ResourcePreviewMedia[]
+  metrics?: {
+    comments?: number
+    score?: number
+    shares?: number
+  }
+  postHint?: string
+  postId: string
+  subredditIconUrl?: string
+  subredditIsNsfw?: boolean
+  subredditName?: string
+  subredditPrefixedName?: string
+  subredditSubscribersCount?: number
+  subredditTitle?: string
+  subredditUrl?: string
+  text?: string
+  title?: string
+  url: string
+}
+
+export type RedditSubredditCardData = {
+  activeCount?: number
+  bannerUrl?: string
+  createdAt?: string
+  description?: string
+  detectedLanguage?: string
+  iconUrl?: string
+  isNsfw?: boolean
+  name: string
+  prefixedName: string
+  primaryColor?: string
+  subscribersCount?: number
+  title?: string
+  type?: string
+  url: string
+  weeklyActiveUsersCount?: number
+  weeklyContributionsCount?: number
+}
+
 export type ResourceCardPreview =
   | { kind: "x_profile"; data: XProfileCardData }
   | { kind: "x_post"; data: XPostCardData }
@@ -209,3 +256,5 @@ export type ResourceCardPreview =
   | { kind: "telegram_message"; data: TelegramMessageCardData }
   | { kind: "wechat_mp_article"; data: WechatMpArticleCardData }
   | { kind: "social_video"; data: SocialVideoCardData }
+  | { kind: "reddit_subreddit"; data: RedditSubredditCardData }
+  | { kind: "reddit_post"; data: RedditPostCardData }

@@ -22,6 +22,13 @@
       "when": 1788537315000,
       "tag": "0002_add_gofile_resource_type",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788633600000,
+      "tag": "0003_add_reddit_resource_type",
+      "breakpoints": true
     }
   ]
 }

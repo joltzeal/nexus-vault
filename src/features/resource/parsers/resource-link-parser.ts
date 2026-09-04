@@ -1,5 +1,7 @@
 export type ParsedTwitterLink = { tweetId: string; username?: string; url: string }
 export type ParsedTwitterProfileLink = { username: string; url: string }
+export type ParsedRedditPostLink = { postId: string; subreddit?: string; url: string }
+export type ParsedRedditSubredditLink = { name: string; url: string }
 export type ParsedGitHubLink =
   | { kind: "user"; login: string; url: string }
   | { kind: "repository"; owner: string; repository: string; url: string }
@@ -44,6 +46,48 @@ export function parseTwitterLink(value: string | null | undefined): ParsedTwitte
   const tweetId = index >= 0 ? parts[index + 1] : undefined
   if (!tweetId || !/^\d+$/.test(tweetId)) return null
   return { tweetId, username: parts[index - 1], url: `https://x.com/${parts.slice(0, index + 2).join("/")}` }
+}
+
+export function parseRedditPostLink(value: string | null | undefined): ParsedRedditPostLink | null {
+  const url = httpUrl(value)
+  if (!url) return null
+  const host = url.hostname.replace(/^www\./, "")
+  if (!["reddit.com", "old.reddit.com", "redd.it"].includes(host)) return null
+  const parts = url.pathname.split("/").filter(Boolean)
+  let postId: string | undefined
+  let subreddit: string | undefined
+  if (host === "redd.it") {
+    postId = parts[0]
+  } else {
+    const commentsIndex = parts.findIndex((part) => part.toLowerCase() === "comments")
+    if (commentsIndex === 0) {
+      postId = parts[1]
+    } else if (commentsIndex === 2 && parts[0]?.toLowerCase() === "r") {
+      subreddit = parts[1]
+      postId = parts[3]
+    }
+  }
+  if (!postId || !/^[a-z0-9]{3,12}$/i.test(postId)) return null
+  if (subreddit && !/^[A-Za-z0-9][A-Za-z0-9_]{1,20}$/.test(subreddit)) return null
+  return {
+    postId,
+    ...(subreddit ? { subreddit } : {}),
+    url: subreddit
+      ? `https://www.reddit.com/r/${subreddit}/comments/${postId}`
+      : `https://www.reddit.com/comments/${postId}`,
+  }
+}
+
+export function parseRedditSubredditLink(value: string | null | undefined): ParsedRedditSubredditLink | null {
+  const url = httpUrl(value)
+  if (!url) return null
+  const host = url.hostname.replace(/^www\./, "")
+  if (host !== "reddit.com" && host !== "old.reddit.com") return null
+  const parts = url.pathname.split("/").filter(Boolean)
+  if (parts.length !== 2 || parts[0]?.toLowerCase() !== "r") return null
+  const name = parts[1]
+  if (!name || !/^[A-Za-z0-9][A-Za-z0-9_]{1,20}$/.test(name)) return null
+  return { name, url: `https://www.reddit.com/r/${name}` }
 }
 
 export function parseGitHubLink(value: string | null | undefined): ParsedGitHubLink | null {
