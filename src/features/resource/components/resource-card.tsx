@@ -453,7 +453,13 @@ export function ResourceCard({
   }
 
   function renderCardHeaderActions() {
-    if (showSelectionControl || !showAnnotationActions) return undefined;
+    if (
+      showSelectionControl ||
+      !showAnnotationActions ||
+      isResolvingMetadata
+    ) {
+      return undefined;
+    }
     return renderSharedAnnotationActions();
   }
 

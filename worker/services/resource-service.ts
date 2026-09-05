@@ -1,6 +1,14 @@
 import { and, eq, inArray, isNull } from "drizzle-orm"
 
-import { resourceMetadata, resources, spaces, vaults } from "../db/schema"
+import {
+  resourceAnnotations,
+  resourceMetadata,
+  resourceReadLater,
+  resources,
+  spaces,
+  starredResources,
+  vaults,
+} from "../db/schema"
 import {
   getLocalMediaObjectKeys,
   LOCAL_MEDIA_PROVIDER,
@@ -29,6 +37,7 @@ import {
   findResourceIdByDedupeKey,
 } from "../repositories/resource.repository"
 import { requireUserXComCookieString } from "./account-integration-service"
+import { normalizeResourceMetadata } from "../domain/resources/metadata"
 
 export async function createResource(
   db: Db,
@@ -664,6 +673,83 @@ export async function getResourceOrThrow(db: Db, resourceId: string) {
   const resource = await findResourceById(db, resourceId)
   if (!resource) throw notFound("Resource not found.")
   return resource
+}
+
+export async function readResource(
+  db: Db,
+  resource: Awaited<ReturnType<typeof getResourceOrThrow>>,
+  actor?: Actor,
+) {
+  const metadata = await findResourceMetadata(db, resource.id)
+  const [starred] = actor
+    ? await db
+        .select({ id: starredResources.id })
+        .from(starredResources)
+        .where(
+          and(
+            eq(starredResources.userId, actor.id),
+            eq(starredResources.sourceResourceId, resource.id),
+          ),
+        )
+        .limit(1)
+    : []
+  const [readLater] = actor
+    ? await db
+        .select({ id: resourceReadLater.id })
+        .from(resourceReadLater)
+        .where(
+          and(
+            eq(resourceReadLater.userId, actor.id),
+            eq(resourceReadLater.resourceId, resource.id),
+          ),
+        )
+        .limit(1)
+    : []
+  const [annotation] = actor
+    ? await db
+        .select({
+          rating: resourceAnnotations.rating,
+          comment: resourceAnnotations.comment,
+          checked: resourceAnnotations.checked,
+          dataJson: resourceAnnotations.dataJson,
+          createdAt: resourceAnnotations.createdAt,
+          updatedAt: resourceAnnotations.updatedAt,
+        })
+        .from(resourceAnnotations)
+        .where(
+          and(
+            eq(resourceAnnotations.userId, actor.id),
+            eq(resourceAnnotations.resourceId, resource.id),
+          ),
+        )
+        .limit(1)
+    : []
+
+  return {
+    id: resource.id,
+    spaceId: resource.spaceId,
+    type: resource.type,
+    title: resource.title,
+    description: resource.description,
+    url: resource.url,
+    referer: resource.referer,
+    metadataStatus: resource.metadataStatus,
+    position: resource.position,
+    createdBy: resource.createdBy,
+    createdAt: resource.createdAt,
+    updatedAt: resource.updatedAt,
+    isStarred: Boolean(starred),
+    isReadLater: Boolean(readLater),
+    annotation: annotation ?? null,
+    metadata: metadata
+      ? {
+          provider: metadata.provider,
+          data: normalizeResourceMetadata(metadata.dataJson),
+          errorMessage: metadata.errorMessage,
+          updatedAt: metadata.updatedAt,
+        }
+      : null,
+  }
 }
 
 export async function getNextResourcePosition(db: Db, spaceId: string) {

@@ -2,6 +2,7 @@ import type { ComponentType } from "react"
 
 import { Tag } from "@/components/aicanvas/andromeda/components/Tag"
 import { Separator } from "@/components/ui/separator"
+import { ResourceDescription } from "@/features/resource/components/resource-description"
 
 import { RedditSourceIcon } from "./platform-icons"
 import {
@@ -137,17 +138,7 @@ export function RedditSubredditCard({
             </div>
           </div>
 
-          {description && (
-            <p
-              className={
-                viewMode === "masonry"
-                  ? "whitespace-pre-line break-words text-[14px] leading-6 text-muted-foreground"
-                  : "whitespace-pre-line text-[14px] leading-6 text-muted-foreground"
-              }
-            >
-              {description}
-            </p>
-          )}
+          {description && <ResourceDescription description={description} />}
 
           {(data.type || data.detectedLanguage || data.isNsfw) && (
             <div className="flex min-w-0 flex-wrap items-center gap-1.5">

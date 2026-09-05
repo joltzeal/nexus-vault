@@ -32,6 +32,7 @@ import {
 } from "@/features/resource/components";
 import {
   deleteResource,
+  getResource,
   listResourceTransferTargets,
   reorderVaultResources,
   resolveResourceMetadata,
@@ -99,6 +100,10 @@ import type { VaultForm } from "@/features/vault/types";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Spinner } from "@/components/aicanvas/andromeda/components/Spinner";
 import type { VaultViewMode } from "@/features/vault/components/vault-outline";
+import {
+  getStoredVaultResourceViewMode,
+  storeVaultResourceViewMode,
+} from "@/features/resource/vault-view-mode";
 import "@/features/vault/styles/vault-detail-layout.css";
 
 const Button: any = ButtonPrimitive;
@@ -179,7 +184,9 @@ export function VaultDetailPage() {
   const allSpacesCollapsed =
     Boolean(detail?.spaces.length) &&
     detail?.spaces.every((space) => collapsedSpaceIds.has(space.id));
-  const [viewMode, setViewMode] = useState<VaultViewMode>("list");
+  const [viewMode, setViewMode] = useState<VaultViewMode>(
+    getStoredVaultResourceViewMode,
+  );
   const [selectionSpaceId, setSelectionSpaceId] = useState<string | null>(null);
   const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(
     new Set(),
@@ -189,6 +196,11 @@ export function VaultDetailPage() {
   >([]);
   const [transferFocusSpaceId, setTransferFocusSpaceId] = useState<string>();
   const [targetSpaceVaultId, setTargetSpaceVaultId] = useState<string>();
+
+  const handleViewModeChange = useCallback((mode: VaultViewMode) => {
+    setViewMode(mode);
+    storeVaultResourceViewMode(mode);
+  }, []);
 
   useEffect(() => {
     function handleBeforeUnload(event: BeforeUnloadEvent) {
@@ -254,6 +266,33 @@ export function VaultDetailPage() {
     [vaultId],
   );
 
+  const refreshResource = useCallback(
+    async (resourceId: string, options: { addIfMissing?: boolean } = {}) => {
+      const nextResource = await getResource(resourceId);
+      setDetail((current) => {
+        if (!current) return current;
+        const exists = current.resources.some((resource) => resource.id === resourceId);
+        if (!exists && !options.addIfMissing) return current;
+        return {
+          ...current,
+          resources: exists
+          ? current.resources.map((resource) =>
+              resource.id === resourceId ? nextResource : resource,
+            )
+          : [...current.resources, nextResource],
+        };
+      });
+      return nextResource;
+    },
+    [],
+  );
+
+  const refreshResources = useCallback(
+    (resourceIds: Iterable<string>) =>
+      Promise.all([...new Set(resourceIds)].map((resourceId) => refreshResource(resourceId))),
+    [refreshResource],
+  );
+
   const applyAiSummaryStreamUpdate = useCallback(
     (update: ResourceAiSummaryStreamUpdate) => {
       setDetail((current) => {
@@ -307,14 +346,14 @@ export function VaultDetailPage() {
         .then((receivedTerminalUpdate) => {
           if (receivedTerminalUpdate || controller.signal.aborted) return;
           aiSummaryStreamFallbacksRef.current.add(resourceId);
-          void loadDetail().catch(() => {
+          void refreshResource(resourceId).catch(() => {
             // The regular metadata refresh remains the fallback transport.
           });
         })
         .catch(() => {
           if (controller.signal.aborted) return;
           aiSummaryStreamFallbacksRef.current.add(resourceId);
-          void loadDetail().catch(() => {
+          void refreshResource(resourceId).catch(() => {
             // The regular metadata refresh remains the fallback transport.
           });
         })
@@ -324,7 +363,7 @@ export function VaultDetailPage() {
           }
         });
     },
-    [applyAiSummaryStreamUpdate, loadDetail],
+    [applyAiSummaryStreamUpdate, refreshResource],
   );
 
   useEffect(() => {
@@ -405,14 +444,22 @@ export function VaultDetailPage() {
 
     if (!hasPendingMetadata && !hasAiSummaryFallback) return;
 
+    const pendingResourceIds = detail.resources
+      .filter(
+        (resource) =>
+          resource.metadataStatus === "pending" ||
+          resource.metadataStatus === "processing" ||
+          aiSummaryStreamFallbacksRef.current.has(resource.id),
+      )
+      .map((resource) => resource.id);
     const timer = window.setInterval(() => {
-      void loadDetail().catch(() => {
+      void refreshResources(pendingResourceIds).catch(() => {
         // Keep the current card state visible if a background refresh fails.
       });
     }, hasAiSummaryFallback ? AI_SUMMARY_POLL_INTERVAL_MS : METADATA_POLL_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
-  }, [detail, loadDetail]);
+  }, [detail, refreshResources]);
 
   function openEditVault() {
     if (!detail) return;
@@ -587,59 +634,73 @@ export function VaultDetailPage() {
     }
   }
 
-  async function handleEditVault(event: FormEvent<HTMLFormElement>) {
+  function handleEditVault(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!vaultId) return;
-    if (
-      await runMutation(
-        () => updateDashboardVault(vaultId, vaultForm),
-        "Vault updated",
-      )
-    ) {
-      setEditOpen(false);
-      void refreshVaults().catch(() => {
-        // The detail has already refreshed; retry the sidebar list on next navigation.
-      });
-    }
+    const currentVaultId = vaultId;
+    const form = vaultForm;
+    setEditOpen(false);
+    setBusy(true);
+    void updateDashboardVault(currentVaultId, form)
+      .then(() => {
+        void loadDetail().catch(() => undefined);
+        void refreshVaults().catch(() => undefined);
+        toast.add({ title: "Vault updated", type: "success" });
+      })
+      .catch((reason: unknown) => {
+        toast.add({
+          title: reason instanceof Error ? reason.message : "Vault update failed.",
+          type: "error",
+        });
+      })
+      .finally(() => setBusy(false));
   }
 
-  async function handleCreateSpace(event: FormEvent<HTMLFormElement>) {
+  function handleCreateSpace(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!vaultId) return;
 
     if (targetSpaceVaultId) {
-      try {
-        setBusy(true);
-        const created = await createVaultSpace(targetSpaceVaultId, spaceForm);
-        await Promise.all([loadDetail(), loadTransferTargets()]);
-        setTransferFocusSpaceId(created.id);
-        setTargetSpaceVaultId(undefined);
-        setSpaceOpen(false);
-        setSpaceForm({ description: "", icon: "tv", name: "" });
-        toast.add({ title: "Space created", type: "success" });
-      } catch (reason) {
-        toast.add({
-          title:
-            reason instanceof Error
-              ? reason.message
-              : "Could not create space.",
-          type: "error",
-        });
-      } finally {
-        setBusy(false);
-      }
+      const destinationVaultId = targetSpaceVaultId;
+      const form = spaceForm;
+      setTargetSpaceVaultId(undefined);
+      setSpaceOpen(false);
+      setSpaceForm({ description: "", icon: "tv", name: "" });
+      setBusy(true);
+      void createVaultSpace(destinationVaultId, form)
+        .then((created) => {
+          void Promise.all([loadDetail(), loadTransferTargets()]).catch(() => undefined);
+          setTransferFocusSpaceId(created.id);
+          toast.add({ title: "Space created", type: "success" });
+        })
+        .catch((reason: unknown) => {
+          toast.add({
+            title:
+              reason instanceof Error ? reason.message : "Could not create space.",
+            type: "error",
+          });
+        })
+        .finally(() => setBusy(false));
       return;
     }
 
-    if (
-      await runMutation(
-        () => createVaultSpace(vaultId, spaceForm),
-        "Space created",
-      )
-    ) {
-      setSpaceOpen(false);
-      setSpaceForm({ description: "", icon: "tv", name: "" });
-    }
+    const currentVaultId = vaultId;
+    const form = spaceForm;
+    setSpaceOpen(false);
+    setSpaceForm({ description: "", icon: "tv", name: "" });
+    setBusy(true);
+    void createVaultSpace(currentVaultId, form)
+      .then(() => {
+        void loadDetail().catch(() => undefined);
+        toast.add({ title: "Space created", type: "success" });
+      })
+      .catch((reason: unknown) => {
+        toast.add({
+          title: reason instanceof Error ? reason.message : "Could not create space.",
+          type: "error",
+        });
+      })
+      .finally(() => setBusy(false));
   }
 
   function openEditSpace(space: {
@@ -657,18 +718,27 @@ export function VaultDetailPage() {
     setEditSpaceOpen(true);
   }
 
-  async function handleEditSpace(event: FormEvent<HTMLFormElement>) {
+  function handleEditSpace(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!vaultId || !spaceToEdit) return;
-    if (
-      await runMutation(
-        () => updateVaultSpace(vaultId, spaceToEdit.id, spaceForm),
-        "Space updated",
-      )
-    ) {
-      setEditSpaceOpen(false);
-      setSpaceToEdit(null);
-    }
+    const currentVaultId = vaultId;
+    const currentSpaceId = spaceToEdit.id;
+    const form = spaceForm;
+    setEditSpaceOpen(false);
+    setSpaceToEdit(null);
+    setBusy(true);
+    void updateVaultSpace(currentVaultId, currentSpaceId, form)
+      .then(() => {
+        void loadDetail().catch(() => undefined);
+        toast.add({ title: "Space updated", type: "success" });
+      })
+      .catch((reason: unknown) => {
+        toast.add({
+          title: reason instanceof Error ? reason.message : "Vault update failed.",
+          type: "error",
+        });
+      })
+      .finally(() => setBusy(false));
   }
 
   async function handleDeleteSpace(spaceId: string) {
@@ -679,28 +749,33 @@ export function VaultDetailPage() {
     );
   }
 
-  async function handleCreateResource(event: FormEvent<HTMLFormElement>) {
+  function handleCreateResource(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!vaultId) return;
-    if (
-      await runMutation(
-        () => createVaultResource(vaultId, resourceForm),
-        "Resource added",
-      )
-    ) {
-      setResourceOpen(false);
-      setResourceForm({
-        description: "",
-        extractionCode: "",
-        referer: "",
-        spaceId: "",
-        title: "",
-        url: "",
-      });
-      void refreshVaults().catch(() => {
-        // The current Vault refreshed successfully; the aggregate count retries later.
-      });
-    }
+    const currentVaultId = vaultId;
+    const form = resourceForm;
+    setResourceOpen(false);
+    setResourceForm({
+      description: "",
+      extractionCode: "",
+      referer: "",
+      spaceId: "",
+      title: "",
+      url: "",
+    });
+    setBusy(true);
+    void createVaultResource(currentVaultId, form)
+      .then(({ id }) => {
+        void refreshResource(id, { addIfMissing: true }).catch(() => undefined);
+        toast.add({ title: "Resource added", type: "success" });
+      })
+      .catch((reason: unknown) => {
+        toast.add({
+          title: reason instanceof Error ? reason.message : "Could not add resource.",
+          type: "error",
+        });
+      })
+      .finally(() => setBusy(false));
   }
 
   async function handleCreateMediaResource(
@@ -710,7 +785,7 @@ export function VaultDetailPage() {
     if (!vaultId) return;
     setBusy(true);
     try {
-      await runMediaUpload(files, (reportProgress) => {
+      const created = await runMediaUpload(files, (reportProgress) => {
         return uploadLocalMediaResource(
           vaultId,
           {
@@ -726,10 +801,9 @@ export function VaultDetailPage() {
           },
         );
       });
-      await loadDetail();
-      void refreshVaults().catch(() => {
-        // The current Vault refreshed successfully; the aggregate count retries later.
-      });
+      if (created && typeof created === "object" && "id" in created) {
+        await refreshResource(String(created.id));
+      }
       setResourceForm({
         description: "",
         extractionCode: "",
@@ -1004,31 +1078,31 @@ export function VaultDetailPage() {
     if (!resourceToEdit) return;
     const resource = resourceToEdit;
     setResourceEditOpen(false);
-
-    const saved = await runMutation(
-      () =>
-        resource.type === "local_media" && mediaChange
-          ? runMediaUpload(mediaChange.files, (reportProgress) =>
-              updateLocalMediaResource(
-                resource.id,
-                {
-                  ...form,
-                  files: mediaChange.files,
-                  order: mediaChange.order,
-                },
-                reportProgress,
-              ),
-            )
-          : updateResourceDetails(resource.id, form),
-      "Resource updated",
-    );
-
-    if (saved) {
-      setResourceEditOpen(false);
-      setResourceToEdit(undefined);
-    } else {
-      setResourceEditOpen(true);
-    }
+    setResourceToEdit(undefined);
+    setBusy(true);
+    void (resource.type === "local_media" && mediaChange
+      ? runMediaUpload(mediaChange.files, (reportProgress) =>
+          updateLocalMediaResource(
+            resource.id,
+            {
+              ...form,
+              files: mediaChange.files,
+              order: mediaChange.order,
+            },
+            reportProgress,
+          ),
+        )
+      : updateResourceDetails(resource.id, form)
+    )
+      .then(() => refreshResource(resource.id))
+      .then(() => toast.add({ title: "Resource updated", type: "success" }))
+      .catch((reason: unknown) => {
+        toast.add({
+          title: reason instanceof Error ? reason.message : "Resource update failed.",
+          type: "error",
+        });
+      })
+      .finally(() => setBusy(false));
   }
 
   async function runMediaUpload<T>(
@@ -1319,7 +1393,7 @@ export function VaultDetailPage() {
                   : new Set(detail.spaces.map((space) => space.id)),
               );
             }}
-            onViewModeChange={setViewMode}
+            onViewModeChange={handleViewModeChange}
             selectedResourceIds={selectedResourceIds}
             selectionSpaceId={selectionSpaceId}
             transferTargets={transferTargets}

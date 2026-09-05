@@ -37,6 +37,7 @@ import type {
 import { Spinner } from "@/components/aicanvas/andromeda/components/Spinner";
 import { Avatar } from "@/components/aicanvas/andromeda/components/Avatar";
 import { ShaderBackground } from "@/components/motion/shader-background";
+import { getStoredVaultResourceViewMode } from "@/features/resource/vault-view-mode";
 
 const viewCopy: Record<
   DashboardView,
@@ -262,6 +263,7 @@ export function FlashStashPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
+  const viewMode = getStoredVaultResourceViewMode();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -357,9 +359,14 @@ export function FlashStashPage() {
           title="Flash stash is empty"
         />
       ) : (
-        <div className="columns-1 gap-3 sm:columns-2 xl:columns-3 2xl:columns-4">
+        <div className={viewMode === "masonry" ? "columns-1 gap-3 sm:columns-2 xl:columns-3 2xl:columns-4" : "grid gap-3"}>
           {resources.map((resource, index) => (
-            <div className="mb-3 break-inside-avoid" key={resource.id}>
+            <div
+              className={
+                viewMode === "masonry" ? "mb-3 break-inside-avoid" : undefined
+              }
+              key={resource.id}
+            >
               <ResourceCard
                 canDeleteResource
                 canEditResource={false}
@@ -385,7 +392,7 @@ export function FlashStashPage() {
                 transferTargets={targets}
                 vaultId="flash-stash"
                 vaultName="Flash stash"
-                viewMode="masonry"
+                viewMode={viewMode}
               />
             </div>
           ))}
@@ -512,36 +519,47 @@ function DashboardResourceCards({
   updatingResourceId: string;
 }) {
   const { mediaVisible } = useOutletContext<DashboardOutletContext>();
+  const viewMode = getStoredVaultResourceViewMode();
 
   return (
-    <div className="grid gap-2">
+    <div
+      className={
+        viewMode === "masonry"
+          ? "columns-1 gap-3 sm:columns-2 xl:columns-3 2xl:columns-4"
+          : "grid gap-2"
+      }
+    >
       {entries.map((entry, index) => (
-        <ResourceCard
-          canDeleteResource={false}
-          canEditResource={false}
-          disabled={updatingResourceId === entry.resource.id}
-          index={index}
-          isActive={false}
-          isSignedIn
-          isVaultOwner={false}
+        <div
+          className={viewMode === "masonry" ? "mb-3 break-inside-avoid" : undefined}
           key={entry.id}
-          mediaVisible={mediaVisible}
-          onCreateTransferTargetSpace={() => undefined}
-          onDelete={() => undefined}
-          onLoadTransferTargets={() => Promise.resolve()}
-          onOpenDetails={() => undefined}
-          onToggleReadLater={() => void onToggleReadLater(entry.resource)}
-          onToggleStar={() => void onToggleStar(entry.resource)}
-          onTransferResource={() => Promise.resolve()}
-          resource={entry.resource}
-          showAnnotationActions={false}
-          spaceId={entry.spaceId}
-          spaceName={entry.spaceName}
-          transferTargets={[]}
-          vaultId={entry.vaultId}
-          vaultName={entry.vaultName}
-          viewMode="list"
-        />
+        >
+          <ResourceCard
+            canDeleteResource={false}
+            canEditResource={false}
+            disabled={updatingResourceId === entry.resource.id}
+            index={index}
+            isActive={false}
+            isSignedIn
+            isVaultOwner={false}
+            mediaVisible={mediaVisible}
+            onCreateTransferTargetSpace={() => undefined}
+            onDelete={() => undefined}
+            onLoadTransferTargets={() => Promise.resolve()}
+            onOpenDetails={() => undefined}
+            onToggleReadLater={() => void onToggleReadLater(entry.resource)}
+            onToggleStar={() => void onToggleStar(entry.resource)}
+            onTransferResource={() => Promise.resolve()}
+            resource={entry.resource}
+            showAnnotationActions={false}
+            spaceId={entry.spaceId}
+            spaceName={entry.spaceName}
+            transferTargets={[]}
+            vaultId={entry.vaultId}
+            vaultName={entry.vaultName}
+            viewMode={viewMode}
+          />
+        </div>
       ))}
     </div>
   );

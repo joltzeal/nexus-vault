@@ -11,6 +11,20 @@ export function createMediaProxyUrl(objectKey: string) {
   return `/api/v1/media/${encodedKey}`
 }
 
+/**
+ * Proxy URL for media served from a resource. Proxied addresses are stored in
+ * metadata as root-relative paths so every client can tell "needs our API"
+ * apart from "direct CDN link" by URL shape alone.
+ */
+export function createResourceMediaStreamUrl(
+  resourceId: string,
+  mediaIndex: number,
+  variant?: "thumbnail",
+) {
+  const path = `/api/v1/resources/${encodeURIComponent(resourceId)}/media/${mediaIndex}/stream`
+  return variant ? `${path}?variant=${variant}` : path
+}
+
 export function isPublicMediaObjectKey(objectKey: string) {
   return (
     objectKey.startsWith("screenshots/") ||

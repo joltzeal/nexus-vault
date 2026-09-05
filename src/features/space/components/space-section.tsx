@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSortable } from "@dnd-kit/react/sortable";
 import {
   ChevronDown,
@@ -7,6 +7,7 @@ import {
   Copy,
   GripVertical,
   Info,
+  ListFilter,
   ListChecks,
   Pencil,
   Plus,
@@ -25,15 +26,26 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Filters,
+  createFilterQuery,
+  flattenFilterConditions,
+  type FilterField,
+  type FilterQuery,
+} from "@/components/reui/filters/filters";
+import type { FilterCondition } from "@/components/reui/filters/filters-query";
 import { toast } from "@/lib/toast";
 import { ResourceMarkdown } from "@/features/resource/components/resource-description";
-import type { ResourceTransferTargetVault } from "@/features/resource/types";
+import {
+  resourceTypes,
+  type Resource,
+  type ResourceTransferTargetVault,
+} from "@/features/resource/types";
 import {
   SpaceIcon,
   SpaceIconPicker,
 } from "@/features/resource/space-icon-picker";
 import { SpaceTransferDialog } from "./space-transfer-dialog";
-import type { Resource } from "@/features/resource/types";
 
 const Badge: any = BadgePrimitive;
 const Button: any = ButtonPrimitive;
@@ -103,6 +115,9 @@ export function SpaceSection({
 }: SpaceSectionProps) {
   const [icon, setIcon] = useState(space.icon || "tv");
   const [descriptionOpen, setDescriptionOpen] = useState(false);
+  const [filterQuery, setFilterQuery] = useState<FilterQuery>(() =>
+    createFilterQuery(),
+  );
   const descriptionCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -118,6 +133,49 @@ export function SpaceSection({
   const selectedCount = resources.filter((resource) =>
     selectedResourceIds.has(resource.id),
   ).length;
+  const filterFields = useMemo<FilterField[]>(
+    () => [
+      {
+        id: "type",
+        label: "Resource type",
+        type: "select",
+        options: resourceTypes.map((item) => ({
+          label: item.label,
+          value: item.value,
+        })),
+      },
+      {
+        id: "createdAt",
+        label: "Created",
+        type: "text",
+        placeholder: "YYYY-MM-DD",
+        operators: [
+          { label: "is", value: "is" },
+          { label: "is not", value: "is_not" },
+          { label: "is before", value: "is_before" },
+          { label: "is after", value: "is_after" },
+          { label: "on or before", value: "is_on_or_before" },
+          { label: "on or after", value: "is_on_or_after" },
+        ],
+      },
+      {
+        id: "url",
+        label: "URL",
+        type: "text",
+        placeholder: "Search URL",
+        operators: [
+          { label: "contains", value: "contains" },
+          { label: "does not contain", value: "not_contains" },
+        ],
+      },
+    ],
+    [],
+  );
+  const filterConditions = flattenFilterConditions(filterQuery);
+  const filteredResources = resources.filter((resource) =>
+    matchesResourceFilters(resource, filterConditions),
+  );
+  const hasResourceFilters = filterConditions.length > 0;
   const menuItems = [
     { label: "Edit", icon: Pencil, onSelect: onEditSpace },
     {
@@ -225,9 +283,6 @@ export function SpaceSection({
           <span className="font-mono text-label text-muted-foreground">
             {resources.length}
           </span>
-          {selectedCount > 0 ? (
-            <Badge variant="accent">{selectedCount} selected</Badge>
-          ) : null}
           {space.description ? (
             <Popover open={descriptionOpen} onOpenChange={setDescriptionOpen}>
               <PopoverTrigger
@@ -248,7 +303,7 @@ export function SpaceSection({
               />
               <PopoverContent
                 align="start"
-                className="w-[min(28rem,calc(100vw-2rem))] gap-0 border border-border bg-card p-0 text-foreground"
+                className="flex max-h-[min(28rem,calc(100dvh-2rem))] w-[min(28rem,calc(100vw-2rem))] flex-col gap-0 overflow-hidden border border-border bg-card p-0 text-foreground"
                 onMouseEnter={openDescription}
                 onMouseLeave={scheduleDescriptionClose}
                 side="bottom"
@@ -258,7 +313,7 @@ export function SpaceSection({
                     Description
                   </PopoverTitle>
                 </PopoverHeader>
-                <ScrollArea className="max-h-72 px-3 py-2">
+                <ScrollArea className="min-h-0 max-h-[min(24rem,calc(100dvh-6rem))] flex-1 px-3 py-2">
                   <ResourceMarkdown
                     className="text-xs leading-5 text-muted-foreground"
                     value={space.description ?? ""}
@@ -267,10 +322,30 @@ export function SpaceSection({
               </PopoverContent>
             </Popover>
           ) : null}
+          {selectedCount > 0 ? (
+            <Badge variant="accent">{selectedCount} selected</Badge>
+          ) : null}
         </div>
         <div
-          className={`flex items-center gap-0.5 transition ${selectionMode ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+          className={`flex min-w-0 shrink-0 items-center gap-0.5 transition ${selectionMode || hasResourceFilters ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
         >
+          <Filters
+            className="min-w-0 max-w-[min(52vw,32rem)] flex-nowrap overflow-hidden [&>[role=toolbar]]:min-w-0 [&>[role=toolbar]]:flex-nowrap"
+            fields={filterFields}
+            onQueryChange={(nextQuery) => setFilterQuery(nextQuery)}
+            query={filterQuery}
+            showClear
+            trigger={
+              <Button
+                aria-label="Filter resources"
+                className={sectionIconButtonClass}
+                icon={ListFilter}
+                size="sm"
+                type="button"
+                variant="ghost"
+              />
+            }
+          />
           {isVaultOwner && resources.length > 0 ? (
             <Button
               aria-label="Select resources"
@@ -339,7 +414,7 @@ export function SpaceSection({
       </div>
       {!collapsed ? (
         <div className="min-h-20 border-border py-2">
-          {viewMode === "masonry" && resources.length > 0 ? (
+          {viewMode === "masonry" && filteredResources.length > 0 ? (
             <InfiniteMasonry
               ariaLabel={`${space.name} resources`}
               className="!min-h-20 !overflow-visible rounded-none border-0 bg-transparent p-0"
@@ -347,7 +422,7 @@ export function SpaceSection({
               endState={null}
               getItemKey={(resource) => resource.id}
               hasMore={false}
-              items={resources}
+              items={filteredResources}
               minColumnWidth={220}
               maxColumns={4}
               gap={8}
@@ -374,7 +449,7 @@ export function SpaceSection({
             />
           ) : (
             <div className="flex flex-col gap-2">
-              {resources.map((resource, index) =>
+              {filteredResources.map((resource, index) =>
                 renderResource ? (
                   <div key={resource.id}>
                     {renderResource(
@@ -395,25 +470,75 @@ export function SpaceSection({
               )}
             </div>
           )}
-          {resources.length === 0 ? (
-            <button
-              className="flex min-h-24 w-full flex-col items-center justify-center gap-2 border border-dashed border-border p-4 text-center text-muted-foreground transition hover:border-primary hover:text-foreground disabled:opacity-50"
-              disabled={disabled}
-              onClick={onAddResource}
-              type="button"
-            >
-              <Plus className="size-5" />
-              <span className="text-ui font-medium">
-                {canAddResource
-                  ? `Add a resource to ${space.name}`
-                  : `No resources in ${space.name} yet`}
-              </span>
-            </button>
+          {filteredResources.length === 0 ? (
+            hasResourceFilters ? (
+              <div className="flex min-h-20 items-center justify-center border border-dashed border-border p-4 text-center text-label text-muted-foreground">
+                No resources match these filters.
+              </div>
+            ) : (
+              <button
+                className="flex min-h-24 w-full flex-col items-center justify-center gap-2 border border-dashed border-border p-4 text-center text-muted-foreground transition hover:border-primary hover:text-foreground disabled:opacity-50"
+                disabled={disabled}
+                onClick={onAddResource}
+                type="button"
+              >
+                <Plus className="size-5" />
+                <span className="text-ui font-medium">
+                  {canAddResource
+                    ? `Add a resource to ${space.name}`
+                    : `No resources in ${space.name} yet`}
+                </span>
+              </button>
+            )
           ) : null}
         </div>
       ) : null}
     </section>
   );
+}
+
+function matchesResourceFilters(
+  resource: Resource,
+  conditions: FilterCondition[],
+) {
+  return conditions.every((condition) => {
+    const values = condition.values.map((value) => String(value));
+    let matches = true;
+
+    if (condition.field === "type") {
+      const selected = new Set(values);
+      matches =
+        condition.operator === "is"
+          ? resource.type === values[0]
+          : condition.operator === "is_not"
+            ? resource.type !== values[0]
+            : condition.operator === "is_none_of"
+              ? !selected.has(resource.type)
+              : selected.has(resource.type);
+    } else if (condition.field === "url") {
+      const url = (resource.url ?? "").toLocaleLowerCase();
+      const value = (values[0] ?? "").toLocaleLowerCase();
+      matches =
+        condition.operator === "not_contains" ? !url.includes(value) : url.includes(value);
+    } else if (condition.field === "createdAt") {
+      const createdAt = resource.createdAt.slice(0, 10);
+      const value = values[0] ?? "";
+      matches =
+        condition.operator === "is"
+          ? createdAt === value
+          : condition.operator === "is_not"
+            ? createdAt !== value
+            : condition.operator === "is_before"
+              ? createdAt < value
+              : condition.operator === "is_after"
+                ? createdAt > value
+                : condition.operator === "is_on_or_before"
+                  ? createdAt <= value
+                  : createdAt >= value;
+    }
+
+    return condition.negated ? !matches : matches;
+  });
 }
 
 function FallbackResourceRow({ resource }: { resource: SpaceSectionResource }) {

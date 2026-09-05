@@ -5,6 +5,7 @@ import {
   type ResourceMediaMetadata,
 } from "../../domain/resources/metadata"
 import { parseGofileLink } from "../../domain/resources/input"
+import { createResourceMediaStreamUrl } from "../../domain/media-storage"
 
 import {
   RetryableMetadataError,
@@ -81,7 +82,10 @@ export const gofileMetadataProvider: MetadataProvider = {
         ? []
         : await collectGofileContent(root, "", files, accountToken, options, new Set(), 0)
       sortGofileFiles(files)
-      const media = files.flatMap((file) => toMedia(file, parsed.url))
+      const media: ResourceMediaMetadata[] = []
+      for (const file of files) {
+        media.push(...toMedia(file, parsed.url, resource.id, media.length))
+      }
       const rootName = getString(root.name)
       const title = root.type === "file"
         ? files[0]?.name ?? rootName ?? resource.title
@@ -207,11 +211,28 @@ async function collectGofileContent(
   return [{ name, type: "folder", children: tree }]
 }
 
-function toMedia(file: GofileFile, sourceUrl: string): ResourceMediaMetadata[] {
+/**
+ * GoFile CDN links require server-side tokens and cannot be hotlinked, so the
+ * metadata stores our own root-relative stream URLs; clients load them through
+ * the API proxy (with the user's session for private content).
+ */
+function toMedia(
+  file: GofileFile,
+  sourceUrl: string,
+  resourceId: string,
+  mediaIndex: number,
+): ResourceMediaMetadata[] {
   const url = getHttpUrl(file.content.link)
   if (!url) return []
 
-  const thumbnailUrl = getHttpUrl(file.content.thumbnail)
+  const kind = getMediaKind(getString(file.content.mimetype), file.name)
+  const streamUrl = createResourceMediaStreamUrl(resourceId, mediaIndex)
+  const thumbnailUrl =
+    kind === "video" && getHttpUrl(file.content.thumbnail)
+      ? createResourceMediaStreamUrl(resourceId, mediaIndex, "thumbnail")
+      : kind === "image"
+        ? streamUrl
+        : undefined
   const mimeType = getString(file.content.mimetype)
   const size = getNumber(file.content.size)
   const metadata: Record<string, unknown> = { path: file.path }
@@ -228,11 +249,11 @@ function toMedia(file: GofileFile, sourceUrl: string): ResourceMediaMetadata[] {
   }
 
   return [{
-    kind: getMediaKind(mimeType, file.name),
+    kind,
     provider: "gofile",
     sourceId: getString(file.content.id),
     sourceUrl,
-    url,
+    url: streamUrl,
     ...(thumbnailUrl ? { thumbnailUrl } : {}),
     ...(mimeType ? { mimeType } : {}),
     fileName: file.name,

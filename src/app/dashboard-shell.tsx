@@ -256,29 +256,30 @@ export function DashboardShell({
     return () => controller.abort();
   }, [refreshVaults]);
 
-  async function handleCreateVault(event: FormEvent<HTMLFormElement>) {
+  function handleCreateVault(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!createVaultForm.name.trim()) return;
-    try {
-      setCreateVaultBusy(true);
-      const created = await createDashboardVault({
-        ...createVaultForm,
-        cover: createVaultForm.cover || createInitialVaultForm().cover,
-      });
-      await refreshVaults();
-      setCreateVaultOpen(false);
-      setCreateVaultForm(createInitialVaultForm());
-      toast.add({ title: "Vault created", type: "success" });
-      navigate(`/dashboard/vault/${encodeURIComponent(created.id)}`);
-    } catch (error) {
-      toast.add({
-        title:
-          error instanceof Error ? error.message : "Could not create vault.",
-        type: "error",
-      });
-    } finally {
-      setCreateVaultBusy(false);
-    }
+    const form = {
+      ...createVaultForm,
+      cover: createVaultForm.cover || createInitialVaultForm().cover,
+    };
+    setCreateVaultOpen(false);
+    setCreateVaultForm(createInitialVaultForm());
+    setCreateVaultBusy(true);
+    void createDashboardVault(form)
+      .then((created) => {
+        void refreshVaults().catch(() => undefined);
+        toast.add({ title: "Vault created", type: "success" });
+        navigate(`/dashboard/vault/${encodeURIComponent(created.id)}`);
+      })
+      .catch((error: unknown) => {
+        toast.add({
+          title:
+            error instanceof Error ? error.message : "Could not create vault.",
+          type: "error",
+        });
+      })
+      .finally(() => setCreateVaultBusy(false));
   }
 
   function resetCreateResourceForm() {
@@ -295,44 +296,46 @@ export function DashboardShell({
     }));
   }
 
-  async function handleCreateResource(event: FormEvent<HTMLFormElement>) {
+  function handleCreateResource(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedResourceTarget || !createResourceForm.spaceId) return;
-    try {
-      setCreateResourceBusy(true);
-      await createVaultResource(selectedResourceTarget.id, createResourceForm);
-      setCreateResourceOpen(false);
-      resetCreateResourceForm();
-      await refreshVaults();
-      toast.add({ title: "Resource added", type: "success" });
-    } catch (error) {
-      toast.add({
-        title:
-          error instanceof Error ? error.message : "Could not add resource.",
-        type: "error",
-      });
-    } finally {
-      setCreateResourceBusy(false);
-    }
+    const vaultId = selectedResourceTarget.id;
+    const form = createResourceForm;
+    setCreateResourceOpen(false);
+    resetCreateResourceForm();
+    setCreateResourceBusy(true);
+    void createVaultResource(vaultId, form)
+      .then(() => {
+        toast.add({ title: "Resource added", type: "success" });
+      })
+      .catch((error: unknown) => {
+        toast.add({
+          title:
+            error instanceof Error ? error.message : "Could not add resource.",
+          type: "error",
+        });
+      })
+      .finally(() => setCreateResourceBusy(false));
   }
 
-  async function handleSaveResourceToStash() {
+  function handleSaveResourceToStash() {
     if (!createResourceForm.url.trim()) return;
-    try {
-      setCreateResourceBusy(true);
-      await createStashResource(createResourceForm);
-      setCreateResourceOpen(false);
-      resetCreateResourceForm();
-      toast.add({ title: "Resource added to flash stash", type: "success" });
-      navigate("/dashboard/flash-stash");
-    } catch (error) {
-      toast.add({
-        title: error instanceof Error ? error.message : "Could not add resource.",
-        type: "error",
-      });
-    } finally {
-      setCreateResourceBusy(false);
-    }
+    const form = createResourceForm;
+    setCreateResourceOpen(false);
+    resetCreateResourceForm();
+    setCreateResourceBusy(true);
+    void createStashResource(form)
+      .then(() => {
+        toast.add({ title: "Resource added to flash stash", type: "success" });
+        navigate("/dashboard/flash-stash");
+      })
+      .catch((error: unknown) => {
+        toast.add({
+          title: error instanceof Error ? error.message : "Could not add resource.",
+          type: "error",
+        });
+      })
+      .finally(() => setCreateResourceBusy(false));
   }
 
   const user = session.data?.user;

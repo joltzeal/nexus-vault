@@ -1,9 +1,17 @@
 "use client"
 
-import { Copy } from "lucide-react"
+import { BookOpenText, Copy } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 
@@ -13,12 +21,14 @@ export function WechatMpDescription({
   className,
   hideImages = false,
   html,
+  onOpenReader,
   title,
   viewMode,
 }: {
   className?: string
   hideImages?: boolean
   html?: string
+  onOpenReader?: () => void
   title: string
   viewMode: ResourceCardViewMode
 }) {
@@ -40,26 +50,45 @@ export function WechatMpDescription({
         <span className="mono min-w-0 truncate text-[10px] uppercase text-muted-foreground">
           Article HTML
         </span>
-        <Button
-          className="size-5 shrink-0 rounded-sm text-muted-foreground opacity-70 transition group-hover/wechat-html:opacity-100 hover:text-primary active:translate-y-0 [&_svg]:size-3"
-          onClick={(event) => {
-            event.stopPropagation()
-            void navigator.clipboard?.writeText(html ?? "")
-            toast.success("公众号原文已复制")
-          }}
-          size="icon-xs"
-          title="复制公众号原文"
-          type="button"
-          variant="ghost"
-        >
-          <Copy />
-          <span className="sr-only">复制公众号原文</span>
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          {onOpenReader ? (
+            <Button
+              className="h-6 items-center rounded-sm px-1.5 text-[11px] leading-none text-muted-foreground opacity-80 transition group-hover/wechat-html:opacity-100 hover:text-primary active:translate-y-0 [&_svg]:size-3 [&_svg]:self-center"
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenReader()
+              }}
+              size="xs"
+              title="在弹窗中阅读文章"
+              type="button"
+              variant="ghost"
+            >
+              <BookOpenText />
+              阅读文章
+            </Button>
+          ) : null}
+          <Button
+            className="size-5 shrink-0 rounded-sm text-muted-foreground opacity-70 transition group-hover/wechat-html:opacity-100 hover:text-primary active:translate-y-0 [&_svg]:size-3"
+            onClick={(event) => {
+              event.stopPropagation()
+              void navigator.clipboard?.writeText(html ?? "")
+              toast.success("公众号原文已复制")
+            }}
+            size="icon-xs"
+            title="复制公众号原文"
+            type="button"
+            variant="ghost"
+          >
+            <Copy />
+            <span className="sr-only">复制公众号原文</span>
+          </Button>
+        </div>
       </div>
       <div
-        className={cn(
-          "wechat-mp-html min-w-0 overflow-hidden px-3 py-3 transition-[max-height]",
-          open
+      className={cn(
+        "wechat-mp-html min-w-0 overflow-hidden px-3 py-3 text-sm leading-6 transition-[max-height]",
+        hideImages && "[&_img]:hidden",
+        open
             ? "max-h-[none]"
             : viewMode === "list"
               ? "max-h-[380px]"
@@ -86,6 +115,49 @@ export function WechatMpDescription({
         </Button>
       </div>
     </div>
+  )
+}
+
+export function WechatMpArticleDialog({
+  accountName,
+  hideImages = false,
+  html,
+  onOpenChange,
+  open,
+  title,
+}: {
+  accountName?: string
+  hideImages?: boolean
+  html?: string
+  onOpenChange: (open: boolean) => void
+  open: boolean
+  title: string
+}) {
+  const safeHtml = useMemo(() => sanitizeWechatHtml(html), [html])
+  if (!safeHtml) return null
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex h-[min(90dvh,900px)] max-h-[calc(100dvh-2rem)] w-[min(1000px,calc(100vw-2rem))] flex-col gap-0 overflow-hidden rounded-none border-border bg-card p-0 text-foreground sm:max-w-[1000px]">
+        <DialogHeader className="shrink-0 border-b border-border px-5 py-4 pr-12">
+          <DialogTitle className="font-display text-lg">{title}</DialogTitle>
+          <DialogDescription className="truncate text-muted-foreground">
+            {accountName || "微信公众号"}
+          </DialogDescription>
+        </DialogHeader>
+        <ScrollArea className="min-h-0 flex-1">
+          <article
+            className={cn(
+              "wechat-mp-html mx-auto min-w-0 max-w-3xl px-5 py-6 text-[15px] leading-7 text-foreground sm:px-10 sm:py-8",
+              hideImages && "[&_img]:hidden",
+            )}
+            data-hide-images={hideImages ? "true" : undefined}
+            dangerouslySetInnerHTML={{ __html: safeHtml }}
+            title={title}
+          />
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   )
 }
 

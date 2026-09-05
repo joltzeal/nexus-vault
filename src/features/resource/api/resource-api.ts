@@ -21,6 +21,18 @@ export type ResourceDetailsPatch = {
   spaceId?: string | null
 }
 
+export async function getResource(resourceId: string): Promise<Resource> {
+  const response = await fetch(`/api/v1/resources/${encodeURIComponent(resourceId)}`, {
+    credentials: "include",
+  })
+  const payload = (await response.json().catch(() => null)) as ApiEnvelope<Resource> | null
+  if (!response.ok || payload?.success === false) {
+    throw new Error(payload?.error?.message ?? "Could not load resource.")
+  }
+  if (!payload?.data) throw new Error("Resource response was empty.")
+  return payload.data
+}
+
 export async function updateResourceDetails(
   resourceId: string,
   patch: ResourceDetailsPatch,

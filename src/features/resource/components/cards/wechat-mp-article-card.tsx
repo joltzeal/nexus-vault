@@ -1,5 +1,5 @@
 import { BookOpenText, MapPin } from "lucide-react"
-import type { ComponentType } from "react"
+import { useState, type ComponentType } from "react"
 
 import { Badge } from "@/components/aicanvas/andromeda/components/Badge"
 import { Tag } from "@/components/aicanvas/andromeda/components/Tag"
@@ -18,7 +18,10 @@ import type {
   ResourcePreviewRenderState,
   WechatMpArticleCardData,
 } from "./types"
-import { WechatMpDescription } from "./wechat-mp-description"
+import {
+  WechatMpArticleDialog,
+  WechatMpDescription,
+} from "./wechat-mp-description"
 
 const BaseBadge = Badge as unknown as ComponentType<Record<string, unknown>>
 const BaseTag = Tag as unknown as ComponentType<Record<string, unknown>>
@@ -47,35 +50,37 @@ export function WechatMpArticleCard({
 }) {
   const accountName = data.accountName || "微信公众号"
   const screenName = getWechatScreenName(data.accountUsername)
+  const [articleOpen, setArticleOpen] = useState(false)
 
   return (
-    <ResourceCardFrame
-      actions={actions}
-      annotation={annotation}
-      articleId={articleId}
-      articleRef={articleRef}
-      className={className}
-      commentAction={commentAction}
-      commentEditor={commentEditor}
-      footerActions={footerActions}
-      footerMeta={data.createdAt ? (
-        <time className="mono" dateTime={data.createdAt}>
-          {formatPreviewDate(data.createdAt)}
-        </time>
-      ) : undefined}
-      leadingControl={leadingControl}
-      onActivate={onActivate}
-      resourceCreatedAt={resourceCreatedAt}
-      sourceIcon={<WechatSourceIcon />}
-      sourceName="微信公众号"
-      state={state}
-      url={data.url}
-      viewMode={viewMode}
-    >
-      {state === "loading" ? (
-        <ResourceCardSkeleton media={mediaVisible} viewMode={viewMode} />
-      ) : (
-        <div className="flex min-w-0 flex-col gap-3">
+    <>
+      <ResourceCardFrame
+        actions={actions}
+        annotation={annotation}
+        articleId={articleId}
+        articleRef={articleRef}
+        className={className}
+        commentAction={commentAction}
+        commentEditor={commentEditor}
+        footerActions={footerActions}
+        footerMeta={data.createdAt ? (
+          <time className="mono" dateTime={data.createdAt}>
+            {formatPreviewDate(data.createdAt)}
+          </time>
+        ) : undefined}
+        leadingControl={leadingControl}
+        onActivate={onActivate}
+        resourceCreatedAt={resourceCreatedAt}
+        sourceIcon={<WechatSourceIcon />}
+        sourceName="微信公众号"
+        state={state}
+        url={data.url}
+        viewMode={viewMode}
+      >
+        {state === "loading" ? (
+          <ResourceCardSkeleton media={mediaVisible} viewMode={viewMode} />
+        ) : (
+          <div className="flex min-w-0 flex-col gap-3">
           <div className="flex min-w-0 items-start gap-3">
             <a
               className="shrink-0"
@@ -134,7 +139,7 @@ export function WechatMpArticleCard({
             </h3>
             {data.excerpt && (
               <p className={cn(
-                "mt-1.5 text-xs leading-5 text-muted-foreground",
+                "mt-1.5 text-sm leading-6 text-muted-foreground",
                 viewMode === "list" && "line-clamp-3",
               )}>
                 {data.excerpt}
@@ -170,14 +175,24 @@ export function WechatMpArticleCard({
               <WechatMpDescription
                 hideImages={!mediaVisible}
                 html={data.contentHtml}
+                onOpenReader={() => setArticleOpen(true)}
                 title={data.title}
                 viewMode={viewMode}
               />
             </>
           )}
-        </div>
-      )}
-    </ResourceCardFrame>
+          </div>
+        )}
+      </ResourceCardFrame>
+      <WechatMpArticleDialog
+        accountName={accountName}
+        hideImages={!mediaVisible}
+        html={data.contentHtml}
+        onOpenChange={setArticleOpen}
+        open={articleOpen}
+        title={data.title}
+      />
+    </>
   )
 }
 

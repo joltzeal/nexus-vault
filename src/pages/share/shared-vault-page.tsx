@@ -14,6 +14,7 @@ import { authClient } from "@/lib/auth"
 import { forkDashboardVault, setVaultStarred } from "@/features/vault/api/vault-api"
 import type { AuthMode } from "@/features/auth/components/auth-dialog"
 import type { ResourceTransferTargetVault } from "@/features/resource/types"
+import { getStoredVaultResourceViewMode, storeVaultResourceViewMode } from "@/features/resource/vault-view-mode"
 import { SpaceSection } from "@/features/space/components"
 import { VaultOutline, type VaultViewMode } from "@/features/vault/components/vault-outline"
 import type { VaultDetail } from "@/features/vault/api/vault-api"
@@ -78,7 +79,7 @@ function SharedVaultContent({ detail, shareSlug, onSubmit, submissionOpen, onSub
   const [starCount, setStarCount] = useState(detail.vault.starCount)
   const [forking, setForking] = useState(false)
   const [mediaVisible, setMediaVisible] = useState(detail.vault.nsfwEnabled)
-  const [viewMode, setViewMode] = useState<VaultViewMode>("list")
+  const [viewMode, setViewMode] = useState<VaultViewMode>(getStoredVaultResourceViewMode)
   const displayDetail = { ...detail, vault: { ...detail.vault, starCount } }
 
   async function handleStar() {
@@ -126,7 +127,7 @@ function SharedVaultContent({ detail, shareSlug, onSubmit, submissionOpen, onSub
         {detail.spaces.length === 0 ? <div className="grid min-h-32 place-items-center border border-dashed border-border text-sm text-muted-foreground">No spaces in this vault.</div> : null}
       </main>
       <div className="flex min-w-0 flex-col gap-3">
-        <VaultOutline detail={detail} disabled={false} onAddSpace={() => undefined} onViewModeChange={setViewMode} viewMode={viewMode} />
+        <VaultOutline detail={detail} disabled={false} onAddSpace={() => undefined} onViewModeChange={(mode) => { setViewMode(mode); storeVaultResourceViewMode(mode) }} viewMode={viewMode} />
       </div>
       </div>
     </DragDropProvider>
