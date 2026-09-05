@@ -16,6 +16,7 @@ import type { Actor, Db } from "../types/legacy-api"
 import {
   getVaultRoleForActor,
   requireVaultPermission,
+  requireVaultRead,
 } from "./permission-service"
 import { getDefaultSpaceId, getSpaceInVaultOrThrow } from "./space-service"
 import { ensureActorUser } from "./user-service"
@@ -129,12 +130,16 @@ export async function updateResource(
   const resource = await getResourceOrThrow(db, resourceId)
   await requireResourceMutationPermission(db, resource, input.actor)
 
+  if (resource.stashUserId && input.spaceId !== undefined) {
+    throw conflict("闪存中的 Resource 只能整理到 Vault，不能直接设置 Space。")
+  }
+
   const nextSpaceId =
     input.spaceId === undefined
       ? undefined
       : input.spaceId === null
         ? null
-        : (await getSpaceInVaultOrThrow(db, resource.vaultId, input.spaceId)).id
+        : (await getSpaceInVaultOrThrow(db, resource.vaultId!, input.spaceId)).id
 
   const parsedInput =
     input.url !== undefined
@@ -157,7 +162,11 @@ export async function updateResource(
   }
 
   if (nextUrl !== undefined && nextUrl !== resource.url) {
-    await ensureResourceUrlNotDuplicate(db, resource.vaultId, nextDedupeKey!, resourceId)
+    if (resource.vaultId) {
+      await ensureResourceUrlNotDuplicate(db, resource.vaultId, nextDedupeKey!, resourceId)
+    } else if (resource.stashUserId) {
+      await ensureStashResourceUrlNotDuplicate(db, resource.stashUserId, nextDedupeKey!, resourceId)
+    }
   }
 
   const updates = {
@@ -222,6 +231,22 @@ export async function ensureResourceUrlNotDuplicate(
   if (duplicate) {
     throw conflict("当前 vault 中已经有该链接，请不要重复添加。")
   }
+}
+
+export async function ensureStashResourceUrlNotDuplicate(
+  db: Db,
+  stashUserId: string,
+  dedupeKey: string,
+  excludeResourceId?: string,
+) {
+  const rows = await db
+    .select({ id: resources.id })
+    .from(resources)
+    .where(and(eq(resources.stashUserId, stashUserId), eq(resources.dedupeKey, dedupeKey)))
+    .limit(1)
+
+  const duplicate = rows.find((resource) => resource.id !== excludeResourceId)
+  if (duplicate) throw conflict("闪存中已经有该链接，请不要重复添加。")
 }
 
 export function getDuplicateResourceKey(url: string) {
@@ -353,11 +378,32 @@ export async function transferResource(
   }
 ) {
   const resource = await getResourceOrThrow(db, resourceId)
+  if (resource.stashUserId) {
+    if (input.action !== "move") throw conflict("闪存中的 Resource 只能整理到 Vault，不能复制。")
+    if (resource.stashUserId !== input.actor.id) throw forbidden("Only the stash owner can organize this resource.")
+    await getVaultOrThrow(db, input.targetVaultId)
+    await getSpaceInVaultOrThrow(db, input.targetVaultId, input.targetSpaceId)
+    await requireVaultPermission(db, {
+      vaultId: input.targetVaultId,
+      actor: input.actor,
+      action: "resource:create",
+    })
+    await ensureResourceUrlNotDuplicate(db, input.targetVaultId, resource.dedupeKey)
+    const position = await getNextResourcePosition(db, input.targetSpaceId)
+    await db.update(resources).set({
+      vaultId: input.targetVaultId,
+      stashUserId: null,
+      spaceId: input.targetSpaceId,
+      position,
+      updatedAt: new Date().toISOString(),
+    }).where(eq(resources.id, resourceId))
+    return { id: resourceId, action: "move" as const, vaultId: input.targetVaultId, spaceId: input.targetSpaceId }
+  }
   if (input.targetSpaceId === resource.spaceId) {
     throw conflict("目标就是当前 Space，无需操作。")
   }
 
-  const sourceRole = await getVaultRoleForActor(db, resource.vaultId, input.actor)
+  const sourceRole = await getVaultRoleForActor(db, resource.vaultId!, input.actor)
   if (sourceRole !== "owner") {
     throw forbidden("Only the vault owner can transfer resources.")
   }
@@ -458,6 +504,7 @@ export async function transferResources(
     .select({
       id: resources.id,
       vaultId: resources.vaultId,
+      stashUserId: resources.stashUserId,
       spaceId: resources.spaceId,
       type: resources.type,
       title: resources.title,
@@ -475,6 +522,10 @@ export async function transferResources(
     throw notFound("Some resources were not found.")
   }
 
+  if (resourceRows.some((resource) => resource.stashUserId)) {
+    throw conflict("闪存中的 Resource 请逐条整理到 Vault。")
+  }
+
   const orderedResources = resourceIds.map((resourceId) => {
     const resource = resourceRows.find((item) => item.id === resourceId)
     if (!resource) throw notFound("Resource not found.")
@@ -488,7 +539,7 @@ export async function transferResources(
     throw conflict("部分 Resource 已经在目标 Space 中，无需操作。")
   }
 
-  for (const vaultId of new Set(orderedResources.map((resource) => resource.vaultId))) {
+  for (const vaultId of new Set(orderedResources.map((resource) => resource.vaultId!))) {
     const sourceRole = await getVaultRoleForActor(db, vaultId, input.actor)
     if (sourceRole !== "owner") {
       throw forbidden("Only the vault owner can transfer resources.")
@@ -626,9 +677,26 @@ export async function requireResourceMutationPermission(
 ) {
   if (!actor) throw forbidden("Missing permission: resource:update")
 
-  const role = await getVaultRoleForActor(db, resource.vaultId, actor)
+  if (resource.stashUserId) {
+    if (resource.stashUserId !== actor.id) throw forbidden("Only the stash owner can modify this resource.")
+    return
+  }
+
+  const role = await getVaultRoleForActor(db, resource.vaultId!, actor)
   if (role === "owner") return
   if (role === "editor" && resource.createdBy === actor.id) return
 
   throw forbidden("Editors can only modify resources they created.")
+}
+
+export async function requireResourceReadPermission(
+  db: Db,
+  resource: Awaited<ReturnType<typeof getResourceOrThrow>>,
+  actor?: Actor,
+) {
+  if (resource.stashUserId) {
+    if (!actor || resource.stashUserId !== actor.id) throw forbidden("Only the stash owner can access this resource.")
+    return
+  }
+  await requireVaultRead(db, { actor, vaultId: resource.vaultId! })
 }

@@ -14,8 +14,21 @@ import { Toaster } from "@/components/ui/toast";
 import type { DashboardVaultItem } from "@/features/dashboard/types";
 import { DashboardSidebar } from "@/pages/dashboard/dashboard-sidebar";
 import { listDashboardVaults } from "@/features/dashboard/api";
-import { createDashboardVault } from "@/features/vault/api";
+import {
+  createDashboardVault,
+  createVaultResource,
+} from "@/features/vault/api";
 import { CreateVaultDialog } from "@/features/vault/components";
+import { CreateResourceDialog } from "@/features/resource/components";
+import {
+  createStashResource,
+  listResourceTransferTargets,
+} from "@/features/resource/api";
+import {
+  emptyResourceForm,
+  type ResourceForm,
+  type ResourceTransferTargetVault,
+} from "@/features/resource/types";
 import type { VaultForm } from "@/features/vault/types";
 import { authClient } from "@/lib/auth";
 import { toast } from "@/components/ui/toast";
@@ -88,6 +101,15 @@ export function DashboardShell({
   const [loadingVaultId, setLoadingVaultId] = useState<string | null>(null);
   const [createVaultOpen, setCreateVaultOpen] = useState(false);
   const [createVaultBusy, setCreateVaultBusy] = useState(false);
+  const [createResourceOpen, setCreateResourceOpen] = useState(false);
+  const [createResourceBusy, setCreateResourceBusy] = useState(false);
+  const [createResourceForm, setCreateResourceForm] =
+    useState<ResourceForm>(emptyResourceForm);
+  const [resourceTargets, setResourceTargets] = useState<
+    ResourceTransferTargetVault[]
+  >([]);
+  const [resourceTargetsLoading, setResourceTargetsLoading] = useState(false);
+  const [resourceTargetVaultId, setResourceTargetVaultId] = useState("");
   const [vaultStatus, setVaultStatus] = useState<DashboardVaultStatus | null>(null);
   const [createVaultForm, setCreateVaultForm] = useState<VaultForm>(
     createInitialVaultForm,
@@ -133,6 +155,42 @@ export function DashboardShell({
   )?.[1];
   const activeVaultStatus =
     activeVaultId && vaultStatus?.vaultId === activeVaultId ? vaultStatus : null;
+  const selectedResourceTarget = resourceTargets.find(
+    (target) => target.id === resourceTargetVaultId,
+  );
+  const loadResourceTargets = useCallback(async () => {
+    setResourceTargetsLoading(true);
+    try {
+      const targets = await listResourceTransferTargets();
+      const target = targets[0];
+      setResourceTargets(targets);
+      setResourceTargetVaultId(target?.id ?? "");
+      setCreateResourceForm((form) => ({
+        ...form,
+        spaceId:
+          target?.spaces.some((space) => space.id === form.spaceId)
+            ? form.spaceId
+            : target?.spaces[0]?.id ?? "",
+      }));
+    } catch (error) {
+      toast.add({
+        title:
+          error instanceof Error
+            ? error.message
+            : "Could not load resource destinations.",
+        type: "error",
+      });
+    } finally {
+      setResourceTargetsLoading(false);
+    }
+  }, []);
+  const openResourceDialog = useCallback(() => {
+    if (activeVaultStatus?.onCreateResource) {
+      activeVaultStatus.onCreateResource();
+      return;
+    }
+    setCreateResourceOpen(true);
+  }, [activeVaultStatus]);
   const resourceTotal = loadedVaults.reduce(
     (total, vault) => total + (vault.resourceCount ?? 0),
     0,
@@ -159,6 +217,11 @@ export function DashboardShell({
   );
 
   useEffect(() => {
+    if (!createResourceOpen) return;
+    void loadResourceTargets();
+  }, [createResourceOpen, loadResourceTargets]);
+
+  useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey)
         return;
@@ -174,15 +237,15 @@ export function DashboardShell({
         handleMediaVisibleChange(!mediaVisible);
         return;
       }
-      if (event.key.toLocaleLowerCase() === "n" && activeVaultStatus?.onCreateResource) {
+      if (event.key.toLocaleLowerCase() === "n") {
         event.preventDefault();
-        activeVaultStatus.onCreateResource();
+        openResourceDialog();
       }
     };
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [activeVaultStatus, handleMediaVisibleChange, mediaVisible]);
+  }, [handleMediaVisibleChange, mediaVisible, openResourceDialog]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -218,6 +281,60 @@ export function DashboardShell({
     }
   }
 
+  function resetCreateResourceForm() {
+    setCreateResourceForm(emptyResourceForm);
+    setResourceTargetVaultId("");
+  }
+
+  function handleResourceVaultChange(vaultId: string) {
+    const target = resourceTargets.find((item) => item.id === vaultId);
+    setResourceTargetVaultId(vaultId);
+    setCreateResourceForm((form) => ({
+      ...form,
+      spaceId: target?.spaces[0]?.id ?? "",
+    }));
+  }
+
+  async function handleCreateResource(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedResourceTarget || !createResourceForm.spaceId) return;
+    try {
+      setCreateResourceBusy(true);
+      await createVaultResource(selectedResourceTarget.id, createResourceForm);
+      setCreateResourceOpen(false);
+      resetCreateResourceForm();
+      await refreshVaults();
+      toast.add({ title: "Resource added", type: "success" });
+    } catch (error) {
+      toast.add({
+        title:
+          error instanceof Error ? error.message : "Could not add resource.",
+        type: "error",
+      });
+    } finally {
+      setCreateResourceBusy(false);
+    }
+  }
+
+  async function handleSaveResourceToStash() {
+    if (!createResourceForm.url.trim()) return;
+    try {
+      setCreateResourceBusy(true);
+      await createStashResource(createResourceForm);
+      setCreateResourceOpen(false);
+      resetCreateResourceForm();
+      toast.add({ title: "Resource added to flash stash", type: "success" });
+      navigate("/dashboard/flash-stash");
+    } catch (error) {
+      toast.add({
+        title: error instanceof Error ? error.message : "Could not add resource.",
+        type: "error",
+      });
+    } finally {
+      setCreateResourceBusy(false);
+    }
+  }
+
   const user = session.data?.user;
   return (
     <AnimatedSidebarProvider
@@ -238,6 +355,7 @@ export function DashboardShell({
             );
             setCreateVaultOpen(true);
           }}
+          onCreateResource={openResourceDialog}
           onOpenSettings={() => navigate("/dashboard/settings")}
           onSignOut={() => void authClient.signOut()}
           user={
@@ -280,20 +398,16 @@ export function DashboardShell({
         </div>
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1.5">
+            <kbd className="text-foreground">n</kbd>
+            <span>Add resource</span>
+          </span>
+          <span aria-hidden="true" className="text-border">/</span>
+          <span className="inline-flex items-center gap-1.5">
             <kbd className="text-foreground">t</kbd>
             <span>NSFW {mediaVisible ? "on" : "off"}</span>
           </span>
           {activeVaultId ? (
             <>
-              {activeVaultStatus?.onCreateResource ? (
-                <>
-                  <span aria-hidden="true" className="text-border">/</span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <kbd className="text-foreground">n</kbd>
-                    <span>New resource</span>
-                  </span>
-                </>
-              ) : null}
               <span aria-hidden="true" className="text-border">/</span>
               <span className="inline-flex items-center gap-1.5">
                 <kbd className="text-foreground">⌘K</kbd>
@@ -317,6 +431,23 @@ export function DashboardShell({
         onOpenChange={setCreateVaultOpen}
         onSubmit={handleCreateVault}
         open={createVaultOpen}
+      />
+      <CreateResourceDialog
+        form={createResourceForm}
+        isSubmitting={createResourceBusy}
+        onFormChange={setCreateResourceForm}
+        onOpenChange={(open) => {
+          setCreateResourceOpen(open);
+          if (!open) resetCreateResourceForm();
+        }}
+        onSaveToFlashStash={handleSaveResourceToStash}
+        onSubmit={handleCreateResource}
+        onVaultChange={handleResourceVaultChange}
+        open={createResourceOpen}
+        spaces={[]}
+        selectedVaultId={resourceTargetVaultId}
+        vaults={resourceTargets}
+        vaultsLoading={resourceTargetsLoading}
       />
       <Toaster />
     </AnimatedSidebarProvider>

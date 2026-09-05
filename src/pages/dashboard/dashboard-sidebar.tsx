@@ -3,7 +3,9 @@ import {
   Clock3,
   Folder,
   PanelLeftClose,
-  Plus,
+  FilePlus2,
+  FolderPlus,
+  Inbox,
   Share2,
   Star,
 } from "lucide-react";
@@ -31,7 +33,11 @@ import {
 } from "@/components/motion/animated-sidebar";
 import { Toggle } from "@/components/aicanvas/andromeda/components/Toggle";
 import type { DashboardVaultItem } from "@/features/dashboard/types";
-import { searchWorkspace, type WorkspaceSearchResult } from "@/features/dashboard/search-api";
+import {
+  searchWorkspace,
+  type WorkspaceSearchResult,
+} from "@/features/dashboard/search-api";
+import { BloomMenu } from "@/components/motion/bloom-menu";
 
 export type DashboardSidebarUser = {
   email: string;
@@ -44,6 +50,7 @@ type DashboardSidebarProps = {
   mediaVisible?: boolean;
   onVaultLoadingChange?: (vaultId: string, loading: boolean) => void;
   onCreateVault?: () => void;
+  onCreateResource?: () => void;
   onMediaVisibleChange?: (visible: boolean) => void;
   onOpenSettings?: () => void;
   onSignOut?: () => void;
@@ -57,16 +64,22 @@ export function DashboardSidebar({
   mediaVisible = true,
   onVaultLoadingChange,
   onCreateVault,
+  onCreateResource,
   onMediaVisibleChange,
   onOpenSettings,
   onSignOut,
   user,
   vaults = [],
 }: DashboardSidebarProps) {
+  const { state: sidebarState } = useAnimatedSidebar();
   const location = useLocation();
   const navigate = useNavigate();
   const [vaultQuery, setVaultQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<WorkspaceSearchResult>({ vaults: [], spaces: [], resources: [] });
+  const [searchResults, setSearchResults] = useState<WorkspaceSearchResult>({
+    vaults: [],
+    spaces: [],
+    resources: [],
+  });
   const [searching, setSearching] = useState(false);
   const activeVaultId = location.pathname.match(
     /^\/dashboard\/vault\/([^/]+)/,
@@ -80,7 +93,9 @@ export function DashboardSidebar({
           ? "watch-later"
           : location.pathname === "/dashboard/shared"
             ? "shared-vaults"
-            : "vault-document";
+            : location.pathname === "/dashboard/flash-stash"
+              ? "flash-stash"
+              : "vault-document";
   const itemClass = (active: boolean) =>
     active
       ? "dashboard-sidebar-item dashboard-sidebar-item--active"
@@ -112,7 +127,7 @@ export function DashboardSidebar({
   return (
     <AnimatedSidebar
       ariaLabel="NexusVault navigation"
-      className="!h-full"
+      className="!h-full z-30"
       collapsible="icon"
       panelClassName="!h-full border-sidebar-border bg-sidebar"
     >
@@ -140,7 +155,10 @@ export function DashboardSidebar({
               <span className="mono shrink-0 text-[9px] leading-none tracking-[0.08em] text-fg-dim">
                 v0.0.0
               </span>
-              <span aria-hidden="true" className="sidebar-cursor text-primary" />
+              <span
+                aria-hidden="true"
+                className="sidebar-cursor text-primary"
+              />
             </div>
           </div>
           <AnimatedSidebarClose
@@ -162,23 +180,60 @@ export function DashboardSidebar({
           />
           {vaultQuery.trim() ? (
             <div className="mt-2 max-h-64 overflow-y-auto border border-border bg-sidebar p-1">
-              {searching ? <p className="px-2 py-2 text-label text-muted-foreground">Searching...</p> : null}
-              {!searching && searchResults.vaults.length === 0 && searchResults.spaces.length === 0 && searchResults.resources.length === 0 ? (
-                <p className="px-2 py-2 text-label text-muted-foreground">No matches</p>
+              {searching ? (
+                <p className="px-2 py-2 text-label text-muted-foreground">
+                  Searching...
+                </p>
+              ) : null}
+              {!searching &&
+              searchResults.vaults.length === 0 &&
+              searchResults.spaces.length === 0 &&
+              searchResults.resources.length === 0 ? (
+                <p className="px-2 py-2 text-label text-muted-foreground">
+                  No matches
+                </p>
               ) : null}
               {searchResults.vaults.map((result) => (
-                <button className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent" key={`vault-${result.id}`} onClick={() => handleVaultSelect(result.id)} type="button">
-                  <span className="truncate">{result.title}</span><span className="ml-auto text-label text-muted-foreground">Vault</span>
+                <button
+                  className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent"
+                  key={`vault-${result.id}`}
+                  onClick={() => handleVaultSelect(result.id)}
+                  type="button"
+                >
+                  <span className="truncate">{result.title}</span>
+                  <span className="ml-auto text-label text-muted-foreground">
+                    Vault
+                  </span>
                 </button>
               ))}
               {searchResults.spaces.map((result) => (
-                <button className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent" key={`space-${result.id}`} onClick={() => handleVaultSelect(result.vaultId)} type="button">
-                  <span className="truncate">{result.name}</span><span className="ml-auto truncate pl-2 text-label text-muted-foreground">{result.vaultTitle}</span>
+                <button
+                  className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent"
+                  key={`space-${result.id}`}
+                  onClick={() => handleVaultSelect(result.vaultId)}
+                  type="button"
+                >
+                  <span className="truncate">{result.name}</span>
+                  <span className="ml-auto truncate pl-2 text-label text-muted-foreground">
+                    {result.vaultTitle}
+                  </span>
                 </button>
               ))}
               {searchResults.resources.map((result) => (
-                <button className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent" key={`resource-${result.id}`} onClick={() => handleVaultSelect(result.vaultId)} type="button">
-                  <span className="min-w-0 truncate">{result.title}</span><span className="ml-auto truncate pl-2 text-label text-muted-foreground">{result.spaceName ?? result.vaultTitle}</span>
+                <button
+                  className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent"
+                  key={`resource-${result.id}`}
+                  onClick={() =>
+                    result.vaultId === "flash-stash"
+                      ? navigate("/dashboard/flash-stash")
+                      : handleVaultSelect(result.vaultId)
+                  }
+                  type="button"
+                >
+                  <span className="min-w-0 truncate">{result.title}</span>
+                  <span className="ml-auto truncate pl-2 text-label text-muted-foreground">
+                    {result.spaceName ?? result.vaultTitle}
+                  </span>
                 </button>
               ))}
             </div>
@@ -196,6 +251,17 @@ export function DashboardSidebar({
                   onSelect={() => navigate("/dashboard")}
                 >
                   All vaults
+                </AnimatedSidebarMenuButton>
+              </AnimatedSidebarMenuItem>
+              <AnimatedSidebarMenuItem>
+                <AnimatedSidebarMenuButton
+                  badge={0}
+                  className={itemClass(activePage === "flash-stash")}
+                  icon={<Inbox className="size-4" />}
+                  isActive={activePage === "flash-stash"}
+                  onSelect={() => navigate("/dashboard/flash-stash")}
+                >
+                  Flash stash
                 </AnimatedSidebarMenuButton>
               </AnimatedSidebarMenuItem>
               <AnimatedSidebarMenuItem>
@@ -252,9 +318,13 @@ export function DashboardSidebar({
                     disabled={disabled || loadingVaultId === vault.id}
                     icon={
                       loadingVaultId === vault.id ? (
-                        <Spinner variant="accent" size="sm" label="Loading vault" />
+                        <Spinner
+                          variant="accent"
+                          size="sm"
+                          label="Loading vault"
+                        />
                       ) : vault.cover?.startsWith("http://") ||
-                      vault.cover?.startsWith("https://") ? (
+                        vault.cover?.startsWith("https://") ? (
                         <img
                           alt=""
                           className="size-4 object-cover"
@@ -291,18 +361,21 @@ export function DashboardSidebar({
         </AnimatedSidebarGroup>
       </AnimatedSidebarContent>
       <AnimatedSidebarFooter className="border-sidebar-border p-2">
-        <AnimatedSidebarMenu className="border-sidebar-border border-b pb-2">
-          <AnimatedSidebarMenuItem>
-            <AnimatedSidebarMenuButton
-              className="h-8 min-h-0 gap-2 px-2 text-ui font-normal"
-              disabled={disabled}
-              icon={<Plus className="size-4" />}
-              onSelect={onCreateVault}
-            >
-              New vault
-            </AnimatedSidebarMenuButton>
-          </AnimatedSidebarMenuItem>
-        </AnimatedSidebarMenu>
+        <div className="border-sidebar-border border-b pb-2">
+          <BloomMenu
+            className="justify-start"
+            compact={sidebarState === "collapsed"}
+            disabled={disabled}
+            items={[
+              { label: "Create vault", icon: FolderPlus },
+              { label: "Add resource", icon: FilePlus2 },
+            ]}
+            onSelect={(label) => {
+              if (label === "Create vault") onCreateVault?.();
+              if (label === "Add resource") onCreateResource?.();
+            }}
+          />
+        </div>
         <DashboardAccountFooter
           displayEmail={user?.email ?? "Please sign in"}
           displayName={user?.name ?? "Guest"}
@@ -345,9 +418,9 @@ function DashboardAccountFooter({
       icon: EyeSlash,
       closeOnSelect: false,
       trailing: (
-          <Toggle
+        <Toggle
           checked={!mediaVisible}
-            onCheckedChange={(checked: boolean) => onMediaVisibleChange(!checked)}
+          onCheckedChange={(checked: boolean) => onMediaVisibleChange(!checked)}
           size="sm"
         />
       ),

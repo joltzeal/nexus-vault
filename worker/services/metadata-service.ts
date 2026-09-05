@@ -223,7 +223,7 @@ export async function resolveResourceMetadata(
     await processNotificationMessage(db, {
       kind: "notification.create",
       userId: resource.createdBy,
-      vaultId: resource.vaultId,
+      vaultId: resource.vaultId ?? undefined,
       type: "metadata.failed",
       title: "资源 metadata 处理失败",
       body: result.data.title ?? resource.title,

@@ -339,6 +339,38 @@
     }
   }
 
+  @keyframes progress-bar-indeterminate {
+    0% {
+      opacity: 0.35;
+      transform: translateX(-100%);
+    }
+
+    12% {
+      opacity: 1;
+    }
+
+    82% {
+      opacity: 1;
+      transform: translateX(294%);
+    }
+
+    100% {
+      opacity: 0.35;
+      transform: translateX(294%);
+    }
+  }
+
+  .animate-progress-bar-indeterminate {
+    animation: progress-bar-indeterminate 2.6s cubic-bezier(0.4, 0, 0.2, 1)
+      infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-progress-bar-indeterminate {
+      animation-duration: 4s;
+    }
+  }
+
   .scrollbar-hidden {
     -ms-overflow-style: none;
     scrollbar-width: none;

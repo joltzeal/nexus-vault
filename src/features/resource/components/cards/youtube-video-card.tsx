@@ -124,13 +124,7 @@ export function YoutubeVideoCard({
           )}
 
           {description && (
-            <p
-              className={
-                viewMode === "masonry"
-                  ? "whitespace-pre-line break-words text-xs leading-5 text-muted-foreground"
-                  : "line-clamp-3 whitespace-pre-line break-words text-xs leading-5 text-muted-foreground"
-              }
-            >
+            <p className="whitespace-pre-line break-words text-xs leading-5 text-muted-foreground">
               {description}
             </p>
           )}

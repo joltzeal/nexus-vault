@@ -3,14 +3,14 @@ import { isCloudDriveResourceType, parseCloudDriveLink, parseDouyinLink, parseGo
 export type MetadataQueueMessage = {
   kind: "metadata.resolve"
   resourceId: string
-  vaultId: string
+  vaultId: string | null
   type: ResourceType
   dedupeKey?: string
   requestedAt: string
 }
 
 export function createMetadataQueueMessage(
-  vaultId: string,
+  vaultId: string | null,
   resourceId: string,
   type: ResourceType,
   url: string

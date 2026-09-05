@@ -9,7 +9,7 @@ import {
 import type { ResourceType } from "../domain/resources/types"
 import type { Actor, Db } from "../types/legacy-api"
 import { getResourceOrThrow } from "./resource-service"
-import { requireVaultRead } from "./permission-service"
+import { requireResourceReadPermission } from "./resource-service"
 
 const DEFAULT_AI_GATEWAY_ID = "default"
 const DEFAULT_AI_SUMMARY_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"
@@ -21,7 +21,7 @@ export type ResourceAiSummaryQueueMessage = {
   kind: "resource.ai-summary"
   requestedAt: string
   resourceId: string
-  vaultId: string
+  vaultId: string | null
 }
 
 type ResourceAiSummaryState = {
@@ -71,7 +71,7 @@ type WorkersAiBinding = {
 
 export function createResourceAiSummaryQueueMessage(
   resourceId: string,
-  vaultId: string,
+  vaultId: string | null,
 ): ResourceAiSummaryQueueMessage {
   return {
     kind: "resource.ai-summary",
@@ -87,7 +87,7 @@ export function isResourceAiSummaryQueueMessage(
   return isRecord(value) &&
     value.kind === "resource.ai-summary" &&
     typeof value.resourceId === "string" &&
-    typeof value.vaultId === "string"
+    (typeof value.vaultId === "string" || value.vaultId === null)
 }
 
 export function shouldGenerateResourceAiSummary(input: {
@@ -133,7 +133,7 @@ export async function createResourceAiSummaryStream(
   signal: AbortSignal,
 ) {
   const resource = await getResourceOrThrow(db, resourceId)
-  await requireVaultRead(db, { actor, vaultId: resource.vaultId })
+  await requireResourceReadPermission(db, resource, actor)
 
   const encoder = new TextEncoder()
   let cancelled = signal.aborted

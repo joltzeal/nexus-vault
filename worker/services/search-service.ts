@@ -31,14 +31,21 @@ export async function searchWorkspace(
     .limit(12)
 
   const resourceRows = await db
-    .selectDistinct({ id: resources.id, title: resources.title, url: resources.url, vaultId: resources.vaultId, vaultTitle: vaults.title, spaceId: resources.spaceId, spaceName: spaces.name })
+    .selectDistinct({ id: resources.id, title: resources.title, url: resources.url, vaultId: resources.vaultId, stashUserId: resources.stashUserId, vaultTitle: vaults.title, spaceId: resources.spaceId, spaceName: spaces.name })
     .from(resources)
-    .innerJoin(vaults, eq(vaults.id, resources.vaultId))
+    .leftJoin(vaults, eq(vaults.id, resources.vaultId))
     .leftJoin(spaces, eq(spaces.id, resources.spaceId))
     .leftJoin(collaborators, eq(collaborators.vaultId, vaults.id))
-    .where(and(isNull(vaults.deletedAt), access, or(ilike(resources.title, pattern), ilike(resources.url, pattern), ilike(resources.description, pattern))))
+    .where(and(or(eq(resources.stashUserId, input.actor.id), and(isNull(vaults.deletedAt), access)), or(ilike(resources.title, pattern), ilike(resources.url, pattern), ilike(resources.description, pattern))))
     .limit(20)
 
-  return { vaults: vaultRows, spaces: spaceRows, resources: resourceRows }
+  return {
+    vaults: vaultRows,
+    spaces: spaceRows,
+    resources: resourceRows.map((resource) => ({
+      ...resource,
+      vaultId: resource.vaultId ?? "flash-stash",
+      vaultTitle: resource.vaultTitle ?? "Flash stash",
+    })),
+  }
 }
-

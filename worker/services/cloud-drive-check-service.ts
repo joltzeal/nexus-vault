@@ -19,7 +19,7 @@ export type CloudDriveCheckQueueMessage = {
   kind: "cloud-drive.check"
   provider: CloudDriveCheckProvider
   resourceId: string
-  vaultId: string
+  vaultId: string | null
   requestedAt: string
 }
 
@@ -34,7 +34,7 @@ export function isCloudDriveCheckQueueMessage(
       message.provider === "xunlei_pan" ||
       message.provider === "gofile") &&
     typeof message.resourceId === "string" &&
-    typeof message.vaultId === "string" &&
+    (typeof message.vaultId === "string" || message.vaultId === null) &&
     typeof message.requestedAt === "string"
   )
 }
@@ -153,7 +153,7 @@ async function shouldSkipCloudDriveCheck(
 function createCloudDriveCheckQueueMessage(input: {
   provider: CloudDriveCheckProvider
   resourceId: string
-  vaultId: string
+  vaultId: string | null
 }): CloudDriveCheckQueueMessage {
   return {
     kind: "cloud-drive.check",

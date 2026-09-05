@@ -19,6 +19,10 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { ResourceCard } from "@/features/resource/components";
 import {
   listReadLaterResources,
+  listResourceTransferTargets,
+  listStashResources,
+  organizeStashResource,
+  deleteResource,
   listStarredResources,
   setResourceReadLater,
   setResourceStarred,
@@ -27,6 +31,7 @@ import type {
   ReadLaterResourceItem,
   Resource,
   ResourceMetadataEnvelope,
+  ResourceTransferTargetVault,
   StarredResourceItem,
 } from "@/features/resource/types";
 import { Spinner } from "@/components/aicanvas/andromeda/components/Spinner";
@@ -60,6 +65,12 @@ const viewCopy: Record<
     breadcrumb: "~/collaboration",
     title: "Shared vaults",
     body: "Vaults that collaborators shared with you.",
+  },
+  "flash-stash": {
+    icon: Archive,
+    breadcrumb: "~/inbox",
+    title: "Flash stash",
+    body: "Resources waiting to be organized.",
   },
 };
 
@@ -241,6 +252,195 @@ export function DashboardViewPage({ view }: { view: DashboardView }) {
       )}
     </section>
   );
+}
+
+export function FlashStashPage() {
+  const { mediaVisible } = useOutletContext<DashboardOutletContext>();
+  useDocumentTitle("Flash stash · Nexus Vault");
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [targets, setTargets] = useState<ResourceTransferTargetVault[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void Promise.all([
+      listStashResources(controller.signal),
+      listResourceTransferTargets(),
+    ])
+      .then(([items, transferTargets]) => {
+        setResources(items);
+        setTargets(transferTargets);
+        setError("");
+      })
+      .catch((reason: unknown) => {
+        if (!(reason instanceof DOMException && reason.name === "AbortError")) {
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "Could not load flash stash.",
+          );
+        }
+      })
+      .finally(() => setLoading(false));
+    return () => controller.abort();
+  }, []);
+
+  async function handleOrganize(input: {
+    action: "move" | "copy";
+    resourceId: string;
+    targetVaultId: string;
+    targetSpaceId: string;
+  }) {
+    if (input.action !== "move") return;
+    setBusyId(input.resourceId);
+    try {
+      await organizeStashResource(input.resourceId, {
+        targetVaultId: input.targetVaultId,
+        targetSpaceId: input.targetSpaceId,
+      });
+      setResources((items) =>
+        items.filter((item) => item.id !== input.resourceId),
+      );
+      toast.add({ title: "Resource organized", type: "success" });
+    } catch (reason) {
+      toast.add({
+        title:
+          reason instanceof Error
+            ? reason.message
+            : "Could not organize resource.",
+        type: "error",
+      });
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function handleDelete(resourceId: string) {
+    setBusyId(resourceId);
+    try {
+      await deleteResource(resourceId);
+      setResources((items) => items.filter((item) => item.id !== resourceId));
+      toast.add({ title: "Resource deleted", type: "success" });
+    } catch (reason) {
+      toast.add({
+        title:
+          reason instanceof Error
+            ? reason.message
+            : "Could not delete resource.",
+        type: "error",
+      });
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  return (
+    <section className="mx-auto w-full max-w-[112rem]">
+      <DashboardPageHeader
+        breadcrumb="~/inbox"
+        description="Resources waiting to be organized."
+        title="Flash stash"
+      />
+      {loading ? (
+        <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
+          <Spinner variant="accent" size="sm" label="Loading" />
+          Loading...
+        </div>
+      ) : error ? (
+        <EmptyState icon={Archive} message={error} title="Unable to load" />
+      ) : resources.length === 0 ? (
+        <EmptyState
+          icon={Archive}
+          message="Add a resource from the create menu to keep it here temporarily."
+          title="Flash stash is empty"
+        />
+      ) : (
+        <div className="columns-1 gap-3 sm:columns-2 xl:columns-3 2xl:columns-4">
+          {resources.map((resource, index) => (
+            <div className="mb-3 break-inside-avoid" key={resource.id}>
+              <ResourceCard
+                canDeleteResource
+                canEditResource={false}
+                canTransferResource
+                disabled={busyId === resource.id}
+                index={index}
+                isActive={false}
+                isSignedIn
+                isVaultOwner={false}
+                mediaVisible={mediaVisible}
+                onCreateTransferTargetSpace={() => undefined}
+                onDelete={() => void handleDelete(resource.id)}
+                onLoadTransferTargets={async () => {
+                  setTargets(await listResourceTransferTargets());
+                }}
+                onOpenDetails={() => undefined}
+                onToggleReadLater={() => void handleToggleReadLater(resource)}
+                onToggleStar={() => void handleToggleStar(resource)}
+                onTransferResource={handleOrganize}
+                resource={resource}
+                spaceId="flash-stash"
+                spaceName="Unsorted"
+                transferTargets={targets}
+                vaultId="flash-stash"
+                vaultName="Flash stash"
+                viewMode="masonry"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+
+  async function handleToggleStar(resource: Resource) {
+    setBusyId(resource.id);
+    try {
+      await setResourceStarred(resource.id, !resource.isStarred);
+      setResources((items) =>
+        items.map((item) =>
+          item.id === resource.id
+            ? { ...item, isStarred: !resource.isStarred }
+            : item,
+        ),
+      );
+    } catch (reason) {
+      toast.add({
+        title:
+          reason instanceof Error
+            ? reason.message
+            : "Could not update resource.",
+        type: "error",
+      });
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function handleToggleReadLater(resource: Resource) {
+    setBusyId(resource.id);
+    try {
+      await setResourceReadLater(resource.id, !resource.isReadLater);
+      setResources((items) =>
+        items.map((item) =>
+          item.id === resource.id
+            ? { ...item, isReadLater: !resource.isReadLater }
+            : item,
+        ),
+      );
+    } catch (reason) {
+      toast.add({
+        title:
+          reason instanceof Error
+            ? reason.message
+            : "Could not update resource.",
+        type: "error",
+      });
+    } finally {
+      setBusyId("");
+    }
+  }
 }
 
 type DashboardResourceEntry = {

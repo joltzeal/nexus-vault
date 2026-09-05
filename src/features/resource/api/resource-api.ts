@@ -365,3 +365,55 @@ export async function updateResourceAnnotation(
   if (!payload?.data) throw new Error("Annotation response was empty.")
   return payload.data
 }
+
+export async function listStashResources(signal?: AbortSignal): Promise<Resource[]> {
+  const response = await fetch("/api/v1/resource-stash", { credentials: "include", signal })
+  const payload = (await response.json().catch(() => null)) as ApiEnvelope<{ items?: Resource[] }> | null
+  if (!response.ok || payload?.success === false) {
+    throw new Error(payload?.error?.message ?? "Could not load flash stash.")
+  }
+  return payload?.data?.items ?? []
+}
+
+export async function createStashResource(form: {
+  title: string
+  url: string
+  referer: string
+  extractionCode: string
+  description: string
+}) {
+  const response = await fetch("/api/v1/resource-stash", {
+    body: JSON.stringify({
+      description: form.description,
+      extractionCode: form.extractionCode || undefined,
+      referer: form.referer || undefined,
+      title: form.title.trim() || undefined,
+      url: form.url,
+    }),
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  })
+  const payload = (await response.json().catch(() => null)) as ApiEnvelope<{ id: string }> | null
+  if (!response.ok || payload?.success === false) {
+    throw new Error(payload?.error?.message ?? "Could not add resource to flash stash.")
+  }
+  return payload?.data
+}
+
+export async function organizeStashResource(
+  resourceId: string,
+  input: { targetVaultId: string; targetSpaceId: string },
+) {
+  const response = await fetch(`/api/v1/resource-stash/resources/${encodeURIComponent(resourceId)}/organize`, {
+    body: JSON.stringify(input),
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  })
+  const payload = (await response.json().catch(() => null)) as ApiEnvelope<unknown> | null
+  if (!response.ok || payload?.success === false) {
+    throw new Error(payload?.error?.message ?? "Could not organize resource.")
+  }
+  return payload?.data
+}

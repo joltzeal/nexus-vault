@@ -106,7 +106,7 @@ export async function listVaults(
     vaultIds,
   );
   const resourceCountByVaultId = new Map(
-    resourceCountRows.map((row) => [row.vaultId, row.resourceCount]),
+    resourceCountRows.map((row) => [row.vaultId!, row.resourceCount]),
   );
 
   return rows.map((vault) => ({
@@ -153,7 +153,7 @@ export async function listSharedVaults(
     vaultIds,
   );
   const resourceCountByVaultId = new Map(
-    resourceCounts.map((row) => [row.vaultId, row.resourceCount]),
+    resourceCounts.map((row) => [row.vaultId!, row.resourceCount]),
   );
 
   return rows.map((vault) => ({
@@ -176,7 +176,7 @@ async function listVaultCardBackgroundImages(db: Db, vaultIds: string[]) {
 
   const images = new Map<string, string>();
   for (const row of rows) {
-    if (images.has(row.vaultId)) continue;
+    if (!row.vaultId || images.has(row.vaultId)) continue;
     const image = getCardBackgroundImage(row.metadataDataJson);
     if (image) images.set(row.vaultId, image);
   }

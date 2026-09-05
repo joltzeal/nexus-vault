@@ -88,6 +88,7 @@ export function createVaultResource(vaultId: string, form: ResourceForm) {
   return mutateVault<{ id: string }>(`/api/v1/vaults/${encodeURIComponent(vaultId)}/resources`, "POST", {
     description: form.description,
     extractionCode: form.extractionCode || undefined,
+    referer: form.referer || undefined,
     spaceId: form.spaceId || undefined,
     title: form.title.trim() || undefined,
     url: form.url,

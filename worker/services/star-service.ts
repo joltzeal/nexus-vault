@@ -4,6 +4,7 @@ import {
   resourceMetadata,
   resourceReadLater,
   resources,
+  collaborators,
   spaces,
   starredResources,
   users,
@@ -12,6 +13,7 @@ import {
 } from "../db/schema"
 import type { Actor, Db } from "../types/legacy-api"
 import { requireVaultRead } from "./permission-service"
+import { requireResourceReadPermission } from "./resource-service"
 import { ensureActorUser } from "./user-service"
 import { getVaultOrThrow } from "./vault-service"
 import { getResourceOrThrow } from "./resource-service"
@@ -124,10 +126,7 @@ export async function starResource(
   }
 ) {
   const resource = await getResourceOrThrow(db, resourceId)
-  await requireVaultRead(db, {
-    vaultId: resource.vaultId,
-    actor: input.actor,
-  })
+  await requireResourceReadPermission(db, resource, input.actor)
 
   const userId = await ensureActorUser(db, input.actor)
   const [existing] = await db
@@ -226,7 +225,8 @@ export async function listStarredResources(
     })
     .from(starredResources)
     .innerJoin(resources, eq(starredResources.sourceResourceId, resources.id))
-    .innerJoin(vaults, eq(resources.vaultId, vaults.id))
+    .leftJoin(vaults, eq(resources.vaultId, vaults.id))
+    .leftJoin(collaborators, and(eq(collaborators.vaultId, vaults.id), eq(collaborators.userId, userId)))
     .leftJoin(spaces, eq(resources.spaceId, spaces.id))
     .leftJoin(resourceMetadata, eq(resourceMetadata.resourceId, resources.id))
     .leftJoin(
@@ -236,12 +236,24 @@ export async function listStarredResources(
         eq(resourceReadLater.userId, userId),
       ),
     )
-    .where(and(eq(starredResources.userId, userId), isNull(vaults.deletedAt)))
+    .where(and(
+      eq(starredResources.userId, userId),
+      isNull(vaults.deletedAt),
+      or(
+        eq(resources.stashUserId, userId),
+        eq(vaults.ownerId, userId),
+        eq(vaults.visibility, "public"),
+        eq(collaborators.userId, userId),
+      ),
+    ))
     .orderBy(desc(starredResources.createdAt))
     .limit(100)
 
   return rows.map((row) => ({
     ...row,
+    sourceVaultId: row.sourceVaultId ?? "flash-stash",
+    sourceVaultTitle: row.sourceVaultTitle ?? "Flash stash",
+    sourceSpaceName: row.sourceSpaceName ?? "Unsorted",
     isReadLater: Boolean(row.isReadLater),
   }))
 }

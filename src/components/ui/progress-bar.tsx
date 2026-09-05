@@ -27,8 +27,8 @@ export function ProgressBar({ label, ...props }: ProgressBarProps) {
           </div>
           <div className="bg-muted relative h-2 w-full overflow-hidden rounded-full outline outline-1 -outline-offset-1 outline-transparent">
             <div
-              className={`bg-primary absolute top-0 h-full rounded-full forced-colors:bg-[Highlight] ${isIndeterminate ? "animate-in slide-in-from-left-[20rem] repeat-infinite left-full duration-1000 ease-out" : "left-0"}`}
-              style={{ width: (isIndeterminate ? 40 : percentage) + "%" }}
+              className={`bg-primary absolute top-0 h-full rounded-full forced-colors:bg-[Highlight] ${isIndeterminate ? "left-0 w-[34%] animate-progress-bar-indeterminate" : "left-0"}`}
+              style={{ width: isIndeterminate ? "34%" : percentage + "%" }}
             />
           </div>
         </>

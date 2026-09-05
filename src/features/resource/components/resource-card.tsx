@@ -138,6 +138,7 @@ export function ResourceCard({
   isSelected = false,
   isSignedIn,
   isVaultOwner,
+  canTransferResource = isVaultOwner,
   mediaVisible,
   onCreateTransferTargetSpace,
   onDelete,
@@ -165,6 +166,7 @@ export function ResourceCard({
   index: number;
   canDeleteResource?: boolean;
   canEditResource: boolean;
+  canTransferResource?: boolean;
   isActive: boolean;
   isSelected?: boolean;
   isSignedIn: boolean;
@@ -456,7 +458,7 @@ export function ResourceCard({
   }
 
   function renderTransferDialog() {
-    if (!isVaultOwner) return null;
+    if (!canTransferResource) return null;
 
     return (
       <ResourceTransferDialog
@@ -474,6 +476,7 @@ export function ResourceCard({
         showTrigger={false}
         sourceSpaceId={resource.spaceId ?? spaceId}
         targets={transferTargets}
+        moveOnly={!isVaultOwner}
       />
     );
   }
@@ -482,10 +485,10 @@ export function ResourceCard({
     if (!showManagementActions) return undefined;
     if (
       showSelectionControl ||
-      (downloadableMedia.length === 0 &&
+        (downloadableMedia.length === 0 &&
         !canDeleteResource &&
         !canEditResource &&
-        !isVaultOwner)
+        !canTransferResource)
     ) {
       return undefined;
     }
@@ -503,7 +506,7 @@ export function ResourceCard({
         }
         onEdit={canEditResource ? onOpenDetails : undefined}
         onMove={
-          isVaultOwner
+          canTransferResource
             ? () => {
                 setTransferOpen(true);
                 if (transferTargets.length === 0) {
@@ -1069,6 +1072,7 @@ export function ResourceTransferDialog({
   resourceTitle,
   showTrigger = true,
   showTriggerLabel = false,
+  moveOnly = false,
   sourceSpaceId,
   targets,
   triggerClassName,
@@ -1088,6 +1092,7 @@ export function ResourceTransferDialog({
   resourceTitle: string;
   showTrigger?: boolean;
   showTriggerLabel?: boolean;
+  moveOnly?: boolean;
   sourceSpaceId: string;
   targets: ResourceTransferTargetVault[];
   triggerClassName?: string;
@@ -1184,7 +1189,9 @@ export function ResourceTransferDialog({
       )}
       <DialogContent className="max-h-[min(680px,calc(100dvh-2rem))] overflow-hidden rounded-none border-border bg-card p-0 gap-0 text-foreground sm:max-w-[520px]">
         <DialogHeader className="min-w-0 border-b border-border px-4 py-3">
-          <DialogTitle className="font-display">Move or copy</DialogTitle>
+          <DialogTitle className="font-display">
+            {moveOnly ? "Move to" : "Move or copy"}
+          </DialogTitle>
           <DialogDescription className="block min-w-0 max-w-full truncate text-muted-foreground">
             {resourceTitle}
           </DialogDescription>
@@ -1292,23 +1299,25 @@ export function ResourceTransferDialog({
                                   >
                                     {busyKey === moveKey ? "Moving" : "Move"}
                                   </Button>
-                                  <Button
-                                    className={transferCopyActionClass}
-                                    disabled={Boolean(busyKey)}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      void handleTransfer({
-                                        action: "copy",
-                                        targetVaultId: vault.id,
-                                        targetSpaceId: space.id,
-                                      });
-                                    }}
-                                    size="xs"
-                                    type="button"
-                                    variant="ghost"
-                                  >
-                                    {busyKey === copyKey ? "Copying" : "Copy"}
-                                  </Button>
+                                  {!moveOnly && (
+                                    <Button
+                                      className={transferCopyActionClass}
+                                      disabled={Boolean(busyKey)}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void handleTransfer({
+                                          action: "copy",
+                                          targetVaultId: vault.id,
+                                          targetSpaceId: space.id,
+                                        });
+                                      }}
+                                      size="xs"
+                                      type="button"
+                                      variant="ghost"
+                                    >
+                                      {busyKey === copyKey ? "Copying" : "Copy"}
+                                    </Button>
+                                  )}
                                 </div>
                               </TreeNodeTrigger>
                             </TreeNode>

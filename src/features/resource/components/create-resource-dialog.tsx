@@ -55,6 +55,11 @@ export function CreateResourceDialog({
   open,
   form,
   spaces,
+  vaults,
+  selectedVaultId,
+  onVaultChange,
+  vaultsLoading = false,
+  onSaveToFlashStash,
   allowMediaUpload = false,
   isSubmitting = false,
   onFormChange,
@@ -65,6 +70,15 @@ export function CreateResourceDialog({
   open: boolean;
   form: ResourceForm;
   spaces: Array<{ id: string; name: string }>;
+  vaults?: Array<{
+    id: string;
+    title: string;
+    spaces: Array<{ id: string; name: string; icon?: string }>;
+  }>;
+  selectedVaultId?: string;
+  onVaultChange?: (vaultId: string) => void;
+  vaultsLoading?: boolean;
+  onSaveToFlashStash?: () => void | Promise<void>;
   allowMediaUpload?: boolean;
   isSubmitting?: boolean;
   onFormChange: (form: ResourceForm) => void;
@@ -82,6 +96,15 @@ export function CreateResourceDialog({
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const canUploadMedia = allowMediaUpload && Boolean(onMediaSubmit);
+  const destinationVaults = vaults ?? [];
+  const selectedVault = destinationVaults.find(
+    (vault) => vault.id === selectedVaultId,
+  );
+  const isVaultPicker = vaults !== undefined;
+  const availableSpaces = isVaultPicker ? selectedVault?.spaces ?? [] : spaces;
+  const canSubmit = !isVaultPicker || Boolean(
+    selectedVault && availableSpaces.some((space) => space.id === form.spaceId),
+  );
   const cloudDrive = parseCloudDriveLink(form.url, form.extractionCode);
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
@@ -343,19 +366,62 @@ export function CreateResourceDialog({
                 )}
               </>
             )}
-            <Select
-              label="Space"
-              onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                onFormChange({ ...form, spaceId: event.target.value })
-              }
-              value={form.spaceId || spaces[0]?.id || ""}
-            >
-              {spaces.map((space) => (
-                <option key={space.id} value={space.id}>
-                  {space.name}
-                </option>
-              ))}
-            </Select>
+            {isVaultPicker ? (
+              <>
+                <Select
+                  disabled={
+                    isSubmitting || vaultsLoading || destinationVaults.length === 0
+                  }
+                  label="Vault"
+                  onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                    onVaultChange?.(event.target.value)
+                  }
+                  value={selectedVaultId ?? ""}
+                >
+                  {destinationVaults.length > 0 ? (
+                    destinationVaults.map((vault) => (
+                      <option key={vault.id} value={vault.id}>
+                        {vault.title}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">
+                      {vaultsLoading ? "Loading vaults..." : "No vaults available"}
+                    </option>
+                  )}
+                </Select>
+                {availableSpaces.length > 0 ? (
+                  <Select
+                    disabled={isSubmitting || vaultsLoading}
+                    label="Space"
+                    onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                      onFormChange({ ...form, spaceId: event.target.value })
+                    }
+                    value={form.spaceId}
+                  >
+                    {availableSpaces.map((space) => (
+                      <option key={space.id} value={space.id}>
+                        {space.name}
+                      </option>
+                    ))}
+                  </Select>
+                ) : null}
+              </>
+            ) : spaces.length > 0 ? (
+              <Select
+                label="Space"
+                onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                  onFormChange({ ...form, spaceId: event.target.value })
+                }
+                value={form.spaceId || spaces[0]?.id || ""}
+              >
+                {spaces.map((space) => (
+                  <option key={space.id} value={space.id}>
+                    {space.name}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
             <Input
               label="Title"
               value={form.title}
@@ -388,9 +454,20 @@ export function CreateResourceDialog({
             >
               Cancel
             </Button>
+            {onSaveToFlashStash ? (
+              <Button
+                disabled={isSubmitting || (mode === "media" ? files.length === 0 : !form.url.trim())}
+                onClick={() => void onSaveToFlashStash()}
+                type="button"
+                variant="outline"
+              >
+                Save to flash stash
+              </Button>
+            ) : null}
             <Button
               disabled={
                 isSubmitting ||
+                !canSubmit ||
                 (mode === "media" ? files.length === 0 : !form.url.trim())
               }
               type="submit"

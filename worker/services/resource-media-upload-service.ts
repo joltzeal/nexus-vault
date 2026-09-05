@@ -19,6 +19,7 @@ import {
 import { ApiError } from "../lib/errors"
 import type { Actor, Db } from "../types/legacy-api"
 import { requireVaultPermission } from "./permission-service"
+import { requireResourceMutationPermission } from "./resource-service"
 import {
   abortS3MultipartUpload,
   completeS3MultipartUpload,
@@ -113,18 +114,14 @@ export async function prepareUpdatedMediaResource(
   if (!resource || resource.type !== "local_media") {
     throw new ApiError("NOT_FOUND", "本地媒体资源不存在。", 404)
   }
-  await requireVaultPermission(db, {
-    vaultId: resource.vaultId,
-    actor: input.actor,
-    action: "resource:update",
-  })
+  await requireResourceMutationPermission(db, resource, input.actor)
 
   const files = validateUploadSources(input.files)
   const uploads = await createMultipartUploadPlan(input.env, {
     actor: input.actor,
     files,
     resourceId,
-    vaultId: resource.vaultId,
+    vaultId: resource.vaultId ?? resource.stashUserId!,
     mode: "update",
   })
 
@@ -358,11 +355,7 @@ export async function updateUploadedMediaResource(
   if (!resource || resource.type !== "local_media") {
     throw new ApiError("NOT_FOUND", "本地媒体资源不存在。", 404)
   }
-  await requireVaultPermission(db, {
-    vaultId: resource.vaultId,
-    actor: input.actor,
-    action: "resource:update",
-  })
+  await requireResourceMutationPermission(db, resource, input.actor)
 
   const [metadataRow] = await db
     .select()
@@ -381,7 +374,7 @@ export async function updateUploadedMediaResource(
     env: input.env,
     files: uploaded,
     resourceId,
-    vaultId: resource.vaultId,
+    vaultId: resource.vaultId ?? resource.stashUserId!,
   })
 
   const newItems = uploaded.map((item, index) => ({

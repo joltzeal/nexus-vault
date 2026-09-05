@@ -48,6 +48,10 @@ export const vaultRelations = relations(vaults, ({ one, many }) => ({
 	notifications: many(notifications),
 }));
 
+export const userResourceStashRelations = relations(users, ({ many }) => ({
+	stashResources: many(resources),
+}));
+
 export const spaceRelations = relations(spaces, ({ one, many }) => ({
 	vault: one(vaults, {
 		fields: [spaces.vaultId],
@@ -118,6 +122,10 @@ export const resourceRelations = relations(resources, ({ one, many }) => ({
 	vault: one(vaults, {
 		fields: [resources.vaultId],
 		references: [vaults.id],
+	}),
+	stashOwner: one(users, {
+		fields: [resources.stashUserId],
+		references: [users.id],
 	}),
 	space: one(spaces, {
 		fields: [resources.spaceId],

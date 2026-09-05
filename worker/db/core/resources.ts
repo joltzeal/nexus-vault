@@ -1,4 +1,5 @@
-import { boolean, index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { user as users } from "../../auth/schema";
 import { createdAt, deletedAt, id, optionalTimestamp, updatedAt } from "./columns";
 import { metadataStatusEnum, resourceTypeEnum, submissionStatusEnum, type JsonObject } from "./enums";
@@ -9,8 +10,8 @@ export const resources = pgTable(
 	{
 		id: id(),
 		vaultId: uuid("vault_id")
-			.notNull()
 			.references(() => vaults.id, { onDelete: "cascade" }),
+		stashUserId: text("stash_user_id").references(() => users.id, { onDelete: "cascade" }),
 		spaceId: uuid("space_id").references(() => spaces.id, { onDelete: "set null" }),
 		type: resourceTypeEnum("type").notNull(),
 		title: text("title").notNull(),
@@ -28,6 +29,10 @@ export const resources = pgTable(
 	(table) => [
 		index("resources_vault_space_position_idx").on(table.vaultId, table.spaceId, table.position),
 		uniqueIndex("resources_vault_dedupe_unique").on(table.vaultId, table.dedupeKey),
+		uniqueIndex("resources_stash_dedupe_unique").on(table.stashUserId, table.dedupeKey),
+		index("resources_stash_position_idx").on(table.stashUserId, table.position),
+		check("resources_single_container_check", sql`(vault_id IS NOT NULL) <> (stash_user_id IS NOT NULL)`),
+		check("resources_stash_has_no_space_check", sql`stash_user_id IS NULL OR space_id IS NULL`),
 	],
 );
 

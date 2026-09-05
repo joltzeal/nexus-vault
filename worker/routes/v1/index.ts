@@ -15,6 +15,8 @@ import * as notificationRead from "./notifications/[notificationId]/read/route";
 import * as readLaterList from "./resource-read-later/route";
 import * as resourceStarsList from "./resource-stars/route";
 import * as resource from "./resources/[resourceId]/route";
+import * as resourceStash from "./resource-stash/route";
+import * as resourceStashOrganize from "./resource-stash/resources/[resourceId]/organize/route";
 import * as resourceAnnotation from "./resources/[resourceId]/annotation/route";
 import * as resourceLocalMedia from "./resources/[resourceId]/local-media/route";
 import * as resourceLocalMediaMultipart from "./resources/[resourceId]/local-media/multipart/route";
@@ -73,6 +75,8 @@ registerLegacyRoute(apiV1, "/notifications/:notificationId/read", notificationRe
 registerLegacyRoute(apiV1, "/resource-read-later", readLaterList);
 registerLegacyRoute(apiV1, "/resource-stars", resourceStarsList);
 registerLegacyRoute(apiV1, "/resources", resources);
+registerLegacyRoute(apiV1, "/resource-stash", resourceStash);
+registerLegacyRoute(apiV1, "/resource-stash/resources/:resourceId/organize", resourceStashOrganize);
 registerLegacyRoute(apiV1, "/resources/transfer", resourcesTransfer);
 registerLegacyRoute(apiV1, "/search", workspaceSearch);
 registerLegacyRoute(apiV1, "/resources/transfer-targets", resourceTransferTargets);

@@ -5,8 +5,7 @@ import { normalizeResourceMetadata } from "../../../../../../../domain/resources
 import { notFound } from "../../../../../../../lib/errors"
 import { handleApiRequest } from "../../../../../../../lib/http"
 import { getGofileMediaProxyResponse } from "../../../../../../../storage/gofile-media-proxy"
-import { requireVaultRead } from "../../../../../../../services/permission-service"
-import { getResourceOrThrow } from "../../../../../../../services/resource-service"
+import { requireResourceReadPermission, getResourceOrThrow } from "../../../../../../../services/resource-service"
 
 type Context = {
   params: Promise<{ mediaIndex: string; resourceId: string }>
@@ -18,7 +17,7 @@ export async function GET(request: Request, { params }: Context) {
   return handleApiRequest(request, { auth: "optional" }, async ({ actor, db, env }) => {
     if (!/^\d+$/.test(mediaIndexValue)) throw notFound("Media not found.")
     const resource = await getResourceOrThrow(db, resourceId)
-    await requireVaultRead(db, { actor, vaultId: resource.vaultId })
+    await requireResourceReadPermission(db, resource, actor)
 
     const [row] = await db
       .select({ dataJson: resourceMetadata.dataJson })

@@ -13,7 +13,7 @@ import {
 import { normalizeResourceMetadata } from "../domain/resources/metadata"
 import type { JsonObject } from "../db/core/enums"
 import type { Actor, Db } from "../types/legacy-api"
-import { requireVaultRead } from "./permission-service"
+import { requireResourceReadPermission } from "./resource-service"
 import { getResourceOrThrow } from "./resource-service"
 import { ensureActorUser } from "./user-service"
 
@@ -79,7 +79,7 @@ export async function listReadLaterResources(
     })
     .from(resourceReadLater)
     .innerJoin(resources, eq(resourceReadLater.resourceId, resources.id))
-    .innerJoin(vaults, eq(resources.vaultId, vaults.id))
+    .leftJoin(vaults, eq(resources.vaultId, vaults.id))
     .leftJoin(spaces, eq(resources.spaceId, spaces.id))
     .leftJoin(resourceMetadata, eq(resourceMetadata.resourceId, resources.id))
     .leftJoin(
@@ -96,7 +96,13 @@ export async function listReadLaterResources(
         eq(starredResources.userId, userId)
       )
     )
-    .where(and(eq(resourceReadLater.userId, userId), isNull(vaults.deletedAt), accessFilter))
+    .where(and(
+      eq(resourceReadLater.userId, userId),
+      or(
+        eq(resources.stashUserId, userId),
+        and(isNull(vaults.deletedAt), accessFilter),
+      ),
+    ))
     .orderBy(desc(resourceReadLater.createdAt))
     .limit(100)
 
@@ -104,8 +110,8 @@ export async function listReadLaterResources(
     items: rows.map((row) => ({
       id: row.id,
       resourceId: row.resourceId,
-      vaultId: row.vaultId,
-      vaultName: row.vaultName,
+      vaultId: row.vaultId ?? "flash-stash",
+      vaultName: row.vaultName ?? "Flash stash",
       spaceId: row.spaceId ?? "",
       spaceName: row.spaceName ?? "Unsorted",
       savedAt: row.savedAt,
@@ -159,10 +165,7 @@ export async function addResourceReadLater(
   }
 ) {
   const resource = await getResourceOrThrow(db, resourceId)
-  await requireVaultRead(db, {
-    vaultId: resource.vaultId,
-    actor: input.actor,
-  })
+  await requireResourceReadPermission(db, resource, input.actor)
   const userId = await ensureActorUser(db, input.actor)
 
   const [existing] = await db
@@ -204,10 +207,7 @@ export async function updateResourceAnnotation(
   }
 ) {
   const resource = await getResourceOrThrow(db, resourceId)
-  await requireVaultRead(db, {
-    vaultId: resource.vaultId,
-    actor: input.actor,
-  })
+  await requireResourceReadPermission(db, resource, input.actor)
   const userId = await ensureActorUser(db, input.actor)
 
   const [existing] = await db

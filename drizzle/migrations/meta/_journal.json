@@ -29,6 +29,13 @@
       "when": 1788633600000,
       "tag": "0003_add_reddit_resource_type",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788720000000,
+      "tag": "0004_add_resource_stash",
+      "breakpoints": true
     }
   ]
 }

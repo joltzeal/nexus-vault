@@ -6,6 +6,7 @@ import type { Db } from "../types/legacy-api"
 const resourceSelection = {
   id: resources.id,
   vaultId: resources.vaultId,
+  stashUserId: resources.stashUserId,
   spaceId: resources.spaceId,
   type: resources.type,
   title: resources.title,

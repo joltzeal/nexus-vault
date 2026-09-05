@@ -2,7 +2,7 @@ import { Navigate, Outlet, Route, Routes, useOutletContext } from "react-router-
 
 import { authClient } from "./auth"
 import { DashboardPage } from "./pages/dashboard"
-import { DashboardViewPage } from "./pages/dashboard/views/dashboard-view-pages"
+import { DashboardViewPage, FlashStashPage } from "./pages/dashboard/views/dashboard-view-pages"
 import { HomePage } from "./pages/home"
 import { VaultDetailPage } from "./pages/vault/vault-detail-page"
 import { PublicShareShell } from "./app/public-share-shell"
@@ -34,6 +34,7 @@ function App() {
           <Route index element={<DashboardViewPage view="all-vaults" />} />
           <Route path="starred" element={<DashboardViewPage view="starred-vaults" />} />
           <Route path="watch-later" element={<DashboardViewPage view="watch-later" />} />
+          <Route path="flash-stash" element={<FlashStashPage />} />
           <Route path="shared" element={<DashboardViewPage view="shared-vaults" />} />
           <Route path="settings" element={<SettingsRoute />} />
           <Route path="vault/:vaultId" element={<VaultDetailPage />} />
