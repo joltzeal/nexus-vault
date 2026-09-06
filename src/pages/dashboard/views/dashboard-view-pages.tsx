@@ -359,11 +359,11 @@ export function FlashStashPage() {
           title="Flash stash is empty"
         />
       ) : (
-        <div className={viewMode === "masonry" ? "columns-1 gap-3 sm:columns-2 xl:columns-3 2xl:columns-4" : "grid gap-3"}>
+        <div className={viewMode === "masonry" ? "columns-1 gap-3 sm:columns-2 xl:columns-3 2xl:columns-4" : "grid grid-cols-[minmax(0,1fr)] gap-3"}>
           {resources.map((resource, index) => (
             <div
               className={
-                viewMode === "masonry" ? "mb-3 break-inside-avoid" : undefined
+                viewMode === "masonry" ? "mb-3 break-inside-avoid" : "min-w-0"
               }
               key={resource.id}
             >
@@ -526,12 +526,12 @@ function DashboardResourceCards({
       className={
         viewMode === "masonry"
           ? "columns-1 gap-3 sm:columns-2 xl:columns-3 2xl:columns-4"
-          : "grid gap-2"
+          : "grid grid-cols-[minmax(0,1fr)] gap-2"
       }
     >
       {entries.map((entry, index) => (
         <div
-          className={viewMode === "masonry" ? "mb-3 break-inside-avoid" : undefined}
+          className={viewMode === "masonry" ? "mb-3 break-inside-avoid" : "min-w-0"}
           key={entry.id}
         >
           <ResourceCard
