@@ -55,6 +55,10 @@ export type MetadataResolveOptions = {
     url: string
     sourceId: string
   }) => Promise<string | undefined>
+  persistWechatMpPicture?: (input: {
+    url: string
+    sourceId: string
+  }) => Promise<string | undefined>
   magnetCache?: KVNamespace
   captureHttpScreenshot?: (input: {
     resourceId: string

@@ -42,8 +42,9 @@ const MAGNET_MEDIA_RETRY_TTL_SECONDS = 90 * 24 * 60 * 60
 const MAGNET_MEDIA_RETRY_MAX_ITEMS_PER_RUN = 50
 const MAGNET_MEDIA_RETRY_INITIAL_DELAY_MS = 5 * 60 * 1000
 const MAGNET_MEDIA_RETRY_MAX_DELAY_MS = 24 * 60 * 60 * 1000
-const MAGNET_MEDIA_FETCH_MAX_ATTEMPTS = 3
-const MAGNET_MEDIA_FETCH_RETRY_DELAYS_MS = [500, 1500]
+const MEDIA_FETCH_MAX_ATTEMPTS = 3
+const MEDIA_FETCH_RETRY_DELAYS_MS = [500, 1500]
+const WECHAT_MP_PICTURE_HOST = "mmbiz.qpic.cn"
 
 export function enqueueMetadataTask(
   c: ApiContext,
@@ -133,6 +134,7 @@ export async function resolveResourceMetadata(
           telegramMetadataApiToken: getTelegramMetadataApiToken(options.env),
           persistTelegramMedia: (input) => persistTelegramMedia(options.env, input),
           persistMagnetScreenshot: (input) => persistMagnetScreenshot(options.env, input),
+          persistWechatMpPicture: (input) => persistWechatMpPicture(options.env, input),
           magnetCache: options.env.CACHE,
           captureHttpScreenshot: (input) => captureHttpScreenshot(options.env, input),
         })
@@ -258,7 +260,7 @@ async function persistMagnetScreenshot(
       return `/api/v1/media/${key}`
     }
 
-    const image = await fetchMagnetScreenshotWithRetry(sourceUrl.toString())
+    const image = await fetchMediaWithRetry(sourceUrl.toString())
     await env.MEDIA.put(key, image, {
       httpMetadata: { contentType: "image/png", cacheControl: "public, max-age=31536000, immutable" },
       customMetadata: { provider: "whatslink", sourceId: id, sourceUrl: sourceUrl.toString() },
@@ -275,37 +277,82 @@ async function persistMagnetScreenshot(
   }
 }
 
-async function fetchMagnetScreenshotWithRetry(url: string) {
+async function persistWechatMpPicture(
+  env: CloudflareEnv,
+  input: { url: string; sourceId: string },
+) {
+  if (!env.MEDIA) throw new Error("R2 MEDIA binding is not configured.")
+  const sourceUrl = new URL(input.url)
+  if (sourceUrl.hostname.toLowerCase() !== WECHAT_MP_PICTURE_HOST) {
+    throw new Error("Invalid WeChat picture URL.")
+  }
+  const id = input.sourceId.replace(/[^a-z0-9_-]/gi, "")
+  if (!id) throw new Error("Invalid WeChat picture ID.")
+  const format = getWechatMpPictureFormat(sourceUrl)
+  const key = `wechat-mp/${id}.${format.extension}`
+
+  try {
+    const existing = await env.MEDIA.head(key)
+    if (existing) return `/api/v1/media/${key}`
+
+    const image = await fetchMediaWithRetry(sourceUrl.toString())
+    await env.MEDIA.put(key, image, {
+      httpMetadata: {
+        contentType: format.contentType,
+        cacheControl: "public, max-age=31536000, immutable",
+      },
+      customMetadata: {
+        provider: "wechat-mp",
+        sourceId: id,
+        sourceUrl: sourceUrl.toString().slice(0, 512),
+      },
+    })
+    return `/api/v1/media/${key}`
+  } catch (error) {
+    console.warn("Failed to persist WeChat picture", { sourceId: id, error })
+    throw error
+  }
+}
+
+function getWechatMpPictureFormat(sourceUrl: URL) {
+  const format = sourceUrl.searchParams.get("wx_fmt")?.trim().toLowerCase()
+  if (format === "png") return { extension: "png", contentType: "image/png" }
+  if (format === "gif") return { extension: "gif", contentType: "image/gif" }
+  if (format === "webp") return { extension: "webp", contentType: "image/webp" }
+  return { extension: "jpg", contentType: "image/jpeg" }
+}
+
+async function fetchMediaWithRetry(url: string) {
   let lastError: unknown
-  for (let attempt = 0; attempt < MAGNET_MEDIA_FETCH_MAX_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; attempt < MEDIA_FETCH_MAX_ATTEMPTS; attempt += 1) {
     try {
       const response = await fetch(url, {
         headers: { accept: "image/*" },
         signal: AbortSignal.timeout(20_000),
       })
       if (!response.ok) {
-        const error = new Error(`Whatslink screenshot failed with HTTP ${response.status}.`)
+        const error = new Error(`Remote media download failed with HTTP ${response.status}.`)
         if (!isTransientMediaStatus(response.status)) throw error
         error.name = "RetryableMediaError"
         throw error
       }
       const image = await response.arrayBuffer()
       if (image.byteLength === 0) {
-        const error = new Error("Whatslink screenshot is empty.")
+        const error = new Error("Remote media download is empty.")
         error.name = "RetryableMediaError"
         throw error
       }
       return image
     } catch (error) {
       lastError = error
-      if (!isTransientMediaError(error) || attempt === MAGNET_MEDIA_FETCH_MAX_ATTEMPTS - 1) {
+      if (!isTransientMediaError(error) || attempt === MEDIA_FETCH_MAX_ATTEMPTS - 1) {
         throw error
       }
-      const delay = MAGNET_MEDIA_FETCH_RETRY_DELAYS_MS[attempt]
+      const delay = MEDIA_FETCH_RETRY_DELAYS_MS[attempt]
       if (delay !== undefined) await wait(delay)
     }
   }
-  throw lastError ?? new Error("Whatslink screenshot download failed.")
+  throw lastError ?? new Error("Remote media download failed.")
 }
 
 export async function runScheduledMagnetMediaRetries(env: CloudflareEnv) {

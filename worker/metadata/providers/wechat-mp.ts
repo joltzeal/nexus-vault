@@ -8,6 +8,7 @@ import {
   RetryableMetadataError,
   type MetadataProvider,
   type MetadataProviderResource,
+  type MetadataResolveOptions,
   type MetadataResult,
 } from "../metadata-provider"
 
@@ -78,7 +79,7 @@ export const wechatMpMetadataProvider: MetadataProvider = {
       }
     }
 
-    return createMetadataResult(resource, sourceUrl, payload.data)
+    return createMetadataResult(resource, sourceUrl, payload.data, options)
   },
 }
 
@@ -116,11 +117,12 @@ function logWechatMpInvalidPayload(payload: unknown) {
   })
 }
 
-function createMetadataResult(
+async function createMetadataResult(
   resource: MetadataProviderResource,
   sourceUrl: string,
   data: Record<string, unknown>,
-): MetadataResult {
+  options?: MetadataResolveOptions,
+): Promise<MetadataResult> {
   const content = recordValue(data.content) ?? {}
   const articleUrl = normalizeUrl(firstString(content.link, data.url, sourceUrl)) ?? sourceUrl
   const accountName = firstString(content.nick_name)
@@ -152,11 +154,11 @@ function createMetadataResult(
   const album = recordValue(content.appmsgalbuminfo)
   const albumTitle = firstString(album?.title)
   const ipLocation = getIpLocation(recordValue(content.ip_wording))
-  const media = getArticleMedia({
-    articleUrl,
+  const media = await getArticleMedia({
     content,
     coverUrl,
     title,
+    persist: options?.persistWechatMpPicture,
   })
 
   return {
@@ -221,23 +223,25 @@ function createMetadataResult(
   }
 }
 
-function getArticleMedia(input: {
-  articleUrl: string
+const WECHAT_MP_MEDIA_MAX_ITEMS = 12
+
+async function getArticleMedia(input: {
   content: Record<string, unknown>
   coverUrl?: string
   title: string
+  persist?: (input: { url: string; sourceId: string }) => Promise<string | undefined>
 }) {
   const media: ResourceMediaMetadata[] = []
   const seen = new Set<string>()
   const pushImage = (url?: string, sourceId?: string, width?: number, height?: number) => {
     const normalized = normalizeUrl(url)
-    if (!normalized || seen.has(normalized)) return
+    if (!normalized || seen.has(normalized) || media.length >= WECHAT_MP_MEDIA_MAX_ITEMS) return
     seen.add(normalized)
     media.push({
       kind: "image",
       provider: WECHAT_MP_PROVIDER,
       sourceId,
-      sourceUrl: input.articleUrl,
+      sourceUrl: normalized,
       thumbnailUrl: normalized,
       url: normalized,
       ...(height ? { height } : {}),
@@ -263,7 +267,17 @@ function getArticleMedia(input: {
     )
   }
 
-  return media.slice(0, 12)
+  await Promise.all(media.map(async (item) => {
+    if (!item.sourceId) return
+    const persistedUrl = await input
+      .persist?.({ url: item.url ?? "", sourceId: item.sourceId })
+      .catch(() => undefined)
+    if (!persistedUrl) return
+    item.url = persistedUrl
+    item.thumbnailUrl = persistedUrl
+  }))
+
+  return media
 }
 
 function extractImageUrlsFromHtml(value?: string) {
