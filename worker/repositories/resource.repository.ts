@@ -1,4 +1,4 @@
-import { and, count, eq } from "drizzle-orm"
+import { and, count, eq, min } from "drizzle-orm"
 
 import { resourceMetadata, resources } from "../db/schema"
 import type { Db } from "../types/legacy-api"
@@ -50,6 +50,14 @@ export async function countResourcesInSpace(db: Db, spaceId: string) {
     .from(resources)
     .where(eq(resources.spaceId, spaceId))
   return row?.value ?? 0
+}
+
+export async function getMinResourcePosition(db: Db, spaceId: string) {
+  const [row] = await db
+    .select({ value: min(resources.position) })
+    .from(resources)
+    .where(eq(resources.spaceId, spaceId))
+  return row?.value ?? null
 }
 
 export async function findResourceMetadata(db: Db, resourceId: string) {

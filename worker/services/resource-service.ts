@@ -384,6 +384,7 @@ export async function transferResource(
     targetVaultId: string
     targetSpaceId: string
     actor: Actor
+    position?: number
   }
 ) {
   const resource = await getResourceOrThrow(db, resourceId)
@@ -398,7 +399,7 @@ export async function transferResource(
       action: "resource:create",
     })
     await ensureResourceUrlNotDuplicate(db, input.targetVaultId, resource.dedupeKey)
-    const position = await getNextResourcePosition(db, input.targetSpaceId)
+    const position = input.position ?? (await getNextResourcePosition(db, input.targetSpaceId))
     await db.update(resources).set({
       vaultId: input.targetVaultId,
       stashUserId: null,

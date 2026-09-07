@@ -20,6 +20,7 @@ import {
   getResourceOrThrow,
   transferResource,
 } from "./resource-service"
+import { getMinResourcePosition } from "../repositories/resource.repository"
 import { requireUserXComCookieString } from "./account-integration-service"
 
 export async function createStashResource(
@@ -165,11 +166,13 @@ export async function organizeStashResource(
 ) {
   const resource = await getResourceOrThrow(db, resourceId)
   if (resource.stashUserId !== input.actor.id) throw conflict("只能整理自己的闪存 Resource。")
+  const minPosition = await getMinResourcePosition(db, input.targetSpaceId)
   return transferResource(db, resourceId, {
     action: "move",
     targetVaultId: input.targetVaultId,
     targetSpaceId: input.targetSpaceId,
     actor: input.actor,
+    position: minPosition === null ? 0 : minPosition - 1,
   })
 }
 
