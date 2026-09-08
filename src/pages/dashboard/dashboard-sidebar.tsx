@@ -38,6 +38,7 @@ import {
   type WorkspaceSearchResult,
 } from "@/features/dashboard/search-api";
 import { BloomMenu } from "@/components/motion/bloom-menu";
+import { APP_VERSION } from "@/lib/app-version";
 
 export type DashboardSidebarUser = {
   email: string;
@@ -153,7 +154,7 @@ export function DashboardSidebar({
                 <span className="text-fg">VAULT</span>
               </span>
               <span className="mono shrink-0 text-[9px] leading-none tracking-[0.08em] text-fg-dim">
-                v0.0.0
+                v{APP_VERSION}
               </span>
               <span
                 aria-hidden="true"
