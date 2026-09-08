@@ -1046,6 +1046,12 @@ export function VaultDetailPage() {
     setResourceEditOpen(true);
   }, []);
 
+  const scrollToResource = useCallback((resourceId: string) => {
+    document
+      .getElementById(`resource-${resourceId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
   useEffect(() => {
     if (!detail || !vaultId) return;
     const canCreateResource =
@@ -1064,12 +1070,17 @@ export function VaultDetailPage() {
           "Unsorted",
         title: resource.title,
         url: resource.url,
-        onSelect: () => openResourceEditor(resource),
+        onSelect: () => scrollToResource(resource.id),
       })),
     });
 
     return () => onVaultStatusChange(null);
-  }, [detail, onVaultStatusChange, openResourceEditor, vaultId]);
+  }, [
+    detail,
+    onVaultStatusChange,
+    scrollToResource,
+    vaultId,
+  ]);
 
   async function handleSaveResourceDetails(
     form: ResourceDetailsForm,
