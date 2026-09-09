@@ -81,7 +81,6 @@ export async function createResource(
       id: resourceId,
       vaultId,
       spaceId,
-      details: { resourceType: parsedInput.type, url: parsedInput.url },
       type: parsedInput.type,
       title: parsedInput.title,
       description: input.description,
