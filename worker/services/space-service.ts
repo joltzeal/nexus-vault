@@ -14,6 +14,7 @@ import {
   findNextSpacePosition,
   findSpaceByIdInVault,
 } from "../repositories/space.repository"
+import { recordHistory } from "./history-service"
 
 export async function createSpace(
   db: Db,
@@ -45,6 +46,16 @@ export async function createSpace(
     icon: input.icon ?? "tv",
     position,
   })
+  if (input.actor) {
+    await recordHistory(db, {
+      actor: input.actor,
+      entityType: "space",
+      action: "create",
+      entityId: spaceId,
+      entityLabel: input.name,
+      vaultId,
+    })
+  }
 
   return { id: spaceId }
 }
@@ -63,7 +74,7 @@ export async function updateSpace(
   }
 ) {
   await getVaultOrThrow(db, vaultId)
-  await getSpaceInVaultOrThrow(db, vaultId, spaceId)
+  const existing = await getSpaceInVaultOrThrow(db, vaultId, spaceId)
   await requireVaultPermission(db, {
     vaultId,
     actor: input.actor,
@@ -85,6 +96,19 @@ export async function updateSpace(
     })
     .where(and(eq(spaces.id, spaceId), eq(spaces.vaultId, vaultId), isNull(spaces.deletedAt)))
 
+  if (input.actor && Object.keys(input).some((key) => !["actor", "userEmail"].includes(key))) {
+    await recordHistory(db, {
+      actor: input.actor,
+      entityType: "space",
+      action: "update",
+      entityId: spaceId,
+      entityLabel: input.name ?? existing.name,
+      vaultId,
+      spaceId,
+      details: { fields: Object.keys(input).filter((key) => !["actor", "userEmail"].includes(key)) },
+    })
+  }
+
   return { id: spaceId }
 }
 
@@ -98,7 +122,7 @@ export async function archiveSpace(
   }
 ) {
   await getVaultOrThrow(db, vaultId)
-  await getSpaceInVaultOrThrow(db, vaultId, spaceId)
+  const existing = await getSpaceInVaultOrThrow(db, vaultId, spaceId)
   await requireVaultPermission(db, {
     vaultId,
     actor: input.actor,
@@ -114,6 +138,18 @@ export async function archiveSpace(
   await db
     .delete(resources)
     .where(and(eq(resources.vaultId, vaultId), eq(resources.spaceId, spaceId)))
+
+  if (input.actor) {
+    await recordHistory(db, {
+      actor: input.actor,
+      entityType: "space",
+      action: "delete",
+      entityId: spaceId,
+      entityLabel: existing.name,
+      vaultId,
+      spaceId,
+    })
+  }
 
   return { id: spaceId, archived: true }
 }
@@ -153,6 +189,18 @@ export async function reorderSpaces(
     }
   })
 
+  if (input.actor) {
+    await recordHistory(db, {
+      actor: input.actor,
+      entityType: "space",
+      action: "reorder",
+      entityId: vaultId,
+      entityLabel: "Spaces",
+      vaultId,
+      details: { items: input.items },
+    })
+  }
+
   return { updated: input.items.length }
 }
 
@@ -169,14 +217,14 @@ export async function transferSpace(
     throw conflict("目标 Vault 就是当前 Vault，无需移动。")
   }
 
-  await getVaultOrThrow(db, vaultId)
+  const sourceVault = await getVaultOrThrow(db, vaultId)
   const sourceSpace = await getSpaceInVaultOrThrow(db, vaultId, spaceId)
   const sourceRole = await getVaultRoleForActor(db, vaultId, input.actor)
   if (sourceRole !== "owner") {
     throw forbidden("只有 Vault 所有者可以移动 Space。")
   }
 
-  await getVaultOrThrow(db, input.targetVaultId)
+  const targetVault = await getVaultOrThrow(db, input.targetVaultId)
   const targetRole = await getVaultRoleForActor(db, input.targetVaultId, input.actor)
   if (targetRole !== "owner") {
     throw forbidden("Space 只能移动到自己拥有的 Vault。")
@@ -222,6 +270,18 @@ export async function transferSpace(
         updatedAt: now,
       })
       .where(and(eq(spaces.id, spaceId), eq(spaces.vaultId, vaultId), isNull(spaces.deletedAt)))
+  })
+
+  await recordHistory(db, {
+    actor: input.actor,
+    entityType: "space",
+    action: "move",
+    entityId: spaceId,
+    entityLabel: sourceSpace.name,
+    vaultId: input.targetVaultId,
+    spaceId,
+    source: { vaultId, vaultName: sourceVault.title, spaceId, spaceName: sourceSpace.name },
+    target: { vaultId: input.targetVaultId, vaultName: targetVault.title, spaceId, spaceName: sourceSpace.name },
   })
 
   return {

@@ -1,4 +1,4 @@
-import { EyeSlash, Gear, SignOut } from "@phosphor-icons/react";
+import { ClockCounterClockwise, EyeSlash, Gear, SignOut } from "@phosphor-icons/react";
 import {
   Clock3,
   Folder,
@@ -54,6 +54,7 @@ type DashboardSidebarProps = {
   onCreateResource?: () => void;
   onMediaVisibleChange?: (visible: boolean) => void;
   onOpenSettings?: () => void;
+  onOpenHistory?: () => void;
   onSignOut?: () => void;
   user?: DashboardSidebarUser;
   vaults?: DashboardVaultItem[];
@@ -68,6 +69,7 @@ export function DashboardSidebar({
   onCreateResource,
   onMediaVisibleChange,
   onOpenSettings,
+  onOpenHistory,
   onSignOut,
   user,
   vaults = [],
@@ -383,6 +385,7 @@ export function DashboardSidebar({
           mediaVisible={mediaVisible}
           onMediaVisibleChange={onMediaVisibleChange ?? (() => undefined)}
           onOpenSettings={onOpenSettings ?? (() => undefined)}
+          onOpenHistory={onOpenHistory ?? (() => undefined)}
           onSignOut={onSignOut ?? (() => undefined)}
           user={user}
         />
@@ -398,6 +401,7 @@ function DashboardAccountFooter({
   mediaVisible,
   onMediaVisibleChange,
   onOpenSettings,
+  onOpenHistory,
   onSignOut,
   user,
 }: {
@@ -406,12 +410,14 @@ function DashboardAccountFooter({
   mediaVisible: boolean;
   onMediaVisibleChange: (visible: boolean) => void;
   onOpenSettings: () => void;
+  onOpenHistory: () => void;
   onSignOut: () => void;
   user?: DashboardSidebarUser;
 }) {
   const { isMobile, state } = useAnimatedSidebar();
   const items = [
     { id: "settings", label: "Settings", icon: Gear, onSelect: onOpenSettings },
+    { id: "history", label: "History", icon: ClockCounterClockwise, onSelect: onOpenHistory },
     { id: "separator", type: "separator" as const },
     {
       id: "nsfw",

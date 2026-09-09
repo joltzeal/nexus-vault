@@ -34,6 +34,7 @@ import {
   processResourceAiSummaryMessage,
   shouldGenerateResourceAiSummary,
 } from "./resource-ai-summary-service"
+import { recordHistory } from "./history-service"
 
 const STALE_METADATA_RETRY_AFTER_MS = 5 * 60 * 1000
 const STALE_METADATA_RETRY_LIMIT = 25
@@ -222,6 +223,21 @@ export async function resolveResourceMetadata(
   }
 
   if (resource.createdBy && result.status === "failed") {
+    await recordHistory(db, {
+      actor: { id: resource.createdBy },
+      entityType: resource.stashUserId ? "stash" : "resource",
+      action: "metadata",
+      status: "failed",
+      entityId: resource.id,
+      entityLabel: resource.url ?? `Resource ${resource.id.slice(0, 8)}`,
+      vaultId: resource.vaultId,
+      details: {
+        operation: "metadata",
+        resourceType: resource.type,
+        url: resource.url ?? "",
+        errorMessage: result.errorMessage ?? "Metadata provider failed.",
+      },
+    })
     await processNotificationMessage(db, {
       kind: "notification.create",
       userId: resource.createdBy,

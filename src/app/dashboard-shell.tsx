@@ -32,6 +32,7 @@ import {
 import type { VaultForm } from "@/features/vault/types";
 import { authClient } from "@/lib/auth";
 import { toast } from "@/components/ui/toast";
+import { HistoryDialog } from "@/features/history/history-dialog";
 
 const MEDIA_VISIBILITY_STORAGE_KEY = "nexus-vault:media-visible";
 const DEFAULT_VAULT_COVERS = ["📁", "🗂️", "🧰", "📚", "🧭", "🪐", "🌿"];
@@ -100,6 +101,7 @@ export function DashboardShell({
   const [mediaVisible, setMediaVisible] = useState(getInitialMediaVisibility);
   const [loadingVaultId, setLoadingVaultId] = useState<string | null>(null);
   const [createVaultOpen, setCreateVaultOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [createVaultBusy, setCreateVaultBusy] = useState(false);
   const [createResourceOpen, setCreateResourceOpen] = useState(false);
   const [createResourceBusy, setCreateResourceBusy] = useState(false);
@@ -360,6 +362,7 @@ export function DashboardShell({
           }}
           onCreateResource={openResourceDialog}
           onOpenSettings={() => navigate("/dashboard/settings")}
+          onOpenHistory={() => setHistoryOpen(true)}
           onSignOut={() => void authClient.signOut()}
           user={
             user
@@ -452,6 +455,7 @@ export function DashboardShell({
         vaults={resourceTargets}
         vaultsLoading={resourceTargetsLoading}
       />
+      <HistoryDialog open={historyOpen} onOpenChange={setHistoryOpen} />
       <Toaster />
     </AnimatedSidebarProvider>
   );

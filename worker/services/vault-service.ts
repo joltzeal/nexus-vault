@@ -39,6 +39,7 @@ import {
   findVaultById,
   updateVaultById,
 } from "../repositories/vault.repository";
+import { recordHistory } from "./history-service";
 
 type VaultVisibility = "public" | "private" | "password";
 const IMPORT_INSERT_BATCH_SIZE = 100;
@@ -241,6 +242,15 @@ export async function createVault(
       token: newToken(),
       slug: shareSlug,
     });
+    await recordHistory(tx, {
+      actor: input.actor,
+      entityType: "vault",
+      action: "create",
+      entityId: vaultId,
+      entityLabel: input.title,
+      vaultId,
+      details: { defaultSpaceId: spaceId },
+    });
   });
 
   return { id: vaultId, defaultSpaceId: spaceId };
@@ -275,7 +285,7 @@ export async function updateVault(
     userEmail?: string;
   },
 ) {
-  await getVaultOrThrow(db, vaultId);
+  const existing = await getVaultOrThrow(db, vaultId);
   await requireVaultPermission(db, {
     vaultId,
     actor: input.actor,
@@ -299,6 +309,18 @@ export async function updateVault(
     updatedAt: new Date().toISOString(),
   });
 
+  if (input.actor && Object.keys(input).some((key) => key !== "actor" && key !== "userEmail")) {
+    await recordHistory(db, {
+      actor: input.actor,
+      entityType: "vault",
+      action: "update",
+      entityId: vaultId,
+      entityLabel: input.title ?? existing.title,
+      vaultId,
+      details: { fields: Object.keys(input).filter((key) => key !== "actor" && key !== "userEmail") },
+    });
+  }
+
   return { id: vaultId };
 }
 
@@ -310,7 +332,7 @@ export async function archiveVault(
     userEmail?: string;
   },
 ) {
-  await getVaultOrThrow(db, vaultId);
+  const existing = await getVaultOrThrow(db, vaultId);
   await requireVaultPermission(db, {
     vaultId,
     actor: input.actor,
@@ -320,6 +342,16 @@ export async function archiveVault(
 
   const now = new Date().toISOString();
   await updateVaultById(db, vaultId, { deletedAt: now, updatedAt: now });
+  if (input.actor) {
+    await recordHistory(db, {
+      actor: input.actor,
+      entityType: "vault",
+      action: "delete",
+      entityId: vaultId,
+      entityLabel: existing.title,
+      vaultId,
+    });
+  }
 
   return { id: vaultId, archived: true };
 }

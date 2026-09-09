@@ -22,6 +22,7 @@ import {
 } from "./resource-service"
 import { getMinResourcePosition } from "../repositories/resource.repository"
 import { requireUserXComCookieString } from "./account-integration-service"
+import { recordHistory } from "./history-service"
 
 export async function createStashResource(
   db: Db,
@@ -64,6 +65,14 @@ export async function createStashResource(
       provider: parsedInput.type,
       status: "pending",
       dataJson: { input: parsedInput.metadata ?? {} },
+    })
+    await recordHistory(tx, {
+      actor: input.actor,
+      entityType: "stash",
+      action: "add",
+      entityId: resourceId,
+      entityLabel: parsedInput.url,
+      details: { stashUserId, resourceType: parsedInput.type, url: parsedInput.url },
     })
   })
 
@@ -188,6 +197,14 @@ export async function reorderStashResources(
         and(eq(resources.id, item.id), eq(resources.stashUserId, userId)),
       )
     }
+  })
+  await recordHistory(db, {
+    actor: input.actor,
+    entityType: "stash",
+    action: "reorder",
+    entityId: input.actor.id,
+    entityLabel: "Flash stash",
+    details: { items: input.items },
   })
   return { updated: input.items.length }
 }

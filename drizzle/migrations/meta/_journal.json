@@ -36,6 +36,20 @@
       "when": 1788720000000,
       "tag": "0004_add_resource_stash",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788950400000,
+      "tag": "0005_add_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788950460000,
+      "tag": "0006_history_status",
+      "breakpoints": true
     }
   ]
 }

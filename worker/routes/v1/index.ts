@@ -6,6 +6,7 @@ import { registerLegacyRoute } from "./adapter";
 import * as accountIntegrations from "./account/integrations/route";
 import * as accountXCom from "./account/integrations/x-com/route";
 import * as health from "./health/route";
+import * as history from "./history/route";
 import * as localMediaMultipart from "./local-media/multipart/route";
 import * as localMediaMultipartSign from "./local-media/multipart/sign/route";
 import * as media from "./media/[...key]/route";
@@ -64,6 +65,7 @@ import * as sharedVaults from "./vaults/shared/route";
 export const apiV1 = new Hono<AppEnv>();
 
 registerLegacyRoute(apiV1, "/health", health);
+registerLegacyRoute(apiV1, "/history", history);
 registerLegacyRoute(apiV1, "/account/integrations", accountIntegrations);
 registerLegacyRoute(apiV1, "/account/integrations/x-com", accountXCom);
 registerLegacyRoute(apiV1, "/local-media/multipart", localMediaMultipart);

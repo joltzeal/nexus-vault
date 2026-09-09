@@ -38,6 +38,7 @@ import {
 } from "../repositories/resource.repository"
 import { requireUserXComCookieString } from "./account-integration-service"
 import { normalizeResourceMetadata } from "../domain/resources/metadata"
+import { recordHistory } from "./history-service"
 
 export async function createResource(
   db: Db,
@@ -80,6 +81,7 @@ export async function createResource(
       id: resourceId,
       vaultId,
       spaceId,
+      details: { resourceType: parsedInput.type, url: parsedInput.url },
       type: parsedInput.type,
       title: parsedInput.title,
       description: input.description,
@@ -96,6 +98,16 @@ export async function createResource(
       dataJson: {
         input: parsedInput.metadata ?? {},
       },
+    })
+    await recordHistory(tx, {
+      actor: input.actor,
+      entityType: "resource",
+      action: "add",
+      entityId: resourceId,
+      entityLabel: parsedInput.url,
+      vaultId,
+      spaceId,
+      details: { resourceType: parsedInput.type, url: parsedInput.url },
     })
   })
 
@@ -214,6 +226,19 @@ export async function updateResource(
       .where(eq(resources.id, resourceId))
   }
 
+  if (input.actor) {
+    await recordHistory(db, {
+      actor: input.actor,
+      entityType: resource.stashUserId ? "stash" : "resource",
+      action: "update",
+      entityId: resourceId,
+      entityLabel: nextUrl ?? resource.url ?? nextTitle ?? resource.title,
+      vaultId: resource.vaultId,
+      spaceId: nextSpaceId === undefined ? resource.spaceId : nextSpaceId,
+      details: { fields: Object.keys(updates).filter((key) => key !== "updatedAt"), resourceType: nextType ?? resource.type, url: nextUrl ?? resource.url },
+    })
+  }
+
   return {
     id: resourceId,
     metadataStatus: shouldResetMetadata ? ("pending" as const) : resource.metadataStatus,
@@ -280,6 +305,19 @@ export async function archiveResource(
   await db
     .delete(resources)
     .where(eq(resources.id, resourceId))
+
+  if (input.actor) {
+    await recordHistory(db, {
+      actor: input.actor,
+      entityType: resource.stashUserId ? "stash" : "resource",
+      action: "delete",
+      entityId: resourceId,
+      entityLabel: resource.url ?? resource.title,
+      vaultId: resource.vaultId,
+      spaceId: resource.spaceId,
+      details: { resourceType: resource.type, url: resource.url ?? "" },
+    })
+  }
 
   if (input.media && metadata?.provider === LOCAL_MEDIA_PROVIDER) {
     const objectKeys = getLocalMediaObjectKeys(metadata.dataJson)
@@ -407,6 +445,18 @@ export async function transferResource(
       position,
       updatedAt: new Date().toISOString(),
     }).where(eq(resources.id, resourceId))
+    await recordHistory(db, {
+      actor: input.actor,
+      entityType: "stash",
+      action: "move",
+      entityId: resourceId,
+      entityLabel: resource.url ?? resource.title,
+      vaultId: input.targetVaultId,
+      spaceId: input.targetSpaceId,
+      source: { stashUserId: resource.stashUserId, resourceId },
+      target: { vaultId: input.targetVaultId, spaceId: input.targetSpaceId },
+      details: { resourceType: resource.type, url: resource.url ?? "" },
+    })
     return { id: resourceId, action: "move" as const, vaultId: input.targetVaultId, spaceId: input.targetSpaceId }
   }
   if (input.targetSpaceId === resource.spaceId) {
@@ -444,6 +494,19 @@ export async function transferResource(
         updatedAt: now,
       })
       .where(eq(resources.id, resourceId))
+
+    await recordHistory(db, {
+      actor: input.actor,
+      entityType: "resource",
+      action: "move",
+      entityId: resourceId,
+      entityLabel: resource.url ?? resource.title,
+      vaultId: input.targetVaultId,
+      spaceId: input.targetSpaceId,
+      source: { vaultId: resource.vaultId, spaceId: resource.spaceId },
+      target: { vaultId: input.targetVaultId, spaceId: input.targetSpaceId },
+      details: { resourceType: resource.type, url: resource.url ?? "" },
+    })
 
     return {
       id: resourceId,
@@ -487,6 +550,19 @@ export async function transferResource(
       dataJson: metadata?.dataJson ?? {},
       errorMessage: metadata?.errorMessage,
     })
+  })
+
+  await recordHistory(db, {
+    actor: input.actor,
+    entityType: "resource",
+    action: "copy",
+    entityId: copiedResourceId,
+    entityLabel: resource.url ?? resource.title,
+    vaultId: input.targetVaultId,
+    spaceId: input.targetSpaceId,
+    source: { resourceId: resource.id, vaultId: resource.vaultId, spaceId: resource.spaceId },
+    target: { resourceId: copiedResourceId, vaultId: input.targetVaultId, spaceId: input.targetSpaceId },
+    details: { resourceType: resource.type, url: resource.url ?? "" },
   })
 
   return {
@@ -597,6 +673,18 @@ export async function transferResources(
             updatedAt: now,
           })
           .where(eq(resources.id, resource.id))
+        await recordHistory(tx, {
+          actor: input.actor,
+          entityType: "resource",
+          action: "move",
+          entityId: resource.id,
+          entityLabel: resource.url ?? resource.title,
+          vaultId: input.targetVaultId,
+          spaceId: input.targetSpaceId,
+          source: { vaultId: resource.vaultId, spaceId: resource.spaceId },
+          target: { vaultId: input.targetVaultId, spaceId: input.targetSpaceId },
+          details: { batch: true, resourceType: resource.type, url: resource.url ?? "" },
+        })
       }
     })
 
@@ -654,6 +742,18 @@ export async function transferResources(
         status: item.metadata?.status ?? item.resource.metadataStatus,
         dataJson: item.metadata?.dataJson ?? {},
         errorMessage: item.metadata?.errorMessage,
+      })
+      await recordHistory(tx, {
+        actor: input.actor,
+        entityType: "resource",
+        action: "copy",
+        entityId: item.id,
+          entityLabel: item.resource.url ?? item.resource.title,
+        vaultId: input.targetVaultId,
+        spaceId: input.targetSpaceId,
+        source: { resourceId: item.sourceId, vaultId: item.resource.vaultId, spaceId: item.resource.spaceId },
+        target: { resourceId: item.id, vaultId: input.targetVaultId, spaceId: input.targetSpaceId },
+        details: { batch: true, resourceType: item.resource.type, url: item.resource.url ?? "" },
       })
     }
   })

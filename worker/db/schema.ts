@@ -6,5 +6,6 @@ export * from "./core/enums";
 export * from "./core/notifications";
 export * from "./core/relations";
 export * from "./core/user-integrations";
+export * from "./core/history";
 export * from "./core/vaults";
 export * from "./core/resources";
