@@ -1,3 +1,5 @@
+import { API as MegaApi } from "megajs"
+
 import { parseResourceInput } from "../worker/domain/resources/input"
 import { megaMetadataProvider } from "../worker/metadata/providers/mega"
 
@@ -8,15 +10,36 @@ if (!inputUrl) {
 }
 
 const parsed = parseResourceInput({ url: inputUrl })
+const megaApi = new MegaApi(false, { fetch: loggingFetch })
 const result = await megaMetadataProvider.resolve({
   id: "local-mega-test",
   type: parsed.type,
   title: parsed.title,
   description: "",
   url: parsed.url,
+}, {
+  megaApi,
+  onMegaDecryptedContent(value) {
+    console.log("\n[mega] decrypted content")
+    console.log(JSON.stringify(value, null, 2))
+  },
 })
 
 console.log(JSON.stringify({ input: parsed, result }, null, 2))
+
+async function loggingFetch(input: RequestInfo | URL, init?: RequestInit) {
+  const response = await fetch(input, init)
+  const body = await response.clone().text()
+
+  console.log("\n[mega] raw response", {
+    url: String(input),
+    status: response.status,
+    headers: Object.fromEntries(response.headers.entries()),
+    body,
+  })
+
+  return response
+}
 
 function findInputUrl(args: string[]) {
   for (const argument of args) {

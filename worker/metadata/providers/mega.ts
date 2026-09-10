@@ -1,4 +1,4 @@
-import { File as MegaFile } from "megajs"
+import { File as MegaFile, type API as MegaApi } from "megajs"
 
 import {
   createBaseResourceMetadata,
@@ -8,7 +8,7 @@ import {
 } from "../../domain/resources/metadata"
 import { parseMegaLink } from "../../domain/resources/input"
 
-import type { MetadataProvider } from "../metadata-provider"
+import type { MetadataProvider, MetadataResolveOptions } from "../metadata-provider"
 
 const MEGA_MAX_FILES = 5_000
 const MEGA_MAX_DEPTH = 32
@@ -20,6 +20,10 @@ type MegaNode = {
   timestamp?: number
   downloadId?: string | string[]
   nodeId?: string
+  attributes?: Record<string, unknown>
+  createdAt?: number
+  owner?: string
+  favorited?: boolean
   children?: MegaNode[]
   link: (options: boolean) => Promise<string>
 }
@@ -33,7 +37,7 @@ type MegaFileEntry = {
 export const megaMetadataProvider: MetadataProvider = {
   name: "mega",
   supports: (resource) => resource.type === "mega" || parseMegaLink(resource.url) !== null,
-  async resolve(resource) {
+  async resolve(resource, options?: MetadataResolveOptions) {
     const parsed = parseMegaLink(resource.url)
     const base = createBaseResourceMetadata({ type: "mega", title: resource.title })
 
@@ -47,7 +51,8 @@ export const megaMetadataProvider: MetadataProvider = {
     }
 
     try {
-      const root = await loadMegaRoot(parsed.url) as unknown as MegaNode
+      const root = await loadMegaRoot(parsed.url, options?.megaApi) as unknown as MegaNode
+      options?.onMegaDecryptedContent?.(serializeMegaNode(root))
       const files: MegaFileEntry[] = []
       const tree = collectMegaTree(root, "", files, 0)
       const media = await Promise.all(files.map((file) => toMedia(file, parsed.url)))
@@ -109,8 +114,8 @@ function getMegaErrorMessage(error: unknown) {
   return error.message || "MEGA metadata request failed."
 }
 
-async function loadMegaRoot(url: string) {
-  const file = MegaFile.fromURL(url)
+async function loadMegaRoot(url: string, api?: MegaApi) {
+  const file = MegaFile.fromURL(url, api ? { api } : undefined)
   return new Promise<unknown>((resolve, reject) => {
     file.loadAttributes((error, loadedFile) => {
       if (error) {
@@ -120,6 +125,24 @@ async function loadMegaRoot(url: string) {
       }
     })
   })
+}
+
+function serializeMegaNode(node: MegaNode): Record<string, unknown> {
+  return {
+    ...(node.name ? { name: node.name } : {}),
+    directory: node.directory,
+    ...(node.size !== undefined ? { size: node.size } : {}),
+    ...(node.timestamp !== undefined ? { timestamp: node.timestamp } : {}),
+    ...(node.createdAt !== undefined ? { createdAt: node.createdAt } : {}),
+    ...(node.nodeId ? { nodeId: node.nodeId } : {}),
+    ...(node.downloadId !== undefined ? { downloadId: node.downloadId } : {}),
+    ...(node.owner ? { owner: node.owner } : {}),
+    ...(node.favorited !== undefined ? { favorited: node.favorited } : {}),
+    ...(node.attributes ? { attributes: node.attributes } : {}),
+    ...(node.children
+      ? { children: node.children.map((child) => serializeMegaNode(child)) }
+      : {}),
+  }
 }
 
 function collectMegaTree(

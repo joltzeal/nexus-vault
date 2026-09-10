@@ -1,5 +1,6 @@
 import type { NormalizedResourceMetadata } from "../domain/resources/metadata"
 import type { ResourceType } from "../domain/resources/types"
+import type { API as MegaApi } from "megajs"
 import { cloudDriveMetadataProvider } from "./providers/cloud-drive"
 import { douyinMetadataProvider } from "./providers/douyin"
 import { douyinTiktokDownloadApiMetadataProvider } from "./providers/douyin-tiktok-download-api"
@@ -41,6 +42,8 @@ export type MetadataResolveOptions = {
   githubToken?: string
   gofileApiToken?: string
   gofileCache?: KVNamespace
+  megaApi?: MegaApi
+  onMegaDecryptedContent?: (value: unknown) => void
   tikhubApiToken?: string
   telegramMetadataApiUrl?: string
   telegramMetadataApiToken?: string
