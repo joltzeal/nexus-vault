@@ -107,7 +107,9 @@ export function ResourceDetailsSheet({
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const localMediaRef = useRef(localMedia);
   const metadata = resource?.metadata?.data;
-  const tree = resource?.type === "magnet" ? (metadata?.tree ?? []) : [];
+  const tree = resource && ["magnet", "gofile", "mega"].includes(resource.type)
+    ? (metadata?.tree ?? [])
+    : [];
   const displayUrl = resource ? getResourceDisplayUrl(resource) : "";
   const hasChanges = useMemo(() => {
     if (!resource) return false;

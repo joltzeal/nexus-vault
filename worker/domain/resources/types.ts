@@ -5,6 +5,7 @@ export type ResourceType =
   | "douyin"
   | "wechat_mp"
   | "gofile"
+  | "mega"
   | "reddit"
   | "baidu_pan"
   | "pan_115"

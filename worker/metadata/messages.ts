@@ -1,4 +1,4 @@
-import { isCloudDriveResourceType, parseCloudDriveLink, parseDouyinLink, parseGofileLink, parseMagnetLink, parseTelegramMessageLink, parseTwitterLink, parseWechatMpArticleLink, type ResourceType } from "../domain/resources/input"
+import { isCloudDriveResourceType, parseCloudDriveLink, parseDouyinLink, parseGofileLink, parseMagnetLink, parseMegaLink, parseTelegramMessageLink, parseTwitterLink, parseWechatMpArticleLink, type ResourceType } from "../domain/resources/input"
 
 export type MetadataQueueMessage = {
   kind: "metadata.resolve"
@@ -22,6 +22,7 @@ export function createMetadataQueueMessage(
   const parsedWechatMp = type === "wechat_mp" ? parseWechatMpArticleLink(url) : null
   const parsedCloudDrive = isCloudDriveResourceType(type) ? parseCloudDriveLink(url) : null
   const parsedGofile = type === "gofile" ? parseGofileLink(url) : null
+  const parsedMega = type === "mega" ? parseMegaLink(url) : null
 
   return {
     kind: "metadata.resolve",
@@ -42,6 +43,8 @@ export function createMetadataQueueMessage(
                 ? `${parsedCloudDrive.provider}:${parsedCloudDrive.url}`
                 : parsedGofile
                   ? `gofile:${parsedGofile.contentId}`
+                  : parsedMega
+                    ? `mega:${parsedMega.kind}:${parsedMega.handle}:${parsedMega.key}`
                   : undefined,
     requestedAt: new Date().toISOString(),
   }

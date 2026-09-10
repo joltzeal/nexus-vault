@@ -89,7 +89,9 @@ export function getResourcePillItems(resource: Resource): ResourcePillItem[] {
   const metadata = resource.metadata?.data
   const items: ResourcePillItem[] = []
   const fileType = metadata?.fileType ??
-    (resource.type === "magnet" && metadata?.tree?.length ? "folder" : undefined)
+    (["magnet", "gofile", "mega"].includes(resource.type) && metadata?.tree?.length
+      ? "folder"
+      : undefined)
   if (fileType) {
     items.push({ key: "file-type", kind: "label", label: fileType })
   }

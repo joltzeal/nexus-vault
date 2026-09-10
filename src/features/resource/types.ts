@@ -22,6 +22,7 @@ export type ResourceType =
   | "douyin"
   | "wechat_mp"
   | "gofile"
+  | "mega"
   | "reddit"
   | "baidu_pan"
   | "pan_115"
@@ -279,6 +280,7 @@ export const resourceTypes: Array<{ value: ResourceType; label: string }> = [
   { value: "douyin", label: "抖音" },
   { value: "wechat_mp", label: "微信公众号" },
   { value: "gofile", label: "GoFile" },
+  { value: "mega", label: "MEGA" },
   { value: "reddit", label: "Reddit" },
   { value: "baidu_pan", label: "百度网盘" },
   { value: "pan_115", label: "115 盘" },

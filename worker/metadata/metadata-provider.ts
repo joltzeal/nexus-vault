@@ -8,6 +8,7 @@ import { githubMetadataProvider } from "./providers/github"
 import { gofileMetadataProvider } from "./providers/gofile"
 import { localLinkMetadataProvider } from "./providers/local-link"
 import { magnetMetadataProvider } from "./providers/magnet"
+import { megaMetadataProvider } from "./providers/mega"
 import { placeholderMetadataProvider } from "./providers/placeholder"
 import { redditMetadataProvider } from "./providers/reddit"
 import { snapdouyinMetadataProvider } from "./providers/snapdouyin"
@@ -92,6 +93,7 @@ const metadataProviders: MetadataProvider[] = [
   redditMetadataProvider,
   youtubeMetadataProvider,
   magnetMetadataProvider,
+  megaMetadataProvider,
   twitterMetadataProvider,
   telegramMetadataProvider,
   wechatMpMetadataProvider,
@@ -120,6 +122,7 @@ export {
   httpPageMetadataProvider,
   localLinkMetadataProvider,
   magnetMetadataProvider,
+  megaMetadataProvider,
   placeholderMetadataProvider,
   redditMetadataProvider,
   snapdouyinMetadataProvider,

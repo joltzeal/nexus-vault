@@ -85,6 +85,12 @@ export type ParsedGofileLink = ParsedHttpLink & {
   contentId: string
 }
 
+export type ParsedMegaLink = ParsedHttpLink & {
+  handle: string
+  key: string
+  kind: "file" | "folder"
+}
+
 export type ParsedDouyinLink = {
   host: string
   shareCode?: string
@@ -484,6 +490,35 @@ export function parseGofileLink(url: string): ParsedGofileLink | null {
   }
 }
 
+export function parseMegaLink(url: string): ParsedMegaLink | null {
+  const parsedUrl = parseHttpUrl(url)
+  if (!parsedUrl) return null
+
+  const host = normalizeHostname(parsedUrl.hostname)
+  if (host !== "mega.nz" && host !== "mega.co.nz") return null
+
+  const segments = parsedUrl.pathname.split("/").filter(Boolean)
+  const kind = segments[0]?.toLowerCase()
+  const handle = segments[1]
+  const key = parsedUrl.hash.replace(/^#/, "").trim()
+  if (
+    segments.length !== 2 ||
+    (kind !== "file" && kind !== "folder") ||
+    !handle ||
+    !/^[a-z0-9_-]+$/i.test(handle) ||
+    !key ||
+    !/^[a-z0-9_/-]+$/i.test(key)
+  ) return null
+
+  return {
+    handle,
+    host,
+    key,
+    kind,
+    url: `https://${host}/${kind}/${encodeURIComponent(handle)}#${key}`,
+  }
+}
+
 export function parseDouyinLink(url: string): ParsedDouyinLink | null {
   const parsedUrl = parseHttpUrl(url)
   if (!parsedUrl) return null
@@ -607,6 +642,7 @@ function defaultResourceTitle(type: ResourceType) {
   if (type === "douyin") return "抖音视频"
   if (type === "wechat_mp") return "微信公众号文章"
   if (type === "gofile") return "GoFile folder"
+  if (type === "mega") return "MEGA folder"
   if (type === "ftp") return "FTP link"
   if (isCloudDriveResourceType(type)) return getCloudDriveProviderLabel(type)
   if (type === "http") return "Untitled link"
@@ -714,6 +750,7 @@ export const httpInputParser: ResourceInputParser = {
       input.type === "douyin" ||
       input.type === "wechat_mp" ||
       input.type === "gofile" ||
+      input.type === "mega" ||
       Boolean(input.type && isCloudDriveResourceType(input.type)) ||
       parseHttpLink(input.url) !== null
     )
@@ -726,6 +763,18 @@ export const httpInputParser: ResourceInputParser = {
         url: gofile?.url ?? input.url.trim(),
         title: normalizeInputTitle(input.title) || defaultResourceTitle("gofile"),
         metadata: gofile ? { contentId: gofile.contentId, host: gofile.host } : {},
+      }
+    }
+
+    const mega = parseMegaLink(input.url)
+    if (input.type === "mega" || mega) {
+      return {
+        type: "mega",
+        url: mega?.url ?? input.url.trim(),
+        title: normalizeInputTitle(input.title) || defaultResourceTitle("mega"),
+        metadata: mega
+          ? { handle: mega.handle, host: mega.host, key: mega.key, kind: mega.kind }
+          : {},
       }
     }
 

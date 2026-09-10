@@ -50,6 +50,13 @@
       "when": 1788950460000,
       "tag": "0006_history_status",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789123200000,
+      "tag": "0007_add_mega_resource_type",
+      "breakpoints": true
     }
   ]
 }

@@ -866,7 +866,7 @@ function shouldBackfillResourceTitle(currentTitle: string, metadataTitle?: strin
   return (
     normalizedNext.length > 0 &&
     normalizedNext !== normalizedCurrent &&
-    ["名称未知", "untitled resource", "untitled link", "untitled tweet", "抖音视频", "gofile folder"].includes(
+    ["名称未知", "untitled resource", "untitled link", "untitled tweet", "抖音视频", "gofile folder", "mega folder"].includes(
       normalizedCurrent
     )
   )

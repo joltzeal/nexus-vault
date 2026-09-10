@@ -241,7 +241,7 @@ export function ResourceCard({
   const media = getResourceMedia(resource);
   const downloadableMedia = getDownloadableResourceMedia(resource);
   const fileTree =
-    resource.type === "magnet" || resource.type === "gofile"
+    resource.type === "magnet" || resource.type === "gofile" || resource.type === "mega"
       ? (resource.metadata?.data?.tree ?? [])
       : [];
   const resourceTypeLabel = getResourceTypeLabel(resource.type);

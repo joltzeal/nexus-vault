@@ -10,6 +10,7 @@ export const resourceTypeValues = [
 	"douyin",
 	"wechat_mp",
 	"gofile",
+	"mega",
 	"reddit",
 	"baidu_pan",
 	"pan_115",
