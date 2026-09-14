@@ -41,6 +41,9 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
+      - name: Web API contract tests
+        run: pnpm run test:web
+
       - name: Build
         run: pnpm run build
 
@@ -88,6 +91,12 @@ jobs:
         run: pnpm run build
         env:
           VITE_APP_VERSION: ${{ steps.app-version.outputs.version }}
+
+      - name: Validate Wrangler deployment bundle
+        run: pnpm exec wrangler deploy --config wrangler.jsonc --env production --dry-run --outdir /tmp/nexus-vault-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Apply database migrations
         run: pnpm run db:migrate
