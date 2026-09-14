@@ -6,6 +6,7 @@ import type {
   StarredResourceItem,
   ResourceTransferTargetVault,
 } from "../types"
+import { writeCachedMetadata } from "@/lib/metadata-cache"
 
 type ApiEnvelope<T> = {
   data?: T
@@ -30,7 +31,9 @@ export async function getResource(resourceId: string): Promise<Resource> {
     throw new Error(payload?.error?.message ?? "Could not load resource.")
   }
   if (!payload?.data) throw new Error("Resource response was empty.")
-  return payload.data
+  const resource = payload.data
+  writeCachedMetadata(resource)
+  return resource
 }
 
 export async function updateResourceDetails(
@@ -69,6 +72,10 @@ export async function resolveResourceMetadata(resourceId: string) {
   const payload = (await response.json().catch(() => null)) as ApiEnvelope<unknown> | null;
   if (!response.ok || payload?.success === false) {
     throw new Error(payload?.error?.message ?? "Could not retrieve metadata.");
+  }
+  if (payload?.data && typeof payload.data === "object") {
+    const current = payload.data as Partial<Resource>
+    if (current.id && current.metadataStatus) writeCachedMetadata(current as Pick<Resource, "id" | "metadata" | "metadataStatus">)
   }
   return payload?.data;
 }
