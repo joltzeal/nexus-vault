@@ -1,4 +1,5 @@
-import { Navigate, Outlet, Route, Routes, useOutletContext } from "react-router-dom"
+import { Navigate, Outlet, Route, Routes, useNavigate, useOutletContext } from "react-router-dom"
+import { useEffect } from "react"
 
 import { authClient } from "./auth"
 import { DashboardPage } from "./pages/dashboard"
@@ -10,6 +11,7 @@ import { SharedVaultPage } from "./pages/share/shared-vault-page"
 import { SettingsPage } from "./pages/settings"
 import type { DashboardOutletContext } from "./app/dashboard-shell"
 import { Spinner } from "./components/aicanvas/andromeda/components/Spinner"
+import { onUnauthorized } from "./lib/api-client"
 
 function ProtectedDashboard() {
   const session = authClient.useSession()
@@ -24,6 +26,22 @@ function DashboardOutlet() {
 }
 
 function App() {
+  const navigate = useNavigate()
+  useEffect(() => onUnauthorized(() => {
+    void authClient.signOut()
+    navigate("/login", { replace: true, state: { reason: "expired" } })
+  }), [navigate])
+  useEffect(() => {
+    const refreshSession = () => {
+      if (document.visibilityState === "visible") void authClient.getSession()
+    }
+    document.addEventListener("visibilitychange", refreshSession)
+    window.addEventListener("focus", refreshSession)
+    return () => {
+      document.removeEventListener("visibilitychange", refreshSession)
+      window.removeEventListener("focus", refreshSession)
+    }
+  }, [])
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
