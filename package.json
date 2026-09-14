@@ -7,6 +7,7 @@
 		"dev": "vite",
 		"build": "tsc -b && vite build",
 		"lint": "eslint .",
+		"test:web": "tsx --test scripts/web-contract.test.ts",
 		"test:twitter": "tsx scripts/twitter-live.test.ts",
 		"test:mega": "tsx scripts/mega-metadata.ts",
 		"auth:set-password": "tsx scripts/set-auth-password.ts",
