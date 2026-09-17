@@ -63,6 +63,10 @@ export type SpaceSectionProps = {
   disabled?: boolean;
   canAddResource?: boolean;
   isVaultOwner?: boolean;
+  resourceCount?: number;
+  resourcesLoading?: boolean;
+  hasMoreResources?: boolean;
+  onLoadMoreResources?: () => void;
   resources: SpaceSectionResource[];
   space: { id: string; name: string; description?: string; icon?: string };
   viewMode?: "list" | "masonry";
@@ -94,6 +98,10 @@ export function SpaceSection({
   disabled = false,
   canAddResource = false,
   isVaultOwner = false,
+  resourceCount,
+  resourcesLoading = false,
+  hasMoreResources = false,
+  onLoadMoreResources,
   index,
   resources,
   space,
@@ -281,7 +289,7 @@ export function SpaceSection({
             {space.name}
           </h2>
           <span className="font-mono text-label text-muted-foreground">
-            {resources.length}
+            {resourceCount ?? resources.length}
           </span>
           {space.description ? (
             <Popover open={descriptionOpen} onOpenChange={setDescriptionOpen}>
@@ -470,11 +478,21 @@ export function SpaceSection({
               )}
             </div>
           )}
+          {resourcesLoading ? (
+            <div className="flex min-h-12 items-center justify-center border border-dashed border-border text-label text-muted-foreground">
+              Loading resources…
+            </div>
+          ) : null}
+          {!resourcesLoading && hasMoreResources && filteredResources.length > 0 ? (
+            <ResourceLoadTrigger onLoad={onLoadMoreResources} />
+          ) : null}
           {filteredResources.length === 0 ? (
-            hasResourceFilters ? (
+            resourcesLoading ? null : hasResourceFilters ? (
               <div className="flex min-h-20 items-center justify-center border border-dashed border-border p-4 text-center text-label text-muted-foreground">
                 No resources match these filters.
               </div>
+            ) : hasMoreResources ? (
+              <ResourceLoadTrigger onLoad={onLoadMoreResources} />
             ) : (
               <button
                 className="flex min-h-24 w-full flex-col items-center justify-center gap-2 border border-dashed border-border p-4 text-center text-muted-foreground transition hover:border-primary hover:text-foreground disabled:opacity-50"
@@ -495,6 +513,25 @@ export function SpaceSection({
       ) : null}
     </section>
   );
+}
+
+function ResourceLoadTrigger({ onLoad }: { onLoad?: () => void }) {
+  const triggerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const element = triggerRef.current;
+    if (!element || !onLoad || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) onLoad();
+      },
+      { rootMargin: "700px 0px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [onLoad]);
+
+  return <div aria-label="Loading more resources when visible" className="h-1" ref={triggerRef} />;
 }
 
 function matchesResourceFilters(

@@ -4,8 +4,10 @@ import {
   count,
   desc,
   eq,
+  gt,
   inArray,
   isNull,
+  lt,
   like,
   or,
 } from "drizzle-orm";
@@ -615,12 +617,189 @@ export async function getVaultDetail(
     actor: input.actor,
     userEmail: input.userEmail,
   });
-  const detail = await readVaultDetail(db, vaultId, { actor: input.actor });
+  const detail = await readVaultSummary(db, vaultId);
   return {
     ...detail,
     actorRole: input.actor
       ? await getVaultRoleForActor(db, vaultId, input.actor)
       : ("anonymous" as const),
+  };
+}
+
+/**
+ * Returns the data required to paint the vault shell. Resources deliberately
+ * live behind a separate, cursor-based endpoint so a large vault never blocks
+ * its header, outline, or space list on one oversized response.
+ */
+export async function readVaultSummary(db: Db, vaultId: string) {
+  const vault = await getVaultOrThrow(db, vaultId);
+  const [spaceRows, resourceCountRows] = await Promise.all([
+    db
+      .select({
+        id: spaces.id,
+        name: spaces.name,
+        description: spaces.description,
+        icon: spaces.icon,
+        position: spaces.position,
+        createdAt: spaces.createdAt,
+        updatedAt: spaces.updatedAt,
+      })
+      .from(spaces)
+      .where(and(eq(spaces.vaultId, vaultId), isNull(spaces.deletedAt)))
+      .orderBy(asc(spaces.position), desc(spaces.createdAt)),
+    db
+      .select({ spaceId: resources.spaceId, resourceCount: count() })
+      .from(resources)
+      .where(eq(resources.vaultId, vaultId))
+      .groupBy(resources.spaceId),
+  ]);
+  const resourceCountBySpaceId = new Map(
+    resourceCountRows.map((row) => [row.spaceId, row.resourceCount]),
+  );
+
+  return {
+    vault,
+    spaces: spaceRows.map((space) => ({
+      ...space,
+      resourceCount: resourceCountBySpaceId.get(space.id) ?? 0,
+    })),
+    resources: [],
+  };
+}
+
+type ResourcePageCursor = {
+  createdAt: string;
+  id: string;
+  position: number;
+};
+
+function decodeResourcePageCursor(value?: string) {
+  if (!value) return undefined;
+  try {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(
+      normalized.length + ((4 - (normalized.length % 4)) % 4),
+      "=",
+    );
+    const parsed = JSON.parse(atob(padded)) as ResourcePageCursor;
+    if (
+      typeof parsed.id !== "string" ||
+      typeof parsed.createdAt !== "string" ||
+      !Number.isInteger(parsed.position)
+    ) {
+      return undefined;
+    }
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function encodeResourcePageCursor(value: ResourcePageCursor) {
+  return btoa(JSON.stringify(value))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/** Lists one space at a time so the client can fetch only expanded/visible spaces. */
+export async function listVaultResources(
+  db: Db,
+  vaultId: string,
+  input: {
+    actor?: Actor;
+    cursor?: string;
+    limit?: number;
+    spaceId: string;
+    userEmail?: string;
+  },
+) {
+  await requireVaultRead(db, {
+    vaultId,
+    actor: input.actor,
+    userEmail: input.userEmail,
+  });
+
+  const cursor = decodeResourcePageCursor(input.cursor);
+  const limit = Math.min(Math.max(input.limit ?? 30, 1), 50);
+  const cursorCondition = cursor
+    ? or(
+        gt(resources.position, cursor.position),
+        and(eq(resources.position, cursor.position), lt(resources.createdAt, cursor.createdAt)),
+        and(
+          eq(resources.position, cursor.position),
+          eq(resources.createdAt, cursor.createdAt),
+          gt(resources.id, cursor.id),
+        ),
+      )
+    : undefined;
+  const rows = await db
+    .select({
+      id: resources.id,
+      spaceId: resources.spaceId,
+      type: resources.type,
+      title: resources.title,
+      description: resources.description,
+      url: resources.url,
+      referer: resources.referer,
+      metadataStatus: resources.metadataStatus,
+      position: resources.position,
+      createdBy: resources.createdBy,
+      createdAt: resources.createdAt,
+      updatedAt: resources.updatedAt,
+      metadataProvider: resourceMetadata.provider,
+      metadataDataJson: resourceMetadata.dataJson,
+      metadataErrorMessage: resourceMetadata.errorMessage,
+      metadataUpdatedAt: resourceMetadata.updatedAt,
+    })
+    .from(resources)
+    .leftJoin(resourceMetadata, eq(resourceMetadata.resourceId, resources.id))
+    .where(and(eq(resources.vaultId, vaultId), eq(resources.spaceId, input.spaceId), cursorCondition))
+    .orderBy(asc(resources.position), desc(resources.createdAt), asc(resources.id))
+    .limit(limit + 1);
+  const pageRows = rows.slice(0, limit);
+  const resourceIds = pageRows.map((resource) => resource.id);
+  const [starRows, readLaterRows, annotationRows] = input.actor && resourceIds.length > 0
+    ? await Promise.all([
+        db.select({ sourceResourceId: starredResources.sourceResourceId }).from(starredResources).where(and(eq(starredResources.userId, input.actor.id), inArray(starredResources.sourceResourceId, resourceIds))),
+        db.select({ resourceId: resourceReadLater.resourceId }).from(resourceReadLater).where(and(eq(resourceReadLater.userId, input.actor.id), inArray(resourceReadLater.resourceId, resourceIds))),
+        db.select({ resourceId: resourceAnnotations.resourceId, rating: resourceAnnotations.rating, comment: resourceAnnotations.comment, checked: resourceAnnotations.checked, dataJson: resourceAnnotations.dataJson, createdAt: resourceAnnotations.createdAt, updatedAt: resourceAnnotations.updatedAt }).from(resourceAnnotations).where(and(eq(resourceAnnotations.userId, input.actor.id), inArray(resourceAnnotations.resourceId, resourceIds))),
+      ])
+    : [[], [], []] as const;
+  const starredResourceIds = new Set(starRows.map((row) => row.sourceResourceId));
+  const readLaterResourceIds = new Set(readLaterRows.map((row) => row.resourceId));
+  const annotationByResourceId = new Map(annotationRows.map((row) => [row.resourceId, row]));
+  const last = pageRows.at(-1);
+
+  return {
+    items: pageRows.map((resource) => ({
+      id: resource.id,
+      spaceId: resource.spaceId,
+      type: resource.type,
+      title: resource.title,
+      description: resource.description,
+      url: resource.url,
+      referer: resource.referer,
+      metadataStatus: resource.metadataStatus,
+      position: resource.position,
+      createdBy: resource.createdBy,
+      createdAt: resource.createdAt,
+      updatedAt: resource.updatedAt,
+      isStarred: starredResourceIds.has(resource.id),
+      isReadLater: readLaterResourceIds.has(resource.id),
+      annotation: annotationByResourceId.get(resource.id) ?? null,
+      metadata: resource.metadataProvider
+        ? {
+            provider: resource.metadataProvider,
+            data: normalizeResourceMetadata(resource.metadataDataJson),
+            errorMessage: resource.metadataErrorMessage,
+            updatedAt: resource.metadataUpdatedAt,
+          }
+        : null,
+    })),
+    nextCursor: rows.length > limit && last
+      ? encodeResourcePageCursor(last)
+      : null,
   };
 }
 
@@ -706,6 +885,14 @@ export async function readVaultDetail(
     .from(spaces)
     .where(and(eq(spaces.vaultId, vaultId), isNull(spaces.deletedAt)))
     .orderBy(asc(spaces.position), desc(spaces.createdAt));
+  const resourceCountRows = await db
+    .select({ spaceId: resources.spaceId, resourceCount: count() })
+    .from(resources)
+    .where(eq(resources.vaultId, vaultId))
+    .groupBy(resources.spaceId);
+  const resourceCountBySpaceId = new Map(
+    resourceCountRows.map((row) => [row.spaceId, row.resourceCount]),
+  );
 
   const resourceRows = await db
     .select({
@@ -792,7 +979,10 @@ export async function readVaultDetail(
 
   return {
     vault,
-    spaces: spaceRows,
+    spaces: spaceRows.map((space) => ({
+      ...space,
+      resourceCount: resourceCountBySpaceId.get(space.id) ?? 0,
+    })),
     resources: resourceRows.map((resource) => ({
       id: resource.id,
       spaceId: resource.spaceId,

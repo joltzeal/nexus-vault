@@ -39,6 +39,7 @@ export function VaultOutline({
   onAddSpace,
   allSpacesCollapsed = false,
   onToggleAllSpaces,
+  onSelectSpace,
   onViewModeChange,
   onBatchTransfer,
   onCreateTransferTargetSpace,
@@ -53,6 +54,7 @@ export function VaultOutline({
   onAddSpace: () => void;
   allSpacesCollapsed?: boolean;
   onToggleAllSpaces?: () => void;
+  onSelectSpace?: (spaceId: string) => void;
   onViewModeChange?: (mode: VaultViewMode) => void;
   onBatchTransfer?: (input: {
     action: "move" | "copy";
@@ -74,11 +76,11 @@ export function VaultOutline({
   const isOwner = detail.actorRole === "owner";
   const resourceCount = useMemo(() => {
     const counts = new Map<string | null, number>();
-    for (const resource of detail.resources) {
-      counts.set(resource.spaceId, (counts.get(resource.spaceId) ?? 0) + 1);
+    for (const space of detail.spaces) {
+      counts.set(space.id, space.resourceCount ?? 0);
     }
     return counts;
-  }, [detail.resources]);
+  }, [detail.spaces]);
   useEffect(() => {
     const nodes = detail.spaces
       .map((space) => document.getElementById(`space-${space.id}`))
@@ -105,6 +107,7 @@ export function VaultOutline({
 
   function selectSpace(spaceId: string) {
     setActiveSpaceId(spaceId);
+    onSelectSpace?.(spaceId);
     document
       .getElementById(`space-${spaceId}`)
       ?.scrollIntoView({ behavior: "smooth", block: "start" });

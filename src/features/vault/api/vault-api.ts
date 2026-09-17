@@ -21,9 +21,14 @@ export type VaultDetail = {
     collectionEnabled: boolean
     nsfwEnabled: boolean
   }
-  spaces: Array<{ id: string; name: string; description: string; icon: string }>
+  spaces: Array<{ id: string; name: string; description: string; icon: string; position?: number; resourceCount: number }>
   resources: Resource[]
   actorRole: "owner" | "editor" | "viewer" | "anonymous"
+}
+
+export type VaultResourcePage = {
+  items: Resource[]
+  nextCursor: string | null
 }
 
 export async function getDashboardVaultDetail(vaultId: string, signal?: AbortSignal): Promise<VaultDetail> {
@@ -31,6 +36,26 @@ export async function getDashboardVaultDetail(vaultId: string, signal?: AbortSig
   const payload = (await response.json().catch(() => null)) as { data?: VaultDetail; error?: { message?: string } | null } | null
   if (!response.ok) throw new Error(payload?.error?.message ?? "Could not load vault.")
   if (!payload?.data) throw new Error("Vault response was empty.")
+  return payload.data
+}
+
+export async function listDashboardVaultResources(
+  vaultId: string,
+  input: { cursor?: string; limit?: number; spaceId: string },
+  signal?: AbortSignal,
+): Promise<VaultResourcePage> {
+  const params = new URLSearchParams({
+    limit: String(input.limit ?? 30),
+    spaceId: input.spaceId,
+    ...(input.cursor ? { cursor: input.cursor } : {}),
+  })
+  const response = await fetch(
+    `/api/v1/vaults/${encodeURIComponent(vaultId)}/resources?${params}`,
+    { credentials: "include", signal },
+  )
+  const payload = (await response.json().catch(() => null)) as { data?: VaultResourcePage; error?: { message?: string } | null } | null
+  if (!response.ok) throw new Error(payload?.error?.message ?? "Could not load resources.")
+  if (!payload?.data) throw new Error("Resource response was empty.")
   return payload.data
 }
 
