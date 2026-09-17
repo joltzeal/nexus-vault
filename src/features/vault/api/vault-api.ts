@@ -23,6 +23,7 @@ export type VaultDetail = {
   }
   spaces: Array<{ id: string; name: string; description: string; icon: string; position?: number; resourceCount: number }>
   resources: Resource[]
+  nextResourceCursor?: string | null
   actorRole: "owner" | "editor" | "viewer" | "anonymous"
 }
 
@@ -41,13 +42,13 @@ export async function getDashboardVaultDetail(vaultId: string, signal?: AbortSig
 
 export async function listDashboardVaultResources(
   vaultId: string,
-  input: { cursor?: string; limit?: number; spaceId: string },
+  input: { cursor?: string; limit?: number; spaceId?: string } = {},
   signal?: AbortSignal,
 ): Promise<VaultResourcePage> {
   const params = new URLSearchParams({
-    limit: String(input.limit ?? 30),
-    spaceId: input.spaceId,
+    limit: String(input.limit ?? 50),
     ...(input.cursor ? { cursor: input.cursor } : {}),
+    ...(input.spaceId ? { spaceId: input.spaceId } : {}),
   })
   const response = await fetch(
     `/api/v1/vaults/${encodeURIComponent(vaultId)}/resources?${params}`,

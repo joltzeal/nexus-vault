@@ -3,6 +3,7 @@ import { afterEach, describe, it } from "node:test"
 
 import { listDashboardVaults } from "../src/features/dashboard/api.ts"
 import { getSharedVault } from "../src/features/share/api.ts"
+import { listDashboardVaultResources } from "../src/features/vault/api/vault-api.ts"
 
 const originalFetch = globalThis.fetch
 
@@ -53,5 +54,24 @@ describe("Web API contracts", () => {
 
     assert.equal(result.status, "ready")
     assert.match(requestedUrl, /\/api\/v1\/shares\/team%20vault%2F2026$/)
+  })
+
+  it("loads a vault-wide resource window without a space filter", async () => {
+    let requestedUrl = ""
+    globalThis.fetch = async (input) => {
+      requestedUrl = String(input)
+      return new Response(JSON.stringify({
+        success: true,
+        data: { items: [], nextCursor: null },
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
+    }
+
+    await listDashboardVaultResources("vault-1", { cursor: "next-page" })
+
+    const url = new URL(requestedUrl, "https://nexus-vault.test")
+    assert.equal(url.pathname, "/api/v1/vaults/vault-1/resources")
+    assert.equal(url.searchParams.get("spaceId"), null)
+    assert.equal(url.searchParams.get("cursor"), "next-page")
+    assert.equal(url.searchParams.get("limit"), "50")
   })
 })

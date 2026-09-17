@@ -265,7 +265,12 @@ export function UserMenuPanel({ open, items, placement = 'bottom', align = 'star
       style={{
         position: portalPosition ? 'fixed' : 'absolute',
         ...(portalPosition ?? { ...vertical, ...horizontal }),
-        minWidth: `${panelMinWidth}px`,
+        // A stretched panel is a continuation of its trigger, not a generic
+        // floating menu. Give it an explicit matching width so a footer card
+        // stays aligned even when its ancestor participates in a flex layout.
+        ...(align === 'stretch'
+          ? { width: '100%', minWidth: 0 }
+          : { minWidth: `${panelMinWidth}px` }),
         // Cap to a token-inset of the viewport so the absolutely-positioned
         // panel can never push past the screen and force horizontal page
         // scroll on a phone. box-sizing keeps the border inside that cap.

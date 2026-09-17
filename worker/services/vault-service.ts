@@ -45,6 +45,7 @@ import { recordHistory } from "./history-service";
 
 type VaultVisibility = "public" | "private" | "password";
 const IMPORT_INSERT_BATCH_SIZE = 100;
+const VAULT_DETAIL_INLINE_RESOURCE_LIMIT = 80;
 
 export async function getVaultOrThrow(db: Db, vaultId: string) {
   const vault = await findVaultById(db, vaultId);
@@ -618,8 +619,22 @@ export async function getVaultDetail(
     userEmail: input.userEmail,
   });
   const detail = await readVaultSummary(db, vaultId);
+  const totalResources = detail.spaces.reduce(
+    (total, space) => total + space.resourceCount,
+    0,
+  );
+  const initialPage = totalResources <= VAULT_DETAIL_INLINE_RESOURCE_LIMIT
+    ? await listVaultResources(db, vaultId, {
+        actor: input.actor,
+        limit: VAULT_DETAIL_INLINE_RESOURCE_LIMIT,
+        userEmail: input.userEmail,
+      })
+    : null;
   return {
     ...detail,
+    ...(initialPage
+      ? { nextResourceCursor: initialPage.nextCursor, resources: initialPage.items }
+      : {}),
     actorRole: input.actor
       ? await getVaultRoleForActor(db, vaultId, input.actor)
       : ("anonymous" as const),
@@ -627,9 +642,9 @@ export async function getVaultDetail(
 }
 
 /**
- * Returns the data required to paint the vault shell. Resources deliberately
- * live behind a separate, cursor-based endpoint so a large vault never blocks
- * its header, outline, or space list on one oversized response.
+ * Returns the data required to paint the vault shell. Large resource sets stay
+ * behind a cursor-based endpoint so they never block the header, outline, or
+ * space list on one oversized response.
  */
 export async function readVaultSummary(db: Db, vaultId: string) {
   const vault = await getVaultOrThrow(db, vaultId);
@@ -671,6 +686,7 @@ type ResourcePageCursor = {
   createdAt: string;
   id: string;
   position: number;
+  spacePosition: number;
 };
 
 function decodeResourcePageCursor(value?: string) {
@@ -680,7 +696,8 @@ function decodeResourcePageCursor(value?: string) {
     if (
       typeof parsed.id !== "string" ||
       typeof parsed.createdAt !== "string" ||
-      !Number.isInteger(parsed.position)
+      !Number.isInteger(parsed.position) ||
+      !Number.isInteger(parsed.spacePosition)
     ) {
       return undefined;
     }
@@ -694,7 +711,10 @@ function encodeResourcePageCursor(value: ResourcePageCursor) {
   return JSON.stringify(value);
 }
 
-/** Lists one space at a time so the client can fetch only expanded/visible spaces. */
+/**
+ * Lists one vault-wide resource window in the same order the grouped UI uses.
+ * A scoped request remains available for a direct jump to one particular space.
+ */
 export async function listVaultResources(
   db: Db,
   vaultId: string,
@@ -702,7 +722,7 @@ export async function listVaultResources(
     actor?: Actor;
     cursor?: string;
     limit?: number;
-    spaceId: string;
+    spaceId?: string;
     userEmail?: string;
   },
 ) {
@@ -713,12 +733,18 @@ export async function listVaultResources(
   });
 
   const cursor = decodeResourcePageCursor(input.cursor);
-  const limit = Math.min(Math.max(input.limit ?? 30, 1), 50);
+  const limit = Math.min(Math.max(input.limit ?? 50, 1), VAULT_DETAIL_INLINE_RESOURCE_LIMIT);
   const cursorCondition = cursor
     ? or(
-        gt(resources.position, cursor.position),
-        and(eq(resources.position, cursor.position), lt(resources.createdAt, cursor.createdAt)),
+        gt(spaces.position, cursor.spacePosition),
+        and(eq(spaces.position, cursor.spacePosition), gt(resources.position, cursor.position)),
         and(
+          eq(spaces.position, cursor.spacePosition),
+          eq(resources.position, cursor.position),
+          lt(resources.createdAt, cursor.createdAt),
+        ),
+        and(
+          eq(spaces.position, cursor.spacePosition),
           eq(resources.position, cursor.position),
           eq(resources.createdAt, cursor.createdAt),
           gt(resources.id, cursor.id),
@@ -729,6 +755,7 @@ export async function listVaultResources(
     .select({
       id: resources.id,
       spaceId: resources.spaceId,
+      spacePosition: spaces.position,
       type: resources.type,
       title: resources.title,
       description: resources.description,
@@ -745,9 +772,19 @@ export async function listVaultResources(
       metadataUpdatedAt: resourceMetadata.updatedAt,
     })
     .from(resources)
+    .innerJoin(spaces, eq(resources.spaceId, spaces.id))
     .leftJoin(resourceMetadata, eq(resourceMetadata.resourceId, resources.id))
-    .where(and(eq(resources.vaultId, vaultId), eq(resources.spaceId, input.spaceId), cursorCondition))
-    .orderBy(asc(resources.position), desc(resources.createdAt), asc(resources.id))
+    .where(and(
+      eq(resources.vaultId, vaultId),
+      input.spaceId ? eq(resources.spaceId, input.spaceId) : undefined,
+      cursorCondition,
+    ))
+    .orderBy(
+      asc(spaces.position),
+      asc(resources.position),
+      desc(resources.createdAt),
+      asc(resources.id),
+    )
     .limit(limit + 1);
   const pageRows = rows.slice(0, limit);
   const resourceIds = pageRows.map((resource) => resource.id);
@@ -790,7 +827,12 @@ export async function listVaultResources(
         : null,
     })),
     nextCursor: rows.length > limit && last
-      ? encodeResourcePageCursor(last)
+      ? encodeResourcePageCursor({
+          createdAt: last.createdAt,
+          id: last.id,
+          position: last.position,
+          spacePosition: last.spacePosition,
+        })
       : null,
   };
 }

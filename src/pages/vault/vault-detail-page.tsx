@@ -2,7 +2,7 @@
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle } from "lucide-react";
-import { useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 
@@ -117,15 +117,16 @@ const UPLOAD_TOAST_PREVIEW_FILES = [
 const AI_SUMMARY_POLL_INTERVAL_MS = 500;
 const METADATA_POLL_INTERVAL_MS = 2500;
 
-type ResourcePageState = {
+type ResourceFeedState = {
+  complete: boolean;
   error?: string;
-  loaded: boolean;
   loading: boolean;
   nextCursor?: string | null;
 };
 
 export function VaultDetailPage() {
   const { vaultId } = useParams<{ vaultId: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const {
     mediaVisible,
@@ -135,13 +136,19 @@ export function VaultDetailPage() {
   } =
     useOutletContext<DashboardOutletContext>();
   const [detail, setDetail] = useState<VaultDetail | null>(null);
-  const [resourcePages, setResourcePages] = useState<Record<string, ResourcePageState>>({});
+  const [resourceFeed, setResourceFeed] = useState<ResourceFeedState>({
+    complete: false,
+    loading: false,
+  });
   const detailRevisionRef = useRef(0);
   const detailLoadIdRef = useRef(0);
   const loadRequestRef = useRef(0);
   const resourcePageRequestActiveRef = useRef(false);
   const resourceLoadVersionRef = useRef(0);
-  const resourcePagesRef = useRef<Record<string, ResourcePageState>>({});
+  const resourceFeedRef = useRef<ResourceFeedState>({
+    complete: false,
+    loading: false,
+  });
   const aiSummaryStreamsRef = useRef(new Map<string, AbortController>());
   const aiSummaryStreamFallbacksRef = useRef(new Set<string>());
   const [error, setError] = useState("");
@@ -272,8 +279,18 @@ export function VaultDetailPage() {
         )
           return;
         resourceLoadVersionRef.current += 1;
-        resourcePagesRef.current = {};
-        setResourcePages({});
+        const totalResources = nextDetail.spaces.reduce(
+          (total, space) => total + space.resourceCount,
+          0,
+        );
+        const complete = nextDetail.resources.length >= totalResources;
+        const nextFeed = {
+          complete,
+          loading: false,
+          nextCursor: complete ? null : nextDetail.nextResourceCursor,
+        };
+        resourceFeedRef.current = nextFeed;
+        setResourceFeed(nextFeed);
         setDetail(nextDetail);
         setError("");
       });
@@ -281,27 +298,25 @@ export function VaultDetailPage() {
     [vaultId],
   );
 
-  const loadSpaceResources = useCallback(
-    async (spaceId: string) => {
+  const loadMoreResources = useCallback(
+    async () => {
       if (!vaultId) return;
       if (resourcePageRequestActiveRef.current) return;
       const loadVersion = resourceLoadVersionRef.current;
-      const currentPage = resourcePagesRef.current[spaceId];
-      if (currentPage?.loading || (currentPage?.loaded && currentPage.nextCursor === null)) return;
+      const currentFeed = resourceFeedRef.current;
+      if (currentFeed.loading || currentFeed.complete) return;
 
       resourcePageRequestActiveRef.current = true;
 
-      const loadingState: ResourcePageState = {
-        ...currentPage,
-        loaded: currentPage?.loaded ?? false,
+      const loadingState: ResourceFeedState = {
+        ...currentFeed,
         loading: true,
       };
-      resourcePagesRef.current = { ...resourcePagesRef.current, [spaceId]: loadingState };
-      setResourcePages(resourcePagesRef.current);
+      resourceFeedRef.current = loadingState;
+      setResourceFeed(loadingState);
       try {
         const page = await listDashboardVaultResources(vaultId, {
-          cursor: currentPage?.nextCursor ?? undefined,
-          spaceId,
+          cursor: currentFeed.nextCursor ?? undefined,
         });
         if (loadVersion !== resourceLoadVersionRef.current) return;
         setDetail((current) => {
@@ -315,19 +330,22 @@ export function VaultDetailPage() {
             ],
           };
         });
-        const nextPage = { loaded: true, loading: false, nextCursor: page.nextCursor };
-        resourcePagesRef.current = { ...resourcePagesRef.current, [spaceId]: nextPage };
-        setResourcePages(resourcePagesRef.current);
+        const nextFeed = {
+          complete: page.nextCursor === null,
+          loading: false,
+          nextCursor: page.nextCursor,
+        };
+        resourceFeedRef.current = nextFeed;
+        setResourceFeed(nextFeed);
       } catch (reason) {
         if (loadVersion !== resourceLoadVersionRef.current) return;
-        const nextPage = {
-          ...currentPage,
+        const nextFeed = {
+          ...currentFeed,
           error: reason instanceof Error ? reason.message : "Could not load resources.",
-          loaded: currentPage?.loaded ?? false,
           loading: false,
         };
-        resourcePagesRef.current = { ...resourcePagesRef.current, [spaceId]: nextPage };
-        setResourcePages(resourcePagesRef.current);
+        resourceFeedRef.current = nextFeed;
+        setResourceFeed(nextFeed);
       } finally {
         resourcePageRequestActiveRef.current = false;
       }
@@ -1046,7 +1064,13 @@ export function VaultDetailPage() {
       (resource) => resource.id === sourceResourceId,
     )?.spaceId;
     if (!sourceSpaceId) return;
-    if (resourcePagesRef.current[sourceSpaceId]?.nextCursor !== null) {
+    const totalInSourceSpace = detail.spaces.find(
+      (space) => space.id === sourceSpaceId,
+    )?.resourceCount ?? 0;
+    const loadedInSourceSpace = detail.resources.filter(
+      (resource) => resource.spaceId === sourceSpaceId,
+    ).length;
+    if (loadedInSourceSpace < totalInSourceSpace) {
       toast.add({
         title: "Load the rest of this space before reordering resources.",
         type: "info",
@@ -1127,6 +1151,13 @@ export function VaultDetailPage() {
       .getElementById(`resource-${resourceId}`)
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, []);
+
+  useEffect(() => {
+    const resourceId = location.hash.replace(/^#resource-/, "");
+    if (!detail || !resourceId || resourceId === location.hash) return;
+    const frame = window.requestAnimationFrame(() => scrollToResource(resourceId));
+    return () => window.cancelAnimationFrame(frame);
+  }, [detail, location.hash, scrollToResource]);
 
   useEffect(() => {
     if (!detail || !vaultId) return;
@@ -1332,6 +1363,23 @@ export function VaultDetailPage() {
     return `${(value / (1024 * 1024)).toFixed(1)} MB`;
   }
 
+  const loadedResourceCountBySpaceId = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const resource of detail?.resources ?? []) {
+      if (!resource.spaceId) continue;
+      counts.set(resource.spaceId, (counts.get(resource.spaceId) ?? 0) + 1);
+    }
+    return counts;
+  }, [detail?.resources]);
+  const resourceFrontierSpaceId = useMemo(() => {
+    if (!detail || resourceFeed.complete) return undefined;
+    const populatedSpaces = detail.spaces.filter((space) => space.resourceCount > 0);
+    const loadedSpaces = populatedSpaces.filter(
+      (space) => (loadedResourceCountBySpaceId.get(space.id) ?? 0) > 0,
+    );
+    return (loadedSpaces.at(-1) ?? populatedSpaces[0])?.id;
+  }, [detail, loadedResourceCountBySpaceId, resourceFeed.complete]);
+
   if (!vaultId) return <VaultDetailError message="Vault id is missing." />;
   if (error) return <VaultDetailError message={error} />;
   if (!detail)
@@ -1389,7 +1437,6 @@ export function VaultDetailPage() {
                     const next = new Set(current);
                     if (next.has(space.id)) {
                       next.delete(space.id);
-                      void loadSpaceResources(space.id);
                     } else next.add(space.id);
                     return next;
                   })
@@ -1410,14 +1457,18 @@ export function VaultDetailPage() {
                   (resource) => resource.spaceId === space.id,
                 )}
                 hasMoreResources={
-                  resourcePages[space.id]
-                    ? resourcePages[space.id].nextCursor !== null
-                    : space.resourceCount > 0
+                  !resourceFeed.complete &&
+                  resourceFrontierSpaceId === space.id
                 }
-                onLoadMoreResources={() => void loadSpaceResources(space.id)}
+                onLoadMoreResources={() => void loadMoreResources()}
                 resourceCount={space.resourceCount}
-                resourcesLoaded={resourcePages[space.id]?.loaded ?? false}
-                resourcesLoading={resourcePages[space.id]?.loading ?? false}
+                resourcesLoaded={
+                  space.resourceCount === 0 ||
+                  (loadedResourceCountBySpaceId.get(space.id) ?? 0) > 0
+                }
+                resourcesLoading={
+                  resourceFeed.loading && resourceFrontierSpaceId === space.id
+                }
                 space={space}
                 sourceVaultId={detail.vault.id}
                 transferTargets={transferTargets}
@@ -1492,7 +1543,6 @@ export function VaultDetailPage() {
                 if (!current.has(spaceId)) return current;
                 const next = new Set(current);
                 next.delete(spaceId);
-                void loadSpaceResources(spaceId);
                 return next;
               });
             }}

@@ -9,12 +9,20 @@ import {
   Share2,
   Star,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { SearchField } from "@/components/aicanvas/andromeda/components/SearchField";
 import { Spinner } from "@/components/aicanvas/andromeda/components/Spinner";
 import { UserCard } from "@/components/aicanvas/andromeda/components/UserCard";
 import { UserMenu } from "@/components/aicanvas/andromeda/components/UserMenu";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/aicanvas/andromeda/components/Dialog";
 import {
   AnimatedSidebar,
   AnimatedSidebarClose,
@@ -39,6 +47,17 @@ import {
 } from "@/features/dashboard/search-api";
 import { BloomMenu } from "@/components/motion/bloom-menu";
 import { APP_VERSION } from "@/lib/app-version";
+
+const emptyWorkspaceSearch: WorkspaceSearchResult = {
+  vaults: [],
+  spaces: [],
+  resources: [],
+};
+
+type WorkspaceSearchSelection =
+  | { type: "vault"; result: WorkspaceSearchResult["vaults"][number] }
+  | { type: "space"; result: WorkspaceSearchResult["spaces"][number] }
+  | { type: "resource"; result: WorkspaceSearchResult["resources"][number] };
 
 export type DashboardSidebarUser = {
   email: string;
@@ -78,12 +97,13 @@ export function DashboardSidebar({
   const location = useLocation();
   const navigate = useNavigate();
   const [vaultQuery, setVaultQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<WorkspaceSearchResult>({
-    vaults: [],
-    spaces: [],
-    resources: [],
-  });
+  const [submittedQuery, setSubmittedQuery] = useState("");
+  const [searchResults, setSearchResults] =
+    useState<WorkspaceSearchResult>(emptyWorkspaceSearch);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const searchControllerRef = useRef<AbortController | null>(null);
   const activeVaultId = location.pathname.match(
     /^\/dashboard\/vault\/([^/]+)/,
   )?.[1];
@@ -109,24 +129,64 @@ export function DashboardSidebar({
     navigate(`/dashboard/vault/${encodeURIComponent(vaultId)}`);
   }
   useEffect(() => {
+    return () => {
+      searchControllerRef.current?.abort();
+    };
+  }, []);
+
+  function runWorkspaceSearch(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     const query = vaultQuery.trim();
-    if (!query) {
-      setSearchResults({ vaults: [], spaces: [], resources: [] });
+    if (!query) return;
+
+    searchControllerRef.current?.abort();
+    const controller = new AbortController();
+    searchControllerRef.current = controller;
+    setSubmittedQuery(query);
+    setSearchOpen(true);
+    setSearching(true);
+    setSearchError(null);
+
+    void searchWorkspace(query, controller.signal)
+      .then((results) => {
+        if (!controller.signal.aborted) setSearchResults(results);
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setSearchResults(emptyWorkspaceSearch);
+          setSearchError(
+            error instanceof Error ? error.message : "Could not search workspace.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSearching(false);
+      });
+  }
+
+  function closeWorkspaceSearch() {
+    searchControllerRef.current?.abort();
+    setSearchOpen(false);
+    setSearching(false);
+  }
+
+  function handleSearchResultSelect(selection: WorkspaceSearchSelection) {
+    const { result, type } = selection;
+    closeWorkspaceSearch();
+    setVaultQuery("");
+    if (type === "resource") {
+      if (result.vaultId === "flash-stash") {
+        navigate(`/dashboard/flash-stash#resource-${encodeURIComponent(result.id)}`);
+      } else {
+        onVaultLoadingChange?.(result.vaultId, true);
+        navigate(
+          `/dashboard/vault/${encodeURIComponent(result.vaultId)}#resource-${encodeURIComponent(result.id)}`,
+        );
+      }
       return;
     }
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => {
-      setSearching(true);
-      void searchWorkspace(query, controller.signal)
-        .then(setSearchResults)
-        .catch(() => undefined)
-        .finally(() => setSearching(false));
-    }, 180);
-    return () => {
-      controller.abort();
-      window.clearTimeout(timer);
-    };
-  }, [vaultQuery]);
+    handleVaultSelect(type === "vault" ? result.id : result.vaultId);
+  }
   return (
     <AnimatedSidebar
       ariaLabel="NexusVault navigation"
@@ -172,75 +232,17 @@ export function DashboardSidebar({
           </AnimatedSidebarClose>
         </div>
       </AnimatedSidebarHeader>
-      <AnimatedSidebarContent className="px-2 py-2">
+      <AnimatedSidebarContent className="overflow-hidden px-2 py-2">
         <div className="px-1  group-data-[state=collapsed]/sidebar:hidden">
-          <SearchField
-            ariaLabel="Search vaults"
-            onValueChange={setVaultQuery}
-            placeholder="Search workspace"
-            shortcut={null}
-            value={vaultQuery}
-          />
-          {vaultQuery.trim() ? (
-            <div className="mt-2 max-h-64 overflow-y-auto border border-border bg-sidebar p-1">
-              {searching ? (
-                <p className="px-2 py-2 text-label text-muted-foreground">
-                  Searching...
-                </p>
-              ) : null}
-              {!searching &&
-              searchResults.vaults.length === 0 &&
-              searchResults.spaces.length === 0 &&
-              searchResults.resources.length === 0 ? (
-                <p className="px-2 py-2 text-label text-muted-foreground">
-                  No matches
-                </p>
-              ) : null}
-              {searchResults.vaults.map((result) => (
-                <button
-                  className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent"
-                  key={`vault-${result.id}`}
-                  onClick={() => handleVaultSelect(result.id)}
-                  type="button"
-                >
-                  <span className="truncate">{result.title}</span>
-                  <span className="ml-auto text-label text-muted-foreground">
-                    Vault
-                  </span>
-                </button>
-              ))}
-              {searchResults.spaces.map((result) => (
-                <button
-                  className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent"
-                  key={`space-${result.id}`}
-                  onClick={() => handleVaultSelect(result.vaultId)}
-                  type="button"
-                >
-                  <span className="truncate">{result.name}</span>
-                  <span className="ml-auto truncate pl-2 text-label text-muted-foreground">
-                    {result.vaultTitle}
-                  </span>
-                </button>
-              ))}
-              {searchResults.resources.map((result) => (
-                <button
-                  className="flex w-full items-center px-2 py-1.5 text-left text-ui text-foreground hover:bg-accent"
-                  key={`resource-${result.id}`}
-                  onClick={() =>
-                    result.vaultId === "flash-stash"
-                      ? navigate("/dashboard/flash-stash")
-                      : handleVaultSelect(result.vaultId)
-                  }
-                  type="button"
-                >
-                  <span className="min-w-0 truncate">{result.title}</span>
-                  <span className="ml-auto truncate pl-2 text-label text-muted-foreground">
-                    {result.spaceName ?? result.vaultTitle}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : null}
+          <form onSubmit={runWorkspaceSearch}>
+            <SearchField
+              ariaLabel="Search workspace"
+              onValueChange={setVaultQuery}
+              placeholder="Search workspace · Enter"
+              shortcut={null}
+              value={vaultQuery}
+            />
+          </form>
         </div>
         <AnimatedSidebarGroup className="px-1 py-0">
           <AnimatedSidebarGroupContent>
@@ -304,12 +306,12 @@ export function DashboardSidebar({
             </AnimatedSidebarMenu>
           </AnimatedSidebarGroupContent>
         </AnimatedSidebarGroup>
-        <AnimatedSidebarGroup className="mt-3 px-1 py-0">
+        <AnimatedSidebarGroup className="mt-3 min-h-0 flex-1 px-1 py-0">
           <AnimatedSidebarGroupLabel className="h-6 px-2 text-label">
             Vaults
           </AnimatedSidebarGroupLabel>
-          <AnimatedSidebarGroupContent>
-            <AnimatedSidebarMenu>
+          <AnimatedSidebarGroupContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]">
+            <AnimatedSidebarMenu className="pb-1">
               {vaults.map((vault) => (
                 <AnimatedSidebarMenuItem key={vault.id}>
                   <AnimatedSidebarMenuButton
@@ -391,7 +393,222 @@ export function DashboardSidebar({
         />
       </AnimatedSidebarFooter>
       <AnimatedSidebarRail aria-label="Toggle navigation" />
+      <WorkspaceSearchDialog
+        onOpenChange={(open) => {
+          if (!open) closeWorkspaceSearch();
+        }}
+        onQueryChange={setVaultQuery}
+        onResultSelect={handleSearchResultSelect}
+        onSearch={runWorkspaceSearch}
+        open={searchOpen}
+        query={vaultQuery}
+        results={searchResults}
+        searchedQuery={submittedQuery}
+        searching={searching}
+        error={searchError}
+      />
     </AnimatedSidebar>
+  );
+}
+
+function WorkspaceSearchDialog({
+  error,
+  onOpenChange,
+  onQueryChange,
+  onResultSelect,
+  onSearch,
+  open,
+  query,
+  results,
+  searchedQuery,
+  searching,
+}: {
+  error: string | null;
+  onOpenChange: (open: boolean) => void;
+  onQueryChange: (value: string) => void;
+  onResultSelect: (selection: WorkspaceSearchSelection) => void;
+  onSearch: (event?: FormEvent<HTMLFormElement>) => void;
+  open: boolean;
+  query: string;
+  results: WorkspaceSearchResult;
+  searchedQuery: string;
+  searching: boolean;
+}) {
+  const resultCount =
+    results.vaults.length + results.spaces.length + results.resources.length;
+
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent className="flex h-[min(80dvh,44rem)] max-h-[calc(100dvh-2rem)] w-[min(58rem,calc(100vw-2rem))] max-w-[58rem] flex-col gap-0 overflow-hidden rounded-none border-border bg-card p-0 text-foreground">
+        <DialogHeader className="shrink-0 border-b border-border px-5 py-4 pr-12">
+          <DialogTitle className="font-display text-lg">Search workspace</DialogTitle>
+          <p className="mt-1 text-ui text-muted-foreground">
+            Search resource titles, descriptions, URLs, vaults, and spaces.
+          </p>
+          <DialogClose onClick={() => onOpenChange(false)} />
+        </DialogHeader>
+        <form className="shrink-0 border-b border-border p-4" onSubmit={onSearch}>
+          <SearchField
+            ariaLabel="Search workspace"
+            autoFocus
+            onValueChange={onQueryChange}
+            placeholder="Type a query, then press Enter"
+            shortcut={null}
+            value={query}
+          />
+        </form>
+        <ScrollArea className="min-h-0 flex-1 p-4">
+          {searching ? (
+            <p className="py-8 text-center text-ui text-muted-foreground">
+              Searching workspace…
+            </p>
+          ) : null}
+          {!searching && error ? (
+            <p className="border border-destructive/40 bg-destructive/5 px-3 py-2 text-ui text-destructive">
+              {error}
+            </p>
+          ) : null}
+          {!searching && !error && resultCount === 0 ? (
+            <div className="py-12 text-center">
+              <p className="text-ui font-medium text-foreground">
+                No results for “{searchedQuery}”
+              </p>
+              <p className="mt-1 text-label text-muted-foreground">
+                Try a title, a URL, a description, vault name, or space name.
+              </p>
+            </div>
+          ) : null}
+          {!searching && !error && resultCount > 0 ? (
+            <div className="space-y-5">
+              {results.vaults.length > 0 ? (
+                <WorkspaceSearchSection label="Vaults">
+                  {results.vaults.map((result) => (
+                    <WorkspaceSearchResultRow
+                      description={result.description}
+                      key={`vault-${result.id}`}
+                      matchedFields={result.matchedFields}
+                      onSelect={() => onResultSelect({ result, type: "vault" })}
+                      title={result.title}
+                      type="Vault"
+                    />
+                  ))}
+                </WorkspaceSearchSection>
+              ) : null}
+              {results.spaces.length > 0 ? (
+                <WorkspaceSearchSection label="Spaces">
+                  {results.spaces.map((result) => (
+                    <WorkspaceSearchResultRow
+                      description={result.description}
+                      key={`space-${result.id}`}
+                      location={result.vaultTitle}
+                      matchedFields={result.matchedFields}
+                      onSelect={() => onResultSelect({ result, type: "space" })}
+                      title={result.name}
+                      type="Space"
+                    />
+                  ))}
+                </WorkspaceSearchSection>
+              ) : null}
+              {results.resources.length > 0 ? (
+                <WorkspaceSearchSection label="Resources">
+                  {results.resources.map((result) => (
+                    <WorkspaceSearchResultRow
+                      description={result.description}
+                      key={`resource-${result.id}`}
+                      location={result.spaceName ?? result.vaultTitle}
+                      matchedFields={result.matchedFields}
+                      onSelect={() => onResultSelect({ result, type: "resource" })}
+                      title={result.title}
+                      type="Resource"
+                      url={result.url}
+                    />
+                  ))}
+                </WorkspaceSearchSection>
+              ) : null}
+            </div>
+          ) : null}
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function WorkspaceSearchSection({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label: string;
+}) {
+  return (
+    <section>
+      <h3 className="mb-2 px-1 text-label font-semibold tracking-[0.08em] text-muted-foreground uppercase">
+        {label}
+      </h3>
+      <div className="overflow-hidden border border-border">{children}</div>
+    </section>
+  );
+}
+
+function WorkspaceSearchResultRow({
+  description,
+  location,
+  matchedFields,
+  onSelect,
+  title,
+  type,
+  url,
+}: {
+  description: string;
+  location?: string | null;
+  matchedFields: string[];
+  onSelect: () => void;
+  title: string;
+  type: "Vault" | "Space" | "Resource";
+  url?: string | null;
+}) {
+  return (
+    <button
+      className="group block w-full border-b border-border px-4 py-3 text-left last:border-b-0 hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary"
+      onClick={onSelect}
+      type="button"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="break-words text-ui font-medium text-foreground group-hover:text-primary">
+            {title}
+          </p>
+          {location ? (
+            <p className="mt-0.5 break-words text-label text-muted-foreground">
+              {location}
+            </p>
+          ) : null}
+        </div>
+        <span className="shrink-0 border border-border px-1.5 py-0.5 text-[10px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
+          {type}
+        </span>
+      </div>
+      {description ? (
+        <p className="mt-2 line-clamp-2 break-words text-ui text-muted-foreground">
+          {description}
+        </p>
+      ) : null}
+      {url ? (
+        <p className="mt-2 line-clamp-2 break-all font-mono text-label text-muted-foreground">
+          {url}
+        </p>
+      ) : null}
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {matchedFields.map((field) => (
+          <span
+            className="border border-primary/30 bg-primary/5 px-1.5 py-0.5 text-[10px] font-medium tracking-[0.04em] text-primary"
+            key={field}
+          >
+            Matches {field}
+          </span>
+        ))}
+      </div>
+    </button>
   );
 }
 

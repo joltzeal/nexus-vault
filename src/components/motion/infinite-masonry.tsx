@@ -287,7 +287,10 @@ export function InfiniteMasonry<T>({
               ref={virtualizer.measureElement}
               data-index={virtualItem.index}
               className={cn(
-                "absolute left-0 top-0 will-change-transform m-1",
+                // Positioning already accounts for every column gap. Adding a
+                // horizontal margin here makes the final lane wider than its
+                // calculated track, so its card is clipped at the right edge.
+                "absolute left-0 top-0 will-change-transform",
                 !isTail && itemClassName,
               )}
               style={{

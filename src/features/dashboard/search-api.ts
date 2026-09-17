@@ -1,7 +1,29 @@
 export type WorkspaceSearchResult = {
-  vaults: Array<{ id: string; title: string }>
-  spaces: Array<{ id: string; name: string; vaultId: string; vaultTitle: string }>
-  resources: Array<{ id: string; title: string; url: string | null; vaultId: string; vaultTitle: string; spaceId: string | null; spaceName: string | null }>
+  vaults: Array<{
+    id: string
+    title: string
+    description: string
+    matchedFields: string[]
+  }>
+  spaces: Array<{
+    id: string
+    name: string
+    description: string
+    vaultId: string
+    vaultTitle: string
+    matchedFields: string[]
+  }>
+  resources: Array<{
+    id: string
+    title: string
+    description: string
+    url: string | null
+    vaultId: string
+    vaultTitle: string
+    spaceId: string | null
+    spaceName: string | null
+    matchedFields: string[]
+  }>
 }
 
 export async function searchWorkspace(query: string, signal?: AbortSignal): Promise<WorkspaceSearchResult> {
@@ -10,4 +32,3 @@ export async function searchWorkspace(query: string, signal?: AbortSignal): Prom
   if (!response.ok || payload?.success === false) throw new Error(payload?.error?.message ?? "Could not search workspace.")
   return payload?.data ?? { vaults: [], spaces: [], resources: [] }
 }
-

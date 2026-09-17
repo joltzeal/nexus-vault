@@ -10,8 +10,7 @@ export async function GET(request: Request, { params }: Context) {
   const { vaultId } = await params
   return handleApiRequest(request, { auth: "optional" }, async ({ actor, db }) => {
     const url = new URL(request.url)
-    const spaceId = url.searchParams.get("spaceId")?.trim()
-    if (!spaceId) throw new Error("spaceId is required.")
+    const spaceId = url.searchParams.get("spaceId")?.trim() || undefined
     const limit = Number(url.searchParams.get("limit"))
     return ok(await listVaultResources(db, vaultId, {
       actor,

@@ -208,7 +208,8 @@ export function SpaceSection({
     }
     const value = links.join("\n");
     try {
-      if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+      if (!navigator.clipboard?.writeText)
+        throw new Error("Clipboard API unavailable");
       await navigator.clipboard.writeText(value);
     } catch {
       const textarea = document.createElement("textarea");
@@ -221,7 +222,9 @@ export function SpaceSection({
       document.execCommand("copy");
       textarea.remove();
     }
-    toast.success(`${links.length} link${links.length === 1 ? "" : "s"} copied`);
+    toast.success(
+      `${links.length} link${links.length === 1 ? "" : "s"} copied`,
+    );
   }
 
   function changeIcon(nextIcon: string) {
@@ -429,10 +432,12 @@ export function SpaceSection({
           {hasUnloadedResources ? (
             resourcesLoading ? (
               <SpaceResourceSkeleton viewMode={viewMode} />
-            ) : (
+            ) : hasMoreResources ? (
               <ResourceLoadTrigger onLoad={onLoadMoreResources}>
                 <SpaceResourceSkeleton viewMode={viewMode} />
               </ResourceLoadTrigger>
+            ) : (
+              <SpaceResourceSkeleton viewMode={viewMode} />
             )
           ) : viewMode === "masonry" && filteredResources.length > 0 ? (
             <InfiniteMasonry
@@ -493,7 +498,10 @@ export function SpaceSection({
           {resourcesLoading && !hasUnloadedResources ? (
             <SpaceResourceSkeleton count={2} viewMode={viewMode} />
           ) : null}
-          {!resourcesLoading && !hasUnloadedResources && hasMoreResources && filteredResources.length > 0 ? (
+          {!resourcesLoading &&
+          !hasUnloadedResources &&
+          hasMoreResources &&
+          filteredResources.length > 0 ? (
             <ResourceLoadTrigger onLoad={onLoadMoreResources} />
           ) : null}
           {filteredResources.length === 0 && !hasUnloadedResources ? (
@@ -536,7 +544,8 @@ function ResourceLoadTrigger({
 
   useEffect(() => {
     const element = triggerRef.current;
-    if (!element || !onLoad || typeof IntersectionObserver === "undefined") return;
+    if (!element || !onLoad || typeof IntersectionObserver === "undefined")
+      return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) onLoad();
@@ -548,7 +557,11 @@ function ResourceLoadTrigger({
   }, [onLoad]);
 
   return (
-    <div aria-label="Loading more resources when visible" className={children ? undefined : "h-1"} ref={triggerRef}>
+    <div
+      aria-label="Loading more resources when visible"
+      className={children ? undefined : "h-1"}
+      ref={triggerRef}
+    >
       {children}
     </div>
   );
@@ -576,7 +589,9 @@ function matchesResourceFilters(
       const url = (resource.url ?? "").toLocaleLowerCase();
       const value = (values[0] ?? "").toLocaleLowerCase();
       matches =
-        condition.operator === "not_contains" ? !url.includes(value) : url.includes(value);
+        condition.operator === "not_contains"
+          ? !url.includes(value)
+          : url.includes(value);
     } else if (condition.field === "createdAt") {
       const createdAt = resource.createdAt.slice(0, 10);
       const value = values[0] ?? "";
