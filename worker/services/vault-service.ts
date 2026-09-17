@@ -676,12 +676,7 @@ type ResourcePageCursor = {
 function decodeResourcePageCursor(value?: string) {
   if (!value) return undefined;
   try {
-    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(
-      normalized.length + ((4 - (normalized.length % 4)) % 4),
-      "=",
-    );
-    const parsed = JSON.parse(atob(padded)) as ResourcePageCursor;
+    const parsed = JSON.parse(value) as ResourcePageCursor;
     if (
       typeof parsed.id !== "string" ||
       typeof parsed.createdAt !== "string" ||
@@ -696,10 +691,7 @@ function decodeResourcePageCursor(value?: string) {
 }
 
 function encodeResourcePageCursor(value: ResourcePageCursor) {
-  return btoa(JSON.stringify(value))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+  return JSON.stringify(value);
 }
 
 /** Lists one space at a time so the client can fetch only expanded/visible spaces. */

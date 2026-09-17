@@ -46,6 +46,7 @@ import {
   SpaceIconPicker,
 } from "@/features/resource/space-icon-picker";
 import { SpaceTransferDialog } from "./space-transfer-dialog";
+import { SpaceResourceSkeleton } from "./space-resource-skeleton";
 
 const Badge: any = BadgePrimitive;
 const Button: any = ButtonPrimitive;
@@ -64,6 +65,7 @@ export type SpaceSectionProps = {
   canAddResource?: boolean;
   isVaultOwner?: boolean;
   resourceCount?: number;
+  resourcesLoaded?: boolean;
   resourcesLoading?: boolean;
   hasMoreResources?: boolean;
   onLoadMoreResources?: () => void;
@@ -99,6 +101,7 @@ export function SpaceSection({
   canAddResource = false,
   isVaultOwner = false,
   resourceCount,
+  resourcesLoaded = false,
   resourcesLoading = false,
   hasMoreResources = false,
   onLoadMoreResources,
@@ -184,6 +187,7 @@ export function SpaceSection({
     matchesResourceFilters(resource, filterConditions),
   );
   const hasResourceFilters = filterConditions.length > 0;
+  const hasUnloadedResources = Boolean(resourceCount) && !resourcesLoaded;
   const menuItems = [
     { label: "Edit", icon: Pencil, onSelect: onEditSpace },
     {
@@ -422,7 +426,15 @@ export function SpaceSection({
       </div>
       {!collapsed ? (
         <div className="min-h-20 border-border py-2">
-          {viewMode === "masonry" && filteredResources.length > 0 ? (
+          {hasUnloadedResources ? (
+            resourcesLoading ? (
+              <SpaceResourceSkeleton viewMode={viewMode} />
+            ) : (
+              <ResourceLoadTrigger onLoad={onLoadMoreResources}>
+                <SpaceResourceSkeleton viewMode={viewMode} />
+              </ResourceLoadTrigger>
+            )
+          ) : viewMode === "masonry" && filteredResources.length > 0 ? (
             <InfiniteMasonry
               ariaLabel={`${space.name} resources`}
               className="!min-h-20 !overflow-visible rounded-none border-0 bg-transparent p-0"
@@ -455,7 +467,7 @@ export function SpaceSection({
                 </div>
               )}
             />
-          ) : (
+          ) : !hasUnloadedResources ? (
             <div className="flex flex-col gap-2">
               {filteredResources.map((resource, index) =>
                 renderResource ? (
@@ -477,16 +489,14 @@ export function SpaceSection({
                 ),
               )}
             </div>
-          )}
-          {resourcesLoading ? (
-            <div className="flex min-h-12 items-center justify-center border border-dashed border-border text-label text-muted-foreground">
-              Loading resources…
-            </div>
           ) : null}
-          {!resourcesLoading && hasMoreResources && filteredResources.length > 0 ? (
+          {resourcesLoading && !hasUnloadedResources ? (
+            <SpaceResourceSkeleton count={2} viewMode={viewMode} />
+          ) : null}
+          {!resourcesLoading && !hasUnloadedResources && hasMoreResources && filteredResources.length > 0 ? (
             <ResourceLoadTrigger onLoad={onLoadMoreResources} />
           ) : null}
-          {filteredResources.length === 0 ? (
+          {filteredResources.length === 0 && !hasUnloadedResources ? (
             resourcesLoading ? null : hasResourceFilters ? (
               <div className="flex min-h-20 items-center justify-center border border-dashed border-border p-4 text-center text-label text-muted-foreground">
                 No resources match these filters.
@@ -515,7 +525,13 @@ export function SpaceSection({
   );
 }
 
-function ResourceLoadTrigger({ onLoad }: { onLoad?: () => void }) {
+function ResourceLoadTrigger({
+  children,
+  onLoad,
+}: {
+  children?: ReactNode;
+  onLoad?: () => void;
+}) {
   const triggerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -525,13 +541,17 @@ function ResourceLoadTrigger({ onLoad }: { onLoad?: () => void }) {
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) onLoad();
       },
-      { rootMargin: "700px 0px" },
+      { rootMargin: "320px 0px" },
     );
     observer.observe(element);
     return () => observer.disconnect();
   }, [onLoad]);
 
-  return <div aria-label="Loading more resources when visible" className="h-1" ref={triggerRef} />;
+  return (
+    <div aria-label="Loading more resources when visible" className={children ? undefined : "h-1"} ref={triggerRef}>
+      {children}
+    </div>
+  );
 }
 
 function matchesResourceFilters(

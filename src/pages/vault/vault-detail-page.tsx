@@ -142,8 +142,6 @@ export function VaultDetailPage() {
   const resourcePageRequestActiveRef = useRef(false);
   const resourceLoadVersionRef = useRef(0);
   const resourcePagesRef = useRef<Record<string, ResourcePageState>>({});
-  const initializedVaultIdRef = useRef<string | undefined>(undefined);
-  const [detailGeneration, setDetailGeneration] = useState(0);
   const aiSummaryStreamsRef = useRef(new Map<string, AbortController>());
   const aiSummaryStreamFallbacksRef = useRef(new Set<string>());
   const [error, setError] = useState("");
@@ -276,19 +274,7 @@ export function VaultDetailPage() {
         resourceLoadVersionRef.current += 1;
         resourcePagesRef.current = {};
         setResourcePages({});
-        if (initializedVaultIdRef.current !== nextDetail.vault.id) {
-          initializedVaultIdRef.current = nextDetail.vault.id;
-          const firstPopulatedSpace = nextDetail.spaces.find((space) => space.resourceCount > 0);
-          setCollapsedSpaceIds(
-            new Set(
-              nextDetail.spaces
-                .filter((space) => space.id !== firstPopulatedSpace?.id)
-                .map((space) => space.id),
-            ),
-          );
-        }
         setDetail(nextDetail);
-        setDetailGeneration((generation) => generation + 1);
         setError("");
       });
     },
@@ -472,12 +458,6 @@ export function VaultDetailPage() {
       }
     };
   }, [loadDetail, onVaultLoadingChange, vaultId]);
-
-  useEffect(() => {
-    if (!detail) return;
-    const firstPopulatedSpace = detail.spaces.find((space) => space.resourceCount > 0);
-    if (firstPopulatedSpace) void loadSpaceResources(firstPopulatedSpace.id);
-  }, [detail, detailGeneration, loadSpaceResources]);
 
   useEffect(() => {
     if (!detail) return;
@@ -1436,6 +1416,7 @@ export function VaultDetailPage() {
                 }
                 onLoadMoreResources={() => void loadSpaceResources(space.id)}
                 resourceCount={space.resourceCount}
+                resourcesLoaded={resourcePages[space.id]?.loaded ?? false}
                 resourcesLoading={resourcePages[space.id]?.loading ?? false}
                 space={space}
                 sourceVaultId={detail.vault.id}
