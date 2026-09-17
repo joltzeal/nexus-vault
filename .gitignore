@@ -33,6 +33,10 @@ dist-ssr
 community/
 metadata-services/
 TODO.md
-# Native iOS client is checked in under ios/
 docs/
-ios/*
+
+# Local/native clients and development notes
+ios/
+*.md
+!README.md
+!**/README.md
