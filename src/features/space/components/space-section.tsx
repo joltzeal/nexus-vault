@@ -53,6 +53,7 @@ const Button: any = ButtonPrimitive;
 const PanelMenu: any = PanelMenuPrimitive;
 const sectionIconButtonClass =
   "size-6 border-0 bg-transparent p-0 text-muted-foreground hover:bg-transparent hover:text-muted-foreground [transform:none!important] [&_svg]:size-3.5 [&_svg]:scale-100 [&_svg]:transition-none";
+const ULTRAWIDE_MASONRY_QUERY = "(min-width: 2048px)";
 
 export type SpaceDragData = { kind: "space"; spaceId: string };
 
@@ -129,6 +130,7 @@ export function SpaceSection({
   const [filterQuery, setFilterQuery] = useState<FilterQuery>(() =>
     createFilterQuery(),
   );
+  const [masonryMaxColumns, setMasonryMaxColumns] = useState(3);
   const descriptionCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -254,6 +256,14 @@ export function SpaceSection({
     },
     [],
   );
+
+  useEffect(() => {
+    const query = window.matchMedia(ULTRAWIDE_MASONRY_QUERY);
+    const updateColumns = () => setMasonryMaxColumns(query.matches ? 4 : 3);
+    updateColumns();
+    query.addEventListener("change", updateColumns);
+    return () => query.removeEventListener("change", updateColumns);
+  }, []);
 
   return (
     <section
@@ -449,7 +459,7 @@ export function SpaceSection({
               hasMore={false}
               items={filteredResources}
               minColumnWidth={220}
-              maxColumns={4}
+              maxColumns={masonryMaxColumns}
               gap={8}
               onLoadMore={() => undefined}
               renderItem={(resource, index) => (

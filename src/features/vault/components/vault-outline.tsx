@@ -255,7 +255,7 @@ function OutlinePanel({
                     <span className="w-[18px] shrink-0 text-label text-muted-foreground">
                       ├
                     </span>
-                    <span className="grid size-4 shrink-0 place-items-center border border-border text-[9px] text-primary">
+                    <span className="grid size-4 shrink-0 place-items-center  text-[9px] text-primary">
                       <SpaceIcon className="size-3.5" name={space.icon} />
                     </span>
                     <span className="min-w-0 flex-1 truncate">

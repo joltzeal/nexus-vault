@@ -20,6 +20,13 @@ function ProtectedDashboard() {
   return <DashboardPage />
 }
 
+function PublicOnlyRoute() {
+  const session = authClient.useSession()
+  if (session.isPending) return <div className="flex min-h-[100dvh] items-center justify-center gap-2 bg-background text-sm text-muted-foreground"><Spinner variant="accent" size="sm" label="Loading session" />Loading session...</div>
+  if (session.data) return <Navigate replace to="/dashboard" />
+  return <Outlet />
+}
+
 function DashboardOutlet() {
   const context = useOutletContext<DashboardOutletContext>()
   return <Outlet context={context} />
@@ -44,9 +51,11 @@ function App() {
   }, [])
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/login" element={<HomePage />} />
-      <Route path="/signup" element={<HomePage />} />
+      <Route element={<PublicOnlyRoute />}>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/login" element={<HomePage />} />
+        <Route path="/signup" element={<HomePage />} />
+      </Route>
       <Route path="/dashboard" element={<ProtectedDashboard />}>
         <Route element={<DashboardOutlet />}>
           <Route index element={<DashboardViewPage view="all-vaults" />} />

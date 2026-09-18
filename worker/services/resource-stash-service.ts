@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm"
+import { and, desc, eq } from "drizzle-orm"
 
 import {
   resourceAnnotations,
@@ -127,7 +127,7 @@ export async function listStashResources(db: Db, input: { actor: Actor }) {
       eq(resourceAnnotations.userId, userId),
     ))
     .where(eq(resources.stashUserId, userId))
-    .orderBy(asc(resources.position), asc(resources.createdAt))
+    .orderBy(desc(resources.createdAt))
     .limit(200)
 
   return {

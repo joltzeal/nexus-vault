@@ -33,6 +33,11 @@ import type { VaultForm } from "@/features/vault/types";
 import { authClient } from "@/lib/auth";
 import { toast } from "@/components/ui/toast";
 import { HistoryDialog } from "@/features/history/history-dialog";
+import {
+  getStoredVaultResourceViewMode,
+  storeVaultResourceViewMode,
+  type VaultResourceViewMode,
+} from "@/features/resource/vault-view-mode";
 
 const MEDIA_VISIBILITY_STORAGE_KEY = "nexus-vault:media-visible";
 const DEFAULT_VAULT_COVERS = ["📁", "🗂️", "🧰", "📚", "🧭", "🪐", "🌿"];
@@ -61,9 +66,11 @@ function getInitialMediaVisibility() {
 export type DashboardOutletContext = {
   mediaVisible: boolean;
   onMediaVisibleChange: (visible: boolean) => void;
+  onResourceViewModeChange: (mode: VaultResourceViewMode) => void;
   onVaultLoadingChange: (vaultId: string, loading: boolean) => void;
   onVaultStatusChange: (status: DashboardVaultStatus | null) => void;
   refreshVaults: () => Promise<void>;
+  resourceViewMode: VaultResourceViewMode;
   user?: { email: string; image?: string | null; name: string };
 };
 
@@ -99,6 +106,9 @@ export function DashboardShell({
   const [loadedVaults, setLoadedVaults] =
     useState<DashboardVaultItem[]>(vaults);
   const [mediaVisible, setMediaVisible] = useState(getInitialMediaVisibility);
+  const [resourceViewMode, setResourceViewMode] = useState<VaultResourceViewMode>(
+    getStoredVaultResourceViewMode,
+  );
   const [loadingVaultId, setLoadingVaultId] = useState<string | null>(null);
   const [createVaultOpen, setCreateVaultOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -139,6 +149,14 @@ export function DashboardShell({
     }
   }, []);
 
+  const handleResourceViewModeChange = useCallback(
+    (mode: VaultResourceViewMode) => {
+      setResourceViewMode(mode);
+      storeVaultResourceViewMode(mode);
+    },
+    [],
+  );
+
   const handleVaultStatusChange = useCallback(
     (status: DashboardVaultStatus | null) => setVaultStatus(status),
     [],
@@ -155,6 +173,11 @@ export function DashboardShell({
   const activeVaultId = location.pathname.match(
     /^\/dashboard\/vault\/([^/]+)/,
   )?.[1];
+  const supportsResourceViewMode = Boolean(activeVaultId) || [
+    "/dashboard/flash-stash",
+    "/dashboard/starred",
+    "/dashboard/watch-later",
+  ].includes(location.pathname);
   const activeVaultStatus =
     activeVaultId && vaultStatus?.vaultId === activeVaultId ? vaultStatus : null;
   const selectedResourceTarget = resourceTargets.find(
@@ -242,12 +265,26 @@ export function DashboardShell({
       if (event.key.toLocaleLowerCase() === "n") {
         event.preventDefault();
         openResourceDialog();
+        return;
+      }
+      if (event.key.toLocaleLowerCase() === "m" && supportsResourceViewMode) {
+        event.preventDefault();
+        handleResourceViewModeChange(
+          resourceViewMode === "list" ? "masonry" : "list",
+        );
       }
     };
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [handleMediaVisibleChange, mediaVisible, openResourceDialog]);
+  }, [
+    handleMediaVisibleChange,
+    handleResourceViewModeChange,
+    mediaVisible,
+    openResourceDialog,
+    resourceViewMode,
+    supportsResourceViewMode,
+  ]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -379,9 +416,11 @@ export function DashboardShell({
                   {
                   mediaVisible,
                   onMediaVisibleChange: handleMediaVisibleChange,
+                  onResourceViewModeChange: handleResourceViewModeChange,
                   onVaultLoadingChange: handleVaultLoadingChange,
                   onVaultStatusChange: handleVaultStatusChange,
                   refreshVaults: () => refreshVaults(),
+                  resourceViewMode,
                   user: user
                       ? { email: user.email, image: user.image, name: user.name }
                       : undefined,
@@ -412,6 +451,15 @@ export function DashboardShell({
             <kbd className="text-foreground">t</kbd>
             <span>NSFW {mediaVisible ? "on" : "off"}</span>
           </span>
+          {supportsResourceViewMode ? (
+            <>
+              <span aria-hidden="true" className="text-border">/</span>
+              <span className="inline-flex items-center gap-1.5">
+                <kbd className="text-foreground">m</kbd>
+                <span>{resourceViewMode === "list" ? "Masonry view" : "List view"}</span>
+              </span>
+            </>
+          ) : null}
           {activeVaultId ? (
             <>
               <span aria-hidden="true" className="text-border">/</span>

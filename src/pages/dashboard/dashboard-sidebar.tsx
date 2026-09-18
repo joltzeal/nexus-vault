@@ -8,6 +8,7 @@ import {
   Inbox,
   Share2,
   Star,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -16,13 +17,6 @@ import { Spinner } from "@/components/aicanvas/andromeda/components/Spinner";
 import { UserCard } from "@/components/aicanvas/andromeda/components/UserCard";
 import { UserMenu } from "@/components/aicanvas/andromeda/components/UserMenu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/aicanvas/andromeda/components/Dialog";
 import {
   AnimatedSidebar,
   AnimatedSidebarClose,
@@ -165,15 +159,11 @@ export function DashboardSidebar({
   }
 
   function closeWorkspaceSearch() {
-    searchControllerRef.current?.abort();
     setSearchOpen(false);
-    setSearching(false);
   }
 
   function handleSearchResultSelect(selection: WorkspaceSearchSelection) {
     const { result, type } = selection;
-    closeWorkspaceSearch();
-    setVaultQuery("");
     if (type === "resource") {
       if (result.vaultId === "flash-stash") {
         navigate(`/dashboard/flash-stash#resource-${encodeURIComponent(result.id)}`);
@@ -310,7 +300,7 @@ export function DashboardSidebar({
           <AnimatedSidebarGroupLabel className="h-6 px-2 text-label">
             Vaults
           </AnimatedSidebarGroupLabel>
-          <AnimatedSidebarGroupContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]">
+          <AnimatedSidebarGroupContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <AnimatedSidebarMenu className="pb-1">
               {vaults.map((vault) => (
                 <AnimatedSidebarMenuItem key={vault.id}>
@@ -393,10 +383,8 @@ export function DashboardSidebar({
         />
       </AnimatedSidebarFooter>
       <AnimatedSidebarRail aria-label="Toggle navigation" />
-      <WorkspaceSearchDialog
-        onOpenChange={(open) => {
-          if (!open) closeWorkspaceSearch();
-        }}
+      <WorkspaceSearchDrawer
+        onClose={closeWorkspaceSearch}
         onQueryChange={setVaultQuery}
         onResultSelect={handleSearchResultSelect}
         onSearch={runWorkspaceSearch}
@@ -411,9 +399,9 @@ export function DashboardSidebar({
   );
 }
 
-function WorkspaceSearchDialog({
+function WorkspaceSearchDrawer({
   error,
-  onOpenChange,
+  onClose,
   onQueryChange,
   onResultSelect,
   onSearch,
@@ -424,7 +412,7 @@ function WorkspaceSearchDialog({
   searching,
 }: {
   error: string | null;
-  onOpenChange: (open: boolean) => void;
+  onClose: () => void;
   onQueryChange: (value: string) => void;
   onResultSelect: (selection: WorkspaceSearchSelection) => void;
   onSearch: (event?: FormEvent<HTMLFormElement>) => void;
@@ -438,48 +426,64 @@ function WorkspaceSearchDialog({
     results.vaults.length + results.spaces.length + results.resources.length;
 
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="flex h-[min(80dvh,44rem)] max-h-[calc(100dvh-2rem)] w-[min(58rem,calc(100vw-2rem))] max-w-[58rem] flex-col gap-0 overflow-hidden rounded-none border-border bg-card p-0 text-foreground">
-        <DialogHeader className="shrink-0 border-b border-border px-5 py-4 pr-12">
-          <DialogTitle className="font-display text-lg">Search workspace</DialogTitle>
-          <p className="mt-1 text-ui text-muted-foreground">
-            Search resource titles, descriptions, URLs, vaults, and spaces.
+    <aside
+      aria-hidden={!open}
+      aria-label="Workspace search results"
+      inert={!open}
+      className={`fixed inset-y-0 right-0 z-40 flex w-full max-w-[34rem] flex-col border-l border-border bg-card text-foreground shadow-2xl transition-transform duration-200 ease-out sm:w-[34rem] ${
+        open ? "translate-x-0" : "pointer-events-none translate-x-full"
+      }`}
+    >
+      <header className="relative shrink-0 border-b border-border px-5 py-4 pr-12">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="font-display text-lg font-semibold text-foreground">
+            Search workspace
+          </h2>
+          <button
+            aria-label="Close workspace search"
+            className="absolute right-4 top-4 grid size-8 place-items-center text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+            onClick={onClose}
+            type="button"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <p className="mt-1 text-ui text-muted-foreground">
+          Search resource titles, descriptions, URLs, vaults, and spaces.
+        </p>
+      </header>
+      <form className="shrink-0 border-b border-border p-4" onSubmit={onSearch}>
+        <SearchField
+          ariaLabel="Search workspace"
+          onValueChange={onQueryChange}
+          placeholder="Type a query, then press Enter"
+          shortcut={null}
+          value={query}
+        />
+      </form>
+      <ScrollArea className="min-h-0 flex-1 p-4">
+        {searching ? (
+          <p className="py-8 text-center text-ui text-muted-foreground">
+            Searching workspace…
           </p>
-          <DialogClose onClick={() => onOpenChange(false)} />
-        </DialogHeader>
-        <form className="shrink-0 border-b border-border p-4" onSubmit={onSearch}>
-          <SearchField
-            ariaLabel="Search workspace"
-            autoFocus
-            onValueChange={onQueryChange}
-            placeholder="Type a query, then press Enter"
-            shortcut={null}
-            value={query}
-          />
-        </form>
-        <ScrollArea className="min-h-0 flex-1 p-4">
-          {searching ? (
-            <p className="py-8 text-center text-ui text-muted-foreground">
-              Searching workspace…
+        ) : null}
+        {!searching && error ? (
+          <p className="border border-destructive/40 bg-destructive/5 px-3 py-2 text-ui text-destructive">
+            {error}
+          </p>
+        ) : null}
+        {!searching && !error && resultCount === 0 ? (
+          <div className="py-12 text-center">
+            <p className="text-ui font-medium text-foreground">
+              No results for “{searchedQuery}”
             </p>
-          ) : null}
-          {!searching && error ? (
-            <p className="border border-destructive/40 bg-destructive/5 px-3 py-2 text-ui text-destructive">
-              {error}
+            <p className="mt-1 text-label text-muted-foreground">
+              Try a title, a URL, a description, vault name, or space name.
             </p>
-          ) : null}
-          {!searching && !error && resultCount === 0 ? (
-            <div className="py-12 text-center">
-              <p className="text-ui font-medium text-foreground">
-                No results for “{searchedQuery}”
-              </p>
-              <p className="mt-1 text-label text-muted-foreground">
-                Try a title, a URL, a description, vault name, or space name.
-              </p>
-            </div>
-          ) : null}
-          {!searching && !error && resultCount > 0 ? (
-            <div className="space-y-5">
+          </div>
+        ) : null}
+        {!searching && !error && resultCount > 0 ? (
+          <div className="space-y-5">
               {results.vaults.length > 0 ? (
                 <WorkspaceSearchSection label="Vaults">
                   {results.vaults.map((result) => (
@@ -525,11 +529,10 @@ function WorkspaceSearchDialog({
                   ))}
                 </WorkspaceSearchSection>
               ) : null}
-            </div>
-          ) : null}
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
+          </div>
+        ) : null}
+      </ScrollArea>
+    </aside>
   );
 }
 

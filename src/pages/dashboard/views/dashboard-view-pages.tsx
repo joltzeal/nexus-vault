@@ -37,7 +37,6 @@ import type {
 import { Spinner } from "@/components/aicanvas/andromeda/components/Spinner";
 import { Avatar } from "@/components/aicanvas/andromeda/components/Avatar";
 import { ShaderBackground } from "@/components/motion/shader-background";
-import { getStoredVaultResourceViewMode } from "@/features/resource/vault-view-mode";
 
 const viewCopy: Record<
   DashboardView,
@@ -256,14 +255,14 @@ export function DashboardViewPage({ view }: { view: DashboardView }) {
 }
 
 export function FlashStashPage() {
-  const { mediaVisible } = useOutletContext<DashboardOutletContext>();
+  const { mediaVisible, resourceViewMode: viewMode } =
+    useOutletContext<DashboardOutletContext>();
   useDocumentTitle("Flash stash · Nexus Vault");
   const [resources, setResources] = useState<Resource[]>([]);
   const [targets, setTargets] = useState<ResourceTransferTargetVault[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
-  const viewMode = getStoredVaultResourceViewMode();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -518,8 +517,8 @@ function DashboardResourceCards({
   onToggleStar: (resource: Resource) => Promise<void>;
   updatingResourceId: string;
 }) {
-  const { mediaVisible } = useOutletContext<DashboardOutletContext>();
-  const viewMode = getStoredVaultResourceViewMode();
+  const { mediaVisible, resourceViewMode: viewMode } =
+    useOutletContext<DashboardOutletContext>();
 
   return (
     <div

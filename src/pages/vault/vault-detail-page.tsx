@@ -2,7 +2,12 @@
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle } from "lucide-react";
-import { useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import {
+  useLocation,
+  useNavigate,
+  useOutletContext,
+  useParams,
+} from "react-router-dom";
 import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 
@@ -100,11 +105,6 @@ import {
 import type { VaultForm } from "@/features/vault/types";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Spinner } from "@/components/aicanvas/andromeda/components/Spinner";
-import type { VaultViewMode } from "@/features/vault/components/vault-outline";
-import {
-  getStoredVaultResourceViewMode,
-  storeVaultResourceViewMode,
-} from "@/features/resource/vault-view-mode";
 import "@/features/vault/styles/vault-detail-layout.css";
 
 const Button: any = ButtonPrimitive;
@@ -132,9 +132,10 @@ export function VaultDetailPage() {
     mediaVisible,
     onVaultLoadingChange,
     onVaultStatusChange,
+    onResourceViewModeChange,
     refreshVaults,
-  } =
-    useOutletContext<DashboardOutletContext>();
+    resourceViewMode: viewMode,
+  } = useOutletContext<DashboardOutletContext>();
   const [detail, setDetail] = useState<VaultDetail | null>(null);
   const [resourceFeed, setResourceFeed] = useState<ResourceFeedState>({
     complete: false,
@@ -203,9 +204,6 @@ export function VaultDetailPage() {
   const allSpacesCollapsed =
     Boolean(detail?.spaces.length) &&
     detail?.spaces.every((space) => collapsedSpaceIds.has(space.id));
-  const [viewMode, setViewMode] = useState<VaultViewMode>(
-    getStoredVaultResourceViewMode,
-  );
   const [selectionSpaceId, setSelectionSpaceId] = useState<string | null>(null);
   const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(
     new Set(),
@@ -216,10 +214,7 @@ export function VaultDetailPage() {
   const [transferFocusSpaceId, setTransferFocusSpaceId] = useState<string>();
   const [targetSpaceVaultId, setTargetSpaceVaultId] = useState<string>();
 
-  const handleViewModeChange = useCallback((mode: VaultViewMode) => {
-    setViewMode(mode);
-    storeVaultResourceViewMode(mode);
-  }, []);
+  const handleViewModeChange = onResourceViewModeChange;
 
   useEffect(() => {
     function handleBeforeUnload(event: BeforeUnloadEvent) {
@@ -230,35 +225,6 @@ export function VaultDetailPage() {
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, []);
-
-  useEffect(() => {
-    if (!import.meta.env.DEV) return;
-    const toastId = "local-media-upload-preview";
-    toast.add({
-      id: toastId,
-      title: "Uploading media",
-      type: "loading",
-      timeout: 0,
-      description: (
-        <MediaUploadToastDescription
-          files={UPLOAD_TOAST_PREVIEW_FILES}
-          progress={{
-            completedBytes: 338 * 1024 * 1024,
-            fileIndex: 0,
-            fileProgress: 43,
-            phase: "uploading",
-            speedBytesPerSecond: 12.4 * 1024 * 1024,
-            totalBytes: UPLOAD_TOAST_PREVIEW_FILES.reduce(
-              (sum, file) => sum + file.size,
-              0,
-            ),
-          }}
-        />
-      ),
-    });
-    return () => toast.close(toastId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useDocumentTitle(
@@ -298,75 +264,79 @@ export function VaultDetailPage() {
     [vaultId],
   );
 
-  const loadMoreResources = useCallback(
-    async () => {
-      if (!vaultId) return;
-      if (resourcePageRequestActiveRef.current) return;
-      const loadVersion = resourceLoadVersionRef.current;
-      const currentFeed = resourceFeedRef.current;
-      if (currentFeed.loading || currentFeed.complete) return;
+  const loadMoreResources = useCallback(async () => {
+    if (!vaultId) return;
+    if (resourcePageRequestActiveRef.current) return;
+    const loadVersion = resourceLoadVersionRef.current;
+    const currentFeed = resourceFeedRef.current;
+    if (currentFeed.loading || currentFeed.complete) return;
 
-      resourcePageRequestActiveRef.current = true;
+    resourcePageRequestActiveRef.current = true;
 
-      const loadingState: ResourceFeedState = {
-        ...currentFeed,
-        loading: true,
+    const loadingState: ResourceFeedState = {
+      ...currentFeed,
+      loading: true,
+    };
+    resourceFeedRef.current = loadingState;
+    setResourceFeed(loadingState);
+    try {
+      const page = await listDashboardVaultResources(vaultId, {
+        cursor: currentFeed.nextCursor ?? undefined,
+      });
+      if (loadVersion !== resourceLoadVersionRef.current) return;
+      setDetail((current) => {
+        if (!current) return current;
+        const incomingIds = new Set(page.items.map((resource) => resource.id));
+        return {
+          ...current,
+          resources: [
+            ...current.resources.filter(
+              (resource) => !incomingIds.has(resource.id),
+            ),
+            ...page.items,
+          ],
+        };
+      });
+      const nextFeed = {
+        complete: page.nextCursor === null,
+        loading: false,
+        nextCursor: page.nextCursor,
       };
-      resourceFeedRef.current = loadingState;
-      setResourceFeed(loadingState);
-      try {
-        const page = await listDashboardVaultResources(vaultId, {
-          cursor: currentFeed.nextCursor ?? undefined,
-        });
-        if (loadVersion !== resourceLoadVersionRef.current) return;
-        setDetail((current) => {
-          if (!current) return current;
-          const incomingIds = new Set(page.items.map((resource) => resource.id));
-          return {
-            ...current,
-            resources: [
-              ...current.resources.filter((resource) => !incomingIds.has(resource.id)),
-              ...page.items,
-            ],
-          };
-        });
-        const nextFeed = {
-          complete: page.nextCursor === null,
-          loading: false,
-          nextCursor: page.nextCursor,
-        };
-        resourceFeedRef.current = nextFeed;
-        setResourceFeed(nextFeed);
-      } catch (reason) {
-        if (loadVersion !== resourceLoadVersionRef.current) return;
-        const nextFeed = {
-          ...currentFeed,
-          error: reason instanceof Error ? reason.message : "Could not load resources.",
-          loading: false,
-        };
-        resourceFeedRef.current = nextFeed;
-        setResourceFeed(nextFeed);
-      } finally {
-        resourcePageRequestActiveRef.current = false;
-      }
-    },
-    [vaultId],
-  );
+      resourceFeedRef.current = nextFeed;
+      setResourceFeed(nextFeed);
+    } catch (reason) {
+      if (loadVersion !== resourceLoadVersionRef.current) return;
+      const nextFeed = {
+        ...currentFeed,
+        error:
+          reason instanceof Error
+            ? reason.message
+            : "Could not load resources.",
+        loading: false,
+      };
+      resourceFeedRef.current = nextFeed;
+      setResourceFeed(nextFeed);
+    } finally {
+      resourcePageRequestActiveRef.current = false;
+    }
+  }, [vaultId]);
 
   const refreshResource = useCallback(
     async (resourceId: string, options: { addIfMissing?: boolean } = {}) => {
       const nextResource = await getResource(resourceId);
       setDetail((current) => {
         if (!current) return current;
-        const exists = current.resources.some((resource) => resource.id === resourceId);
+        const exists = current.resources.some(
+          (resource) => resource.id === resourceId,
+        );
         if (!exists && !options.addIfMissing) return current;
         return {
           ...current,
           resources: exists
-          ? current.resources.map((resource) =>
-              resource.id === resourceId ? nextResource : resource,
-            )
-          : [...current.resources, nextResource],
+            ? current.resources.map((resource) =>
+                resource.id === resourceId ? nextResource : resource,
+              )
+            : [...current.resources, nextResource],
         };
       });
       return nextResource;
@@ -376,7 +346,11 @@ export function VaultDetailPage() {
 
   const refreshResources = useCallback(
     (resourceIds: Iterable<string>) =>
-      Promise.all([...new Set(resourceIds)].map((resourceId) => refreshResource(resourceId))),
+      Promise.all(
+        [...new Set(resourceIds)].map((resourceId) =>
+          refreshResource(resourceId),
+        ),
+      ),
     [refreshResource],
   );
 
@@ -384,7 +358,9 @@ export function VaultDetailPage() {
     (update: ResourceAiSummaryStreamUpdate) => {
       setDetail((current) => {
         if (!current) return current;
-        const resource = current.resources.find((item) => item.id === update.id);
+        const resource = current.resources.find(
+          (item) => item.id === update.id,
+        );
         if (!resource) return current;
 
         const nextMetadata = resource.metadata?.data
@@ -394,9 +370,7 @@ export function VaultDetailPage() {
                 ...resource.metadata.data,
                 extra: {
                   ...resource.metadata.data.extra,
-                  ...(update.aiSummary
-                    ? { aiSummary: update.aiSummary }
-                    : {}),
+                  ...(update.aiSummary ? { aiSummary: update.aiSummary } : {}),
                 },
               },
             }
@@ -458,16 +432,18 @@ export function VaultDetailPage() {
     const controller = new AbortController();
     const requestId = ++loadRequestRef.current;
     onVaultLoadingChange(vaultId, true);
-    void loadDetail(controller.signal).catch((reason: unknown) => {
-      if (!(reason instanceof DOMException && reason.name === "AbortError"))
-        setError(
-          reason instanceof Error ? reason.message : "Could not load vault.",
-        );
-    }).finally(() => {
-      if (loadRequestRef.current === requestId) {
-        onVaultLoadingChange(vaultId, false);
-      }
-    });
+    void loadDetail(controller.signal)
+      .catch((reason: unknown) => {
+        if (!(reason instanceof DOMException && reason.name === "AbortError"))
+          setError(
+            reason instanceof Error ? reason.message : "Could not load vault.",
+          );
+      })
+      .finally(() => {
+        if (loadRequestRef.current === requestId) {
+          onVaultLoadingChange(vaultId, false);
+        }
+      });
     return () => {
       controller.abort();
       if (loadRequestRef.current === requestId) {
@@ -525,8 +501,8 @@ export function VaultDetailPage() {
         resource.metadataStatus === "pending" ||
         resource.metadataStatus === "processing",
     );
-    const hasAiSummaryFallback = detail.resources.some(
-      (resource) => aiSummaryStreamFallbacksRef.current.has(resource.id),
+    const hasAiSummaryFallback = detail.resources.some((resource) =>
+      aiSummaryStreamFallbacksRef.current.has(resource.id),
     );
 
     if (!hasPendingMetadata && !hasAiSummaryFallback) return;
@@ -539,11 +515,16 @@ export function VaultDetailPage() {
           aiSummaryStreamFallbacksRef.current.has(resource.id),
       )
       .map((resource) => resource.id);
-    const timer = window.setInterval(() => {
-      void refreshResources(pendingResourceIds).catch(() => {
-        // Keep the current card state visible if a background refresh fails.
-      });
-    }, hasAiSummaryFallback ? AI_SUMMARY_POLL_INTERVAL_MS : METADATA_POLL_INTERVAL_MS);
+    const timer = window.setInterval(
+      () => {
+        void refreshResources(pendingResourceIds).catch(() => {
+          // Keep the current card state visible if a background refresh fails.
+        });
+      },
+      hasAiSummaryFallback
+        ? AI_SUMMARY_POLL_INTERVAL_MS
+        : METADATA_POLL_INTERVAL_MS,
+    );
 
     return () => window.clearInterval(timer);
   }, [detail, refreshResources]);
@@ -736,7 +717,8 @@ export function VaultDetailPage() {
       })
       .catch((reason: unknown) => {
         toast.add({
-          title: reason instanceof Error ? reason.message : "Vault update failed.",
+          title:
+            reason instanceof Error ? reason.message : "Vault update failed.",
           type: "error",
         });
       })
@@ -756,14 +738,18 @@ export function VaultDetailPage() {
       setBusy(true);
       void createVaultSpace(destinationVaultId, form)
         .then((created) => {
-          void Promise.all([loadDetail(), loadTransferTargets()]).catch(() => undefined);
+          void Promise.all([loadDetail(), loadTransferTargets()]).catch(
+            () => undefined,
+          );
           setTransferFocusSpaceId(created.id);
           toast.add({ title: "Space created", type: "success" });
         })
         .catch((reason: unknown) => {
           toast.add({
             title:
-              reason instanceof Error ? reason.message : "Could not create space.",
+              reason instanceof Error
+                ? reason.message
+                : "Could not create space.",
             type: "error",
           });
         })
@@ -783,7 +769,10 @@ export function VaultDetailPage() {
       })
       .catch((reason: unknown) => {
         toast.add({
-          title: reason instanceof Error ? reason.message : "Could not create space.",
+          title:
+            reason instanceof Error
+              ? reason.message
+              : "Could not create space.",
           type: "error",
         });
       })
@@ -821,7 +810,8 @@ export function VaultDetailPage() {
       })
       .catch((reason: unknown) => {
         toast.add({
-          title: reason instanceof Error ? reason.message : "Vault update failed.",
+          title:
+            reason instanceof Error ? reason.message : "Vault update failed.",
           type: "error",
         });
       })
@@ -858,7 +848,10 @@ export function VaultDetailPage() {
       })
       .catch((reason: unknown) => {
         toast.add({
-          title: reason instanceof Error ? reason.message : "Could not add resource.",
+          title:
+            reason instanceof Error
+              ? reason.message
+              : "Could not add resource.",
           type: "error",
         });
       })
@@ -1064,9 +1057,9 @@ export function VaultDetailPage() {
       (resource) => resource.id === sourceResourceId,
     )?.spaceId;
     if (!sourceSpaceId) return;
-    const totalInSourceSpace = detail.spaces.find(
-      (space) => space.id === sourceSpaceId,
-    )?.resourceCount ?? 0;
+    const totalInSourceSpace =
+      detail.spaces.find((space) => space.id === sourceSpaceId)
+        ?.resourceCount ?? 0;
     const loadedInSourceSpace = detail.resources.filter(
       (resource) => resource.spaceId === sourceSpaceId,
     ).length;
@@ -1155,7 +1148,9 @@ export function VaultDetailPage() {
   useEffect(() => {
     const resourceId = location.hash.replace(/^#resource-/, "");
     if (!detail || !resourceId || resourceId === location.hash) return;
-    const frame = window.requestAnimationFrame(() => scrollToResource(resourceId));
+    const frame = window.requestAnimationFrame(() =>
+      scrollToResource(resourceId),
+    );
     return () => window.cancelAnimationFrame(frame);
   }, [detail, location.hash, scrollToResource]);
 
@@ -1185,12 +1180,7 @@ export function VaultDetailPage() {
     });
 
     return () => onVaultStatusChange(null);
-  }, [
-    detail,
-    onVaultStatusChange,
-    scrollToResource,
-    vaultId,
-  ]);
+  }, [detail, onVaultStatusChange, scrollToResource, vaultId]);
 
   async function handleSaveResourceDetails(
     form: ResourceDetailsForm,
@@ -1201,25 +1191,29 @@ export function VaultDetailPage() {
     setResourceEditOpen(false);
     setResourceToEdit(undefined);
     setBusy(true);
-    void (resource.type === "local_media" && mediaChange
-      ? runMediaUpload(mediaChange.files, (reportProgress) =>
-          updateLocalMediaResource(
-            resource.id,
-            {
-              ...form,
-              files: mediaChange.files,
-              order: mediaChange.order,
-            },
-            reportProgress,
-          ),
-        )
-      : updateResourceDetails(resource.id, form)
+    void (
+      resource.type === "local_media" && mediaChange
+        ? runMediaUpload(mediaChange.files, (reportProgress) =>
+            updateLocalMediaResource(
+              resource.id,
+              {
+                ...form,
+                files: mediaChange.files,
+                order: mediaChange.order,
+              },
+              reportProgress,
+            ),
+          )
+        : updateResourceDetails(resource.id, form)
     )
       .then(() => refreshResource(resource.id))
       .then(() => toast.add({ title: "Resource updated", type: "success" }))
       .catch((reason: unknown) => {
         toast.add({
-          title: reason instanceof Error ? reason.message : "Resource update failed.",
+          title:
+            reason instanceof Error
+              ? reason.message
+              : "Resource update failed.",
           type: "error",
         });
       })
@@ -1228,7 +1222,9 @@ export function VaultDetailPage() {
 
   async function runMediaUpload<T>(
     files: File[],
-    upload: (onProgress: (progress: LocalMediaUploadProgress) => void) => Promise<T>,
+    upload: (
+      onProgress: (progress: LocalMediaUploadProgress) => void,
+    ) => Promise<T>,
   ) {
     if (files.length === 0) return upload(() => undefined);
 
@@ -1257,7 +1253,9 @@ export function VaultDetailPage() {
     try {
       const result = await upload((progress) => {
         toast.update(toastId, {
-          description: <MediaUploadToastDescription files={files} progress={progress} />,
+          description: (
+            <MediaUploadToastDescription files={files} progress={progress} />
+          ),
         });
       });
       toast.update(toastId, {
@@ -1272,7 +1270,8 @@ export function VaultDetailPage() {
         title: "Media upload failed",
         type: "error",
         timeout: 8000,
-        description: reason instanceof Error ? reason.message : "Media upload failed.",
+        description:
+          reason instanceof Error ? reason.message : "Media upload failed.",
       });
       throw reason;
     } finally {
@@ -1348,7 +1347,11 @@ export function VaultDetailPage() {
   }
 
   function isUploadImageFile(file: File) {
-    if (typeof file.type === "string" && file.type.toLowerCase().startsWith("image/")) return true;
+    if (
+      typeof file.type === "string" &&
+      file.type.toLowerCase().startsWith("image/")
+    )
+      return true;
     return /\.(avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(file.name);
   }
   function formatUploadSpeed(value: number) {
@@ -1373,7 +1376,9 @@ export function VaultDetailPage() {
   }, [detail?.resources]);
   const resourceFrontierSpaceId = useMemo(() => {
     if (!detail || resourceFeed.complete) return undefined;
-    const populatedSpaces = detail.spaces.filter((space) => space.resourceCount > 0);
+    const populatedSpaces = detail.spaces.filter(
+      (space) => space.resourceCount > 0,
+    );
     const loadedSpaces = populatedSpaces.filter(
       (space) => (loadedResourceCountBySpaceId.get(space.id) ?? 0) > 0,
     );
@@ -1457,8 +1462,7 @@ export function VaultDetailPage() {
                   (resource) => resource.spaceId === space.id,
                 )}
                 hasMoreResources={
-                  !resourceFeed.complete &&
-                  resourceFrontierSpaceId === space.id
+                  !resourceFeed.complete && resourceFrontierSpaceId === space.id
                 }
                 onLoadMoreResources={() => void loadMoreResources()}
                 resourceCount={space.resourceCount}
