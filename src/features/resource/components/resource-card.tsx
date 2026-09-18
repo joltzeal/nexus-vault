@@ -134,6 +134,7 @@ export function ResourceCard({
   index,
   canDeleteResource = false,
   canEditResource,
+  canResolveMetadata = canEditResource,
   isActive,
   isSelected = false,
   isSignedIn,
@@ -166,6 +167,7 @@ export function ResourceCard({
   index: number;
   canDeleteResource?: boolean;
   canEditResource: boolean;
+  canResolveMetadata?: boolean;
   canTransferResource?: boolean;
   isActive: boolean;
   isSelected?: boolean;
@@ -515,14 +517,12 @@ export function ResourceCard({
           canTransferResource
             ? () => {
                 setTransferOpen(true);
-                if (transferTargets.length === 0) {
-                  void onLoadTransferTargets().catch(() => undefined);
-                }
+                void onLoadTransferTargets().catch(() => undefined);
               }
             : undefined
         }
         onRetryMetadata={
-          canEditResource &&
+          canResolveMetadata &&
           Boolean(onResolveMetadata) &&
           resource.type !== "local_media" &&
           !isResolvingMetadata
@@ -1134,7 +1134,7 @@ export function ResourceTransferDialog({
       setQuery("");
       return;
     }
-    if (!nextOpen || targets.length > 0) return;
+    if (!nextOpen) return;
 
     setLoadingTargets(true);
     try {

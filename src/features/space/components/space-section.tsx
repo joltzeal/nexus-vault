@@ -463,7 +463,7 @@ export function SpaceSection({
               gap={8}
               onLoadMore={() => undefined}
               renderItem={(resource, index) => (
-                <div>
+                <div className="m-1">
                   {renderResource ? (
                     renderResource(
                       resource,

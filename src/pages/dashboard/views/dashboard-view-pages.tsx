@@ -24,6 +24,7 @@ import {
   organizeStashResource,
   deleteResource,
   listStarredResources,
+  resolveResourceMetadata,
   setResourceReadLater,
   setResourceStarred,
 } from "@/features/resource/api";
@@ -337,6 +338,23 @@ export function FlashStashPage() {
     }
   }
 
+  async function handleResolveMetadata(resourceId: string) {
+    setBusyId(resourceId);
+    try {
+      await resolveResourceMetadata(resourceId);
+      toast.add({ title: "Metadata retrieval started", type: "success" });
+      setResources(await listStashResources());
+    } catch (reason) {
+      toast.add({
+        title: "Could not retrieve metadata",
+        description: reason instanceof Error ? reason.message : undefined,
+        type: "error",
+      });
+    } finally {
+      setBusyId("");
+    }
+  }
+
   return (
     <section className="mx-auto w-full max-w-[112rem]">
       <DashboardPageHeader
@@ -369,6 +387,7 @@ export function FlashStashPage() {
               <ResourceCard
                 canDeleteResource
                 canEditResource={false}
+                canResolveMetadata
                 canTransferResource
                 disabled={busyId === resource.id}
                 index={index}
@@ -382,6 +401,7 @@ export function FlashStashPage() {
                   setTargets(await listResourceTransferTargets());
                 }}
                 onOpenDetails={() => undefined}
+                onResolveMetadata={() => void handleResolveMetadata(resource.id)}
                 onToggleReadLater={() => void handleToggleReadLater(resource)}
                 onToggleStar={() => void handleToggleStar(resource)}
                 onTransferResource={handleOrganize}
