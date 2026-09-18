@@ -108,11 +108,6 @@ import { Spinner } from "@/components/aicanvas/andromeda/components/Spinner";
 import "@/features/vault/styles/vault-detail-layout.css";
 
 const Button: any = ButtonPrimitive;
-const UPLOAD_TOAST_PREVIEW_FILES = [
-  { name: "holiday-video.mp4", size: 780 * 1024 * 1024 },
-  { name: "cover-image.jpg", size: 14 * 1024 * 1024 },
-  { name: "voice-note.m4a", size: 8 * 1024 * 1024 },
-] as unknown as File[];
 
 const AI_SUMMARY_POLL_INTERVAL_MS = 500;
 const METADATA_POLL_INTERVAL_MS = 2500;
