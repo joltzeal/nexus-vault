@@ -211,7 +211,7 @@ export function ResourceCardActions({
                     ariaLabel: "设置资源评分",
                     content: (
                       <div className="flex h-6 items-center gap-1 px-1">
-                        <span>Rate</span>
+                        <span className="leading-none">Rate</span>
                         <ResourceCardRating
                           ariaLabel="设置资源评分"
                           onValueChange={onRatingChange}
@@ -225,6 +225,7 @@ export function ResourceCardActions({
               : []
           }
           size="sm"
+          classNames={{ label: "leading-none" }}
         />
       )}
     </div>
