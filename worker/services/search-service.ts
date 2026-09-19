@@ -1,116 +1,127 @@
-import { and, ilike, isNull, or, eq, sql } from "drizzle-orm"
+import { and, desc, ilike, isNull, or, eq, sql } from "drizzle-orm"
 
-import { collaborators, resourceMetadata, resources, spaces, vaults } from "../db/schema"
+import {
+  collaborators,
+  resourceAnnotations,
+  resourceMetadata,
+  resourceReadLater,
+  resources,
+  spaces,
+  starredResources,
+  vaults,
+} from "../db/schema"
+import { normalizeResourceMetadata } from "../domain/resources/metadata"
 import type { Actor, Db } from "../types/legacy-api"
-
-function matchedMetadataFields(metadata: unknown, query: string) {
-  const normalizedQuery = query.toLocaleLowerCase()
-  const matches = new Set<string>()
-  const addMatch = (path: string[]) => {
-    matches.add(`Metadata${path.length ? `.${path.join(".")}` : ""}`)
-  }
-  const visit = (value: unknown, path: string[]) => {
-    if (typeof value === "string") {
-      if (value.toLocaleLowerCase().includes(normalizedQuery)) addMatch(path)
-      return
-    }
-    if (typeof value === "number" || typeof value === "boolean") {
-      if (String(value).toLocaleLowerCase().includes(normalizedQuery)) addMatch(path)
-      return
-    }
-    if (Array.isArray(value)) {
-      value.forEach((entry, index) => visit(entry, [...path, String(index)]))
-      return
-    }
-    if (!value || typeof value !== "object") return
-    Object.entries(value).forEach(([key, entry]) => {
-      const nextPath = [...path, key]
-      if (key.toLocaleLowerCase().includes(normalizedQuery)) addMatch(nextPath)
-      visit(entry, nextPath)
-    })
-  }
-
-  visit(metadata, [])
-  const fields = [...matches]
-  return fields.length > 4
-    ? [...fields.slice(0, 4), `Metadata (+${fields.length - 4} more fields)`]
-    : fields
-}
 
 export async function searchWorkspace(
   db: Db,
   input: { actor: Actor; query: string },
 ) {
   const query = input.query.trim()
-  if (!query) return { vaults: [], spaces: [], resources: [] }
+  if (!query) return { resources: [] }
   // Treat SQL wildcard characters as literal search text. A query for an
   // actual URL or identifier should not silently turn into a broad match.
   const pattern = `%${query.replace(/[\\%_]/g, "\\$&")}%`
-  const includesQuery = (value: string | null | undefined) =>
-    value?.toLocaleLowerCase().includes(query.toLocaleLowerCase()) ?? false
-  const matchedFields = (
-    fields: Array<[label: string, value: string | null | undefined]>,
-  ) => fields.filter(([, value]) => includesQuery(value)).map(([label]) => label)
   const access = or(
     eq(vaults.ownerId, input.actor.id),
     eq(collaborators.userId, input.actor.id),
   )
 
-  const vaultRows = await db
-    .selectDistinct({ id: vaults.id, title: vaults.title, description: vaults.description })
-    .from(vaults)
-    .leftJoin(collaborators, eq(collaborators.vaultId, vaults.id))
-    .where(and(isNull(vaults.deletedAt), access, or(ilike(vaults.title, pattern), ilike(vaults.description, pattern))))
-    .limit(8)
-
-  const spaceRows = await db
-    .selectDistinct({ id: spaces.id, name: spaces.name, description: spaces.description, vaultId: spaces.vaultId, vaultTitle: vaults.title })
-    .from(spaces)
-    .innerJoin(vaults, eq(vaults.id, spaces.vaultId))
-    .leftJoin(collaborators, eq(collaborators.vaultId, vaults.id))
-    .where(and(isNull(spaces.deletedAt), isNull(vaults.deletedAt), access, or(ilike(spaces.name, pattern), ilike(spaces.description, pattern), ilike(vaults.title, pattern))))
-    .limit(12)
-
   const resourceRows = await db
-    .selectDistinct({ id: resources.id, title: resources.title, description: resources.description, url: resources.url, vaultId: resources.vaultId, vaultTitle: vaults.title, spaceId: resources.spaceId, spaceName: spaces.name, metadataDataJson: resourceMetadata.dataJson })
+    .selectDistinct({
+      id: resources.id,
+      title: resources.title,
+      description: resources.description,
+      url: resources.url,
+      referer: resources.referer,
+      type: resources.type,
+      metadataStatus: resources.metadataStatus,
+      position: resources.position,
+      createdBy: resources.createdBy,
+      createdAt: resources.createdAt,
+      updatedAt: resources.updatedAt,
+      vaultId: resources.vaultId,
+      vaultTitle: vaults.title,
+      spaceId: resources.spaceId,
+      spaceName: spaces.name,
+      metadataProvider: resourceMetadata.provider,
+      metadataDataJson: resourceMetadata.dataJson,
+      metadataErrorMessage: resourceMetadata.errorMessage,
+      metadataUpdatedAt: resourceMetadata.updatedAt,
+      isStarred: starredResources.id,
+      isReadLater: resourceReadLater.id,
+      annotationRating: resourceAnnotations.rating,
+      annotationComment: resourceAnnotations.comment,
+      annotationChecked: resourceAnnotations.checked,
+      annotationDataJson: resourceAnnotations.dataJson,
+      annotationCreatedAt: resourceAnnotations.createdAt,
+      annotationUpdatedAt: resourceAnnotations.updatedAt,
+    })
     .from(resources)
     .leftJoin(vaults, eq(vaults.id, resources.vaultId))
     .leftJoin(spaces, eq(spaces.id, resources.spaceId))
     .leftJoin(resourceMetadata, eq(resourceMetadata.resourceId, resources.id))
     .leftJoin(collaborators, eq(collaborators.vaultId, vaults.id))
-    .where(and(or(eq(resources.stashUserId, input.actor.id), and(isNull(vaults.deletedAt), access)), or(ilike(resources.title, pattern), ilike(resources.url, pattern), ilike(resources.description, pattern), ilike(vaults.title, pattern), ilike(spaces.name, pattern), ilike(sql<string>`${resourceMetadata.dataJson}::text`, pattern))))
+    .leftJoin(starredResources, and(
+      eq(starredResources.sourceResourceId, resources.id),
+      eq(starredResources.userId, input.actor.id),
+    ))
+    .leftJoin(resourceReadLater, and(
+      eq(resourceReadLater.resourceId, resources.id),
+      eq(resourceReadLater.userId, input.actor.id),
+    ))
+    .leftJoin(resourceAnnotations, and(
+      eq(resourceAnnotations.resourceId, resources.id),
+      eq(resourceAnnotations.userId, input.actor.id),
+    ))
+    .where(and(or(eq(resources.stashUserId, input.actor.id), and(isNull(vaults.deletedAt), access)), or(ilike(resources.title, pattern), ilike(resources.url, pattern), ilike(resources.description, pattern), ilike(vaults.title, pattern), ilike(vaults.description, pattern), ilike(spaces.name, pattern), ilike(spaces.description, pattern), ilike(sql<string>`${resourceMetadata.dataJson}::text`, pattern))))
+    .orderBy(desc(resources.createdAt))
     .limit(24)
 
   return {
-    vaults: vaultRows.map((vault) => ({
-      ...vault,
-      matchedFields: matchedFields([
-        ["Vault name", vault.title],
-        ["Description", vault.description],
-      ]),
-    })),
-    spaces: spaceRows.map((space) => ({
-      ...space,
-      matchedFields: matchedFields([
-        ["Space name", space.name],
-        ["Description", space.description],
-        ["Vault", space.vaultTitle],
-      ]),
-    })),
-    resources: resourceRows.map(({ metadataDataJson, vaultId, vaultTitle, ...resource }) => ({
-      ...resource,
-      vaultId: vaultId ?? "flash-stash",
-      vaultTitle: vaultTitle ?? "Flash stash",
-      matchedFields: [
-        ...matchedFields([
-          ["Resource title", resource.title],
-          ["Description", resource.description],
-          ["URL", resource.url],
-          ["Vault", vaultTitle],
-          ["Space", resource.spaceName],
-        ]),
-        ...matchedMetadataFields(metadataDataJson, query),
-      ],
+    resources: resourceRows.map((row) => ({
+      resource: {
+        id: row.id,
+        spaceId: row.spaceId,
+        type: row.type,
+        title: row.title,
+        description: row.description,
+        url: row.url,
+        referer: row.referer,
+        metadataStatus: row.metadataStatus,
+        position: row.position,
+        createdBy: row.createdBy,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        isStarred: Boolean(row.isStarred),
+        isReadLater: Boolean(row.isReadLater),
+        annotation:
+          row.annotationRating !== null ||
+          Boolean(row.annotationComment) ||
+          Boolean(row.annotationChecked) ||
+          Object.keys(row.annotationDataJson ?? {}).length > 0
+            ? {
+                rating: row.annotationRating,
+                comment: row.annotationComment ?? "",
+                checked: row.annotationChecked ?? false,
+                dataJson: row.annotationDataJson ?? {},
+                createdAt: row.annotationCreatedAt,
+                updatedAt: row.annotationUpdatedAt,
+              }
+            : null,
+        metadata: row.metadataProvider
+          ? {
+              provider: row.metadataProvider,
+              data: normalizeResourceMetadata(row.metadataDataJson),
+              errorMessage: row.metadataErrorMessage,
+              updatedAt: row.metadataUpdatedAt,
+            }
+          : null,
+      },
+      vaultId: row.vaultId ?? "flash-stash",
+      vaultTitle: row.vaultTitle ?? "Flash stash",
+      spaceId: row.spaceId,
+      spaceName: row.spaceName,
     })),
   }
 }

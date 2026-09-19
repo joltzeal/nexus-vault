@@ -241,6 +241,7 @@ export function ResourceCardCommentButton({
 }) {
   return (
     <Button
+      className="leading-none"
       disabled={disabled}
       onClick={(event: MouseEvent<HTMLButtonElement>) => {
         event.stopPropagation();
@@ -251,7 +252,7 @@ export function ResourceCardCommentButton({
       variant="ghost"
     >
       <MessageSquare data-icon="inline-start" />
-      Comment
+      <span className="relative top-px leading-none">Comment</span>
     </Button>
   );
 }

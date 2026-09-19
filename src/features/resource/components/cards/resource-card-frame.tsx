@@ -61,7 +61,11 @@ export function ResourceCardFrame({
   viewMode: ResourceCardViewMode;
 }) {
   const hasFooter = Boolean(
-    commentAction || commentEditor || footerActions || annotation || resourceCreatedAt,
+    commentAction ||
+    commentEditor ||
+    footerActions ||
+    annotation ||
+    resourceCreatedAt,
   );
   const resourceCreatedAtLabel = formatResourceCreatedAt(resourceCreatedAt);
 
@@ -190,10 +194,7 @@ export function ResourceCardFrame({
                 className="px-3.5 py-3"
                 onClick={(event) => event.stopPropagation()}
               >
-                <div className="min-w-0 rounded-input border border-border bg-card/35 px-2 py-1 text-xs leading-5 text-muted-foreground">
-                  <span className="mono mr-2 text-[10px] uppercase tracking-[.12em] text-muted-foreground">
-                    COMMENT
-                  </span>
+                <div className="min-w-0 whitespace-pre-wrap break-words rounded-input border border-border bg-card/35 px-2 py-1 text-xs leading-5 text-muted-foreground">
                   {annotation}
                 </div>
               </div>

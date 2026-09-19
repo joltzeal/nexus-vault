@@ -14,6 +14,7 @@ import { Toaster } from "@/components/ui/toast";
 import type { DashboardVaultItem } from "@/features/dashboard/types";
 import { DashboardSidebar } from "@/pages/dashboard/dashboard-sidebar";
 import { listDashboardVaults } from "@/features/dashboard/api";
+import { WorkspaceSearchResults } from "@/features/dashboard/components/workspace-search-results";
 import {
   createDashboardVault,
   createVaultResource,
@@ -87,6 +88,11 @@ export type DashboardVaultStatus = {
   }>;
 };
 
+type WorkspaceSearchRequest = {
+  query: string;
+  requestId: number;
+};
+
 function resourceSearchKeywords(title: string, url: string | null) {
   return [title, url ?? ""].flatMap((value) => {
     if (!value) return [];
@@ -123,6 +129,8 @@ export function DashboardShell({
   const [resourceTargetsLoading, setResourceTargetsLoading] = useState(false);
   const [resourceTargetVaultId, setResourceTargetVaultId] = useState("");
   const [vaultStatus, setVaultStatus] = useState<DashboardVaultStatus | null>(null);
+  const [workspaceSearch, setWorkspaceSearch] =
+    useState<WorkspaceSearchRequest | null>(null);
   const [createVaultForm, setCreateVaultForm] = useState<VaultForm>(
     createInitialVaultForm,
   );
@@ -177,7 +185,7 @@ export function DashboardShell({
     "/dashboard/flash-stash",
     "/dashboard/starred",
     "/dashboard/watch-later",
-  ].includes(location.pathname);
+  ].includes(location.pathname) || Boolean(workspaceSearch);
   const activeVaultStatus =
     activeVaultId && vaultStatus?.vaultId === activeVaultId ? vaultStatus : null;
   const selectedResourceTarget = resourceTargets.find(
@@ -295,6 +303,17 @@ export function DashboardShell({
     return () => controller.abort();
   }, [refreshVaults]);
 
+  useEffect(() => {
+    setWorkspaceSearch(null);
+  }, [location.pathname]);
+
+  function openWorkspaceSearch(query: string) {
+    setWorkspaceSearch((current) => ({
+      query,
+      requestId: (current?.requestId ?? 0) + 1,
+    }));
+  }
+
   function handleCreateVault(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!createVaultForm.name.trim()) return;
@@ -401,6 +420,8 @@ export function DashboardShell({
           onOpenSettings={() => navigate("/dashboard/settings")}
           onOpenHistory={() => setHistoryOpen(true)}
           onSignOut={() => void authClient.signOut()}
+          onWorkspaceSearch={openWorkspaceSearch}
+          workspaceSearchActive={Boolean(workspaceSearch)}
           user={
             user
               ? { email: user.email, image: user.image, name: user.name }
@@ -411,9 +432,10 @@ export function DashboardShell({
         <AnimatedSidebarInset className="!h-full !min-h-0 overflow-clip">
           <main className="min-h-0 flex-1 overflow-y-auto">
             <div className="min-w-0 px-5 pb-8 pt-5 sm:px-8 sm:pb-10 sm:pt-8">
-              <Outlet
-                context={
-                  {
+              <div className={workspaceSearch ? "hidden" : undefined}>
+                <Outlet
+                  context={
+                    {
                   mediaVisible,
                   onMediaVisibleChange: handleMediaVisibleChange,
                   onResourceViewModeChange: handleResourceViewModeChange,
@@ -425,8 +447,19 @@ export function DashboardShell({
                       ? { email: user.email, image: user.image, name: user.name }
                       : undefined,
                   } satisfies DashboardOutletContext
-                }
-              />
+                  }
+                />
+              </div>
+              {workspaceSearch ? (
+                <WorkspaceSearchResults
+                  mediaVisible={mediaVisible}
+                  onClose={() => setWorkspaceSearch(null)}
+                  onSearch={openWorkspaceSearch}
+                  query={workspaceSearch.query}
+                  requestId={workspaceSearch.requestId}
+                  viewMode={resourceViewMode}
+                />
+              ) : null}
             </div>
           </main>
           <div

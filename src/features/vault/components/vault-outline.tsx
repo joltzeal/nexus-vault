@@ -235,7 +235,7 @@ function OutlinePanel({
         />
       </div>
       <ScrollArea className="max-h-[44dvh]">
-        <nav className="px-1.5">
+        <nav className="pl-1.5">
           {spaces.length ? (
             <div className="flex flex-col gap-px">
               {spaces.map((space) => {
