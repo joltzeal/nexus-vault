@@ -76,6 +76,7 @@ export async function processCloudDriveCheckMessage(
 
   await resolveResourceMetadata(db, message.resourceId, {
     env: options.env,
+    metadataUpdateMode: "availability-only",
     retryTransient: true,
   })
 

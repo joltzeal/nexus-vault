@@ -5,7 +5,6 @@ import {
   type ResourceMediaMetadata,
 } from "../../domain/resources/metadata"
 import { parseGofileLink } from "../../domain/resources/input"
-import { createResourceMediaStreamUrl } from "../../domain/media-storage"
 
 import {
   RetryableMetadataError,
@@ -84,7 +83,7 @@ export const gofileMetadataProvider: MetadataProvider = {
       sortGofileFiles(files)
       const media: ResourceMediaMetadata[] = []
       for (const file of files) {
-        media.push(...toMedia(file, parsed.url, resource.id, media.length))
+        media.push(...toMedia(file, parsed.url))
       }
       const rootName = getString(root.name)
       const title = root.type === "file"
@@ -211,27 +210,19 @@ async function collectGofileContent(
   return [{ name, type: "folder", children: tree }]
 }
 
-/**
- * GoFile CDN links require server-side tokens and cannot be hotlinked, so the
- * metadata stores our own root-relative stream URLs; clients load them through
- * the API proxy (with the user's session for private content).
- */
 function toMedia(
   file: GofileFile,
   sourceUrl: string,
-  resourceId: string,
-  mediaIndex: number,
 ): ResourceMediaMetadata[] {
   const url = getHttpUrl(file.content.link)
   if (!url) return []
 
   const kind = getMediaKind(getString(file.content.mimetype), file.name)
-  const streamUrl = createResourceMediaStreamUrl(resourceId, mediaIndex)
   const thumbnailUrl =
     kind === "video" && getHttpUrl(file.content.thumbnail)
-      ? createResourceMediaStreamUrl(resourceId, mediaIndex, "thumbnail")
+      ? getHttpUrl(file.content.thumbnail)
       : kind === "image"
-        ? streamUrl
+        ? url
         : undefined
   const mimeType = getString(file.content.mimetype)
   const size = getNumber(file.content.size)
@@ -253,7 +244,7 @@ function toMedia(
     provider: "gofile",
     sourceId: getString(file.content.id),
     sourceUrl,
-    url: streamUrl,
+    url,
     ...(thumbnailUrl ? { thumbnailUrl } : {}),
     ...(mimeType ? { mimeType } : {}),
     fileName: file.name,

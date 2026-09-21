@@ -181,6 +181,28 @@ export function SpaceSection({
           { label: "does not contain", value: "not_contains" },
         ],
       },
+      {
+        id: "checked",
+        label: "Checked",
+        type: "boolean",
+        defaultOperator: "is",
+        operators: [
+          { label: "is", value: "is" },
+          { label: "is not", value: "is_not" },
+        ],
+      },
+      {
+        id: "rating",
+        label: "Rating",
+        type: "number",
+        placeholder: "0–5",
+      },
+      {
+        id: "comment",
+        label: "Comment",
+        type: "text",
+        placeholder: "Search comment",
+      },
     ],
     [],
   );
@@ -617,6 +639,59 @@ function matchesResourceFilters(
                 : condition.operator === "is_on_or_before"
                   ? createdAt <= value
                   : createdAt >= value;
+    } else if (condition.field === "checked") {
+      const checked = Boolean(resource.annotation?.checked);
+      const value = values[0] === "true";
+      matches =
+        condition.operator === "is_not" ? checked !== value : checked === value;
+    } else if (condition.field === "rating") {
+      const rating = resource.annotation?.rating;
+      const [firstValue, secondValue] = values.map(Number);
+      const hasRating = typeof rating === "number";
+      matches =
+        condition.operator === "empty"
+          ? !hasRating
+          : condition.operator === "not_empty"
+            ? hasRating
+            : !hasRating || Number.isNaN(firstValue)
+              ? false
+              : condition.operator === "eq"
+                ? rating === firstValue
+                : condition.operator === "neq"
+                  ? rating !== firstValue
+                  : condition.operator === "gt"
+                    ? rating > firstValue
+                    : condition.operator === "gte"
+                      ? rating >= firstValue
+                      : condition.operator === "lt"
+                        ? rating < firstValue
+                        : condition.operator === "lte"
+                          ? rating <= firstValue
+                          : Number.isNaN(secondValue)
+                            ? false
+                            : condition.operator === "between"
+                              ? rating >= firstValue && rating <= secondValue
+                              : rating < firstValue || rating > secondValue;
+    } else if (condition.field === "comment") {
+      const comment = resource.annotation?.comment ?? "";
+      const value = (values[0] ?? "").toLocaleLowerCase();
+      const normalizedComment = comment.toLocaleLowerCase();
+      matches =
+        condition.operator === "empty"
+          ? comment.length === 0
+          : condition.operator === "not_empty"
+            ? comment.length > 0
+            : condition.operator === "not_contains"
+              ? !normalizedComment.includes(value)
+              : condition.operator === "starts_with"
+                ? normalizedComment.startsWith(value)
+                : condition.operator === "ends_with"
+                  ? normalizedComment.endsWith(value)
+                  : condition.operator === "is"
+                    ? normalizedComment === value
+                    : condition.operator === "is_not"
+                      ? normalizedComment !== value
+                      : normalizedComment.includes(value);
     }
 
     return condition.negated ? !matches : matches;

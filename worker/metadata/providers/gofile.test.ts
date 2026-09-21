@@ -121,14 +121,14 @@ test("GoFile provider recursively normalizes folders and their media", async (t)
         kind: "video",
         size: 83341773,
         thumbnailUrl: undefined,
-        url: "/api/v1/resources/resource/media/0/stream",
+        url: "https://file.example/clip.mp4",
       },
       {
         fileName: "cover.jpg",
         kind: "image",
         size: 120,
-        thumbnailUrl: "/api/v1/resources/resource/media/1/stream",
-        url: "/api/v1/resources/resource/media/1/stream",
+        thumbnailUrl: "https://file.example/cover.jpg",
+        url: "https://file.example/cover.jpg",
       },
     ],
   )

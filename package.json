@@ -9,6 +9,7 @@
 		"lint": "eslint .",
 		"test:web": "tsx --test scripts/web-contract.test.ts",
 		"test:twitter": "tsx scripts/twitter-live.test.ts",
+		"test:gofile": "tsx scripts/gofile-metadata.ts",
 		"test:mega": "tsx scripts/mega-metadata.ts",
 		"auth:set-password": "tsx scripts/set-auth-password.ts",
 		"preview": "pnpm run build && vite preview",

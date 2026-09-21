@@ -7,6 +7,10 @@ import {
   createBaseResourceMetadata,
   normalizeResourceMetadata,
 } from "../domain/resources/metadata"
+import {
+  selectMetadataForPersistence,
+  type MetadataUpdateMode,
+} from "../domain/resources/metadata-persistence"
 import type { Actor, ApiContext, Db } from "../types/legacy-api"
 import {
   createMetadataQueueMessage,
@@ -71,6 +75,7 @@ export async function resolveResourceMetadata(
   options: {
     actor?: Actor
     env: CloudflareEnv
+    metadataUpdateMode?: MetadataUpdateMode
     retryTransient?: boolean
   }
 ) {
@@ -156,21 +161,27 @@ export async function resolveResourceMetadata(
           }
         })
   const previousMetadata = normalizeResourceMetadata(currentMetadata?.dataJson)
+  const persistence = selectMetadataForPersistence({
+    mode: options.metadataUpdateMode,
+    next: result.data,
+    previous: previousMetadata,
+    status: result.status,
+  })
   const previousAiSummary = getPersistedAiSummaryText(previousMetadata?.extra?.aiSummary)
-  const aiSummaryRequested = shouldGenerateResourceAiSummary({
+  const aiSummaryRequested = !persistence.preserved && shouldGenerateResourceAiSummary({
     currentDescription:
       previousAiSummary && previousAiSummary === resource.description.trim()
         ? ""
         : resource.description,
-    data: result.data,
+    data: persistence.data,
     env: options.env,
     provider: result.provider,
     status: result.status,
     type: resource.type,
   })
   const resolvedData = aiSummaryRequested
-    ? markResourceAiSummaryPending(result.data, options.env)
-    : result.data
+    ? markResourceAiSummaryPending(persistence.data, options.env)
+    : persistence.data
   const nextResourceTitle = shouldBackfillResourceTitle(resource.title, resolvedData.title)
     ? resolvedData.title
     : undefined

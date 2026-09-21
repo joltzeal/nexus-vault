@@ -114,7 +114,7 @@ export function DashboardSidebar({
   return (
     <AnimatedSidebar
       ariaLabel="NexusVault navigation"
-      className="!h-full z-30"
+      className="!h-full z-40"
       collapsible="icon"
       panelClassName="!h-full border-sidebar-border bg-sidebar"
     >
