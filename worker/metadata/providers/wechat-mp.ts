@@ -136,7 +136,9 @@ async function createMetadataResult(
   ))
   const sourceTitle = normalizeTitle(firstString(content.title))
   const displayTitle = sourceTitle ?? resource.title
-  const contentHtml = isGallery ? undefined : firstString(content.content_noencode)
+  // Both article and gallery payloads can include a renderable original body.
+  // Gallery text remains the AI-summary source; this HTML is only for the reader.
+  const contentHtml = firstString(content.content_noencode)
   const sourceDescription = normalizeText(
     isGallery
       ? firstString(content.content_text)

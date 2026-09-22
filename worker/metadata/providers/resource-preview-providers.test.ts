@@ -640,7 +640,10 @@ test("WeChat MP provider normalizes gallery text and persists only picture_page_
   assert.equal(result.data.title, "Gallery 原始标题")
   assert.equal(result.data.description, "这是图片集的完整文字说明。")
   assert.equal(result.data.preview?.data.itemShowType, 8)
-  assert.equal(result.data.preview?.data.contentHtml, undefined)
+  assert.equal(
+    result.data.preview?.data.contentHtml,
+    "<p><img src=\"https://mmbiz.qpic.cn/not-gallery.jpeg\" /></p>",
+  )
   assert.equal(result.data.media?.length, 2)
   assert.deepEqual(persisted.map((item) => item.resourceId), [
     "wechat-gallery-resource",
