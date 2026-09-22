@@ -709,7 +709,15 @@ function decodeResourcePageCursor(value?: string) {
     ) {
       return undefined;
     }
-    return parsed;
+    // URL form decoding treats `+` as a space. Older iOS clients built the
+    // cursor query by string interpolation, so a PostgreSQL `+00` timezone
+    // offset reached this endpoint as ` 00` and caused an invalid timestamp
+    // binding in the page query. Restore that offset for backward safety.
+    const createdAt = parsed.createdAt.replace(
+      / (\d{2}(?::\d{2})?)$/,
+      "+$1",
+    );
+    return { ...parsed, createdAt };
   } catch {
     return undefined;
   }
