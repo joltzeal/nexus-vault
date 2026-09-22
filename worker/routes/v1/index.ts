@@ -45,6 +45,7 @@ import * as collaborator from "./vaults/[vaultId]/collaborators/[collaboratorId]
 import * as vaultExport from "./vaults/[vaultId]/export/route";
 import * as vaultFork from "./vaults/[vaultId]/fork/route";
 import * as vaultResources from "./vaults/[vaultId]/resources/route";
+import * as vaultResourcesBatch from "./vaults/[vaultId]/resources/batch/route";
 import * as vaultLocalMedia from "./vaults/[vaultId]/resources/local-media/route";
 import * as vaultLocalMediaMultipart from "./vaults/[vaultId]/resources/local-media/multipart/route";
 import * as vaultMetadataStatus from "./vaults/[vaultId]/resources/metadata-status/route";
@@ -109,6 +110,7 @@ registerLegacyRoute(apiV1, "/vaults/:vaultId/collaborators/:collaboratorId", col
 registerLegacyRoute(apiV1, "/vaults/:vaultId/export", vaultExport);
 registerLegacyRoute(apiV1, "/vaults/:vaultId/fork", vaultFork);
 registerLegacyRoute(apiV1, "/vaults/:vaultId/resources", vaultResources);
+registerLegacyRoute(apiV1, "/vaults/:vaultId/resources/batch", vaultResourcesBatch);
 registerLegacyRoute(apiV1, "/vaults/:vaultId/resources/local-media", vaultLocalMedia);
 registerLegacyRoute(apiV1, "/vaults/:vaultId/resources/local-media/multipart", vaultLocalMediaMultipart);
 registerLegacyRoute(apiV1, "/vaults/:vaultId/resources/metadata-status", vaultMetadataStatus);
