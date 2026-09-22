@@ -30,6 +30,7 @@ export function isPublicMediaObjectKey(objectKey: string) {
     objectKey.startsWith("screenshots/") ||
     objectKey.startsWith("whatslink/") ||
     objectKey.startsWith("telegram/") ||
+    objectKey.startsWith("wechat-mp/") ||
     objectKey.startsWith(LOCAL_MEDIA_OBJECT_PREFIX)
   )
 }
