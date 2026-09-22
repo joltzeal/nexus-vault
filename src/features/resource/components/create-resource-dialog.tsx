@@ -172,30 +172,22 @@ export function CreateResourceDialog({
     setIsDraggingFiles(false);
     if (!isSubmitting) addMediaFiles(event.dataTransfer.files);
   }
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     if (mode === "media") {
       event.preventDefault();
       if (!files.length || !onMediaSubmit) return;
       setMediaError("");
-      try {
-        await onMediaSubmit(files.map((item) => item.file), (progress) => {
-          setUploadProgress(
-            progress.totalBytes > 0
-              ? Math.round((progress.completedBytes / progress.totalBytes) * 100)
-              : 0,
-          );
-          setFiles((current) =>
-            current.map((item, index) =>
-              index === progress.fileIndex
-                ? { ...item, progress: progress.fileProgress, status: "uploading" }
-                : item,
-            ),
-          );
-        });
-        handleOpenChange(false);
-      } catch (reason) {
-        setMediaError(reason instanceof Error ? reason.message : "媒体上传失败。");
-      }
+
+      // Keep the selected File objects before closing resets this dialog's state.
+      // Upload status is reported by the page-level toast, so the modal should not
+      // block the user while potentially long uploads are running.
+      const mediaFiles = files.map((item) => item.file);
+      handleOpenChange(false);
+      // The page-level upload toast owns success, progress, and error feedback
+      // after the modal has closed.
+      void Promise.resolve()
+        .then(() => onMediaSubmit(mediaFiles, () => undefined))
+        .catch(() => undefined);
       return;
     }
     onSubmit(event);

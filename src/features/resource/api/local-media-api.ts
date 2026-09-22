@@ -59,6 +59,7 @@ const MULTIPART_UPLOAD_CONCURRENCY = 6
 const MULTIPART_UPLOAD_MAX_ATTEMPTS = 3
 const MULTIPART_PART_TIMEOUT_MS = 180_000
 const UPLOAD_PROGRESS_THROTTLE_MS = 250
+const VIDEO_PREVIEW_TIMEOUT_MS = 10_000
 
 export async function uploadLocalMediaResource(
   vaultId: string,
@@ -143,6 +144,16 @@ async function uploadLocalMediaFiles(
   preparePath: string,
   onProgress?: (progress: LocalMediaUploadProgress) => void,
 ) {
+  const originalTotalBytes = inputFiles.reduce((sum, file) => sum + file.size, 0)
+  onProgress?.({
+    completedBytes: 0,
+    fileIndex: -1,
+    fileProgress: 0,
+    phase: "preparing",
+    speedBytesPerSecond: 0,
+    totalBytes: originalTotalBytes,
+  })
+
   const files: PreparedMediaFile[] = await Promise.all(
     inputFiles.map(async (file) => ({
       clientId: crypto.randomUUID(),
@@ -475,7 +486,12 @@ function isVideoFile(file: File) {
 
 function waitForVideoEvent(video: HTMLVideoElement, eventName: "loadedmetadata" | "seeked") {
   return new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup()
+      reject(new Error("Timed out while generating a video preview."))
+    }, VIDEO_PREVIEW_TIMEOUT_MS)
     const cleanup = () => {
+      window.clearTimeout(timeout)
       video.removeEventListener(eventName, handleEvent)
       video.removeEventListener("error", handleError)
     }
