@@ -7,11 +7,9 @@ import {
   gt,
   inArray,
   isNull,
-  lte,
   lt,
   like,
   or,
-  sql,
 } from "drizzle-orm";
 
 import {
@@ -721,23 +719,6 @@ function encodeResourcePageCursor(value: ResourcePageCursor) {
   return JSON.stringify(value);
 }
 
-function getScopedResourceCursorCondition(cursor?: ResourcePageCursor) {
-  return cursor
-    ? or(
-        gt(resources.position, cursor.position),
-        and(
-          eq(resources.position, cursor.position),
-          lt(resources.createdAt, cursor.createdAt),
-        ),
-        and(
-          eq(resources.position, cursor.position),
-          eq(resources.createdAt, cursor.createdAt),
-          gt(resources.id, cursor.id),
-        ),
-      )
-    : undefined;
-}
-
 async function selectVaultResourcePageRows(
   db: Db,
   vaultId: string,
@@ -800,82 +781,6 @@ async function selectVaultResourcePageRows(
 }
 
 type VaultResourcePageRow = Awaited<ReturnType<typeof selectVaultResourcePageRows>>[number];
-
-async function selectVaultResourceBatchRows(
-  db: Db,
-  vaultId: string,
-  requestedSpaces: Array<{ cursor?: string; spaceId: string }>,
-  limit: number,
-) {
-  const scopeConditions = requestedSpaces.map((space) =>
-    and(
-      eq(resources.spaceId, space.spaceId),
-      getScopedResourceCursorCondition(decodeResourcePageCursor(space.cursor)),
-    ),
-  );
-  if (scopeConditions.length === 0) return [];
-
-  const rankedResources = db.$with("ranked_vault_resources").as(
-    db
-      .select({
-        id: resources.id,
-        spaceId: resources.spaceId,
-        spacePosition: spaces.position,
-        type: resources.type,
-        title: resources.title,
-        description: resources.description,
-        url: resources.url,
-        referer: resources.referer,
-        metadataStatus: resources.metadataStatus,
-        position: resources.position,
-        createdBy: resources.createdBy,
-        createdAt: resources.createdAt,
-        updatedAt: resources.updatedAt,
-        metadataProvider: resourceMetadata.provider,
-        metadataDataJson: resourceMetadata.dataJson,
-        metadataErrorMessage: resourceMetadata.errorMessage,
-        metadataUpdatedAt: resourceMetadata.updatedAt,
-        rowNumber: sql<number>`row_number() over (
-          partition by ${resources.spaceId}
-          order by ${resources.position} asc, ${resources.createdAt} desc, ${resources.id} asc
-        )`.as("row_number"),
-      })
-      .from(resources)
-      .innerJoin(spaces, eq(resources.spaceId, spaces.id))
-      .leftJoin(resourceMetadata, eq(resourceMetadata.resourceId, resources.id))
-      .where(and(eq(resources.vaultId, vaultId), or(...scopeConditions))),
-  );
-
-  return db
-    .with(rankedResources)
-    .select({
-      id: rankedResources.id,
-      spaceId: rankedResources.spaceId,
-      spacePosition: rankedResources.spacePosition,
-      type: rankedResources.type,
-      title: rankedResources.title,
-      description: rankedResources.description,
-      url: rankedResources.url,
-      referer: rankedResources.referer,
-      metadataStatus: rankedResources.metadataStatus,
-      position: rankedResources.position,
-      createdBy: rankedResources.createdBy,
-      createdAt: rankedResources.createdAt,
-      updatedAt: rankedResources.updatedAt,
-      metadataProvider: rankedResources.metadataProvider,
-      metadataDataJson: rankedResources.metadataDataJson,
-      metadataErrorMessage: rankedResources.metadataErrorMessage,
-      metadataUpdatedAt: rankedResources.metadataUpdatedAt,
-    })
-    .from(rankedResources)
-    .where(lte(rankedResources.rowNumber, limit + 1))
-    .orderBy(
-      asc(rankedResources.spacePosition),
-      asc(rankedResources.position),
-      desc(rankedResources.createdAt),
-      asc(rankedResources.id),
-    );
-}
 
 async function serializeVaultResourceRows(
   db: Db,
@@ -960,7 +865,8 @@ export async function listVaultResources(
 /**
  * Fetches several independently paginated Spaces through one HTTP request.
  * Resource metadata and user-specific flags are hydrated across the whole
- * batch instead of being queried separately for every Space.
+ * batch instead of being queried separately for every Space. The scoped page
+ * query is the same production-proven query used by the single-Space endpoint.
  */
 export async function listVaultResourceBatch(
   db: Db,
@@ -987,15 +893,9 @@ export async function listVaultResourceBatch(
     Math.max(input.limit ?? VAULT_RESOURCE_BATCH_PAGE_LIMIT, 1),
     VAULT_RESOURCE_BATCH_PAGE_LIMIT,
   );
-  const batchRows = await selectVaultResourceBatchRows(
-    db,
-    vaultId,
-    requestedSpaces,
-    limit,
-  );
-  const rowsBySpace = requestedSpaces.map((space) =>
-    batchRows.filter((row) => row.spaceId === space.spaceId),
-  );
+  const rowsBySpace = await Promise.all(requestedSpaces.map((space) =>
+    selectVaultResourcePageRows(db, vaultId, { ...space, limit }),
+  ));
   const pageRowsBySpace = rowsBySpace.map((rows) => rows.slice(0, limit));
   const items = await serializeVaultResourceRows(
     db,
