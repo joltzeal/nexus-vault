@@ -38,6 +38,7 @@ import {
 import {
   deleteResource,
   getResource,
+  listResources,
   listResourceTransferTargets,
   reorderVaultResources,
   resolveResourceMetadata,
@@ -75,7 +76,6 @@ import {
   createVaultSpace,
   deleteDashboardVault,
   getDashboardVaultDetail,
-  listDashboardVaultResourceBatch,
   updateDashboardVaultOptions,
   type VaultDetail,
   updateDashboardVault,
@@ -111,9 +111,7 @@ const Button: any = ButtonPrimitive;
 
 const AI_SUMMARY_POLL_INTERVAL_MS = 500;
 const METADATA_POLL_INTERVAL_MS = 2500;
-const RESOURCE_BATCH_DEBOUNCE_MS = 100;
-const RESOURCE_BATCH_PAGE_LIMIT = 20;
-const RESOURCE_BATCH_SPACE_LIMIT = 12;
+const RESOURCE_PAGE_LIMIT = 20;
 
 type ResourcePageState = {
   complete: boolean;
@@ -136,18 +134,14 @@ export function VaultDetailPage() {
     resourceViewMode: viewMode,
   } = useOutletContext<DashboardOutletContext>();
   const [detail, setDetail] = useState<VaultDetail | null>(null);
+  const [resources, setResources] = useState<Resource[]>([]);
   const [resourcePages, setResourcePages] = useState<
     Record<string, ResourcePageState>
   >({});
   const detailRevisionRef = useRef(0);
   const detailLoadIdRef = useRef(0);
   const loadRequestRef = useRef(0);
-  const resourceBatchRequestActiveRef = useRef(false);
-  const resourceBatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
   const resourceLoadVersionRef = useRef(0);
-  const pendingResourceSpaceIdsRef = useRef(new Set<string>());
   const resourcePagesRef = useRef<Record<string, ResourcePageState>>({});
   const aiSummaryStreamsRef = useRef(new Map<string, AbortController>());
   const aiSummaryStreamFallbacksRef = useRef(new Set<string>());
@@ -233,7 +227,10 @@ export function VaultDetailPage() {
   );
 
   const loadDetail = useCallback(
-    (signal?: AbortSignal) => {
+    (
+      signal?: AbortSignal,
+      options: { resetResources?: boolean } = {},
+    ) => {
       if (!vaultId) return Promise.resolve();
       const revision = detailRevisionRef.current;
       const loadId = ++detailLoadIdRef.current;
@@ -244,32 +241,34 @@ export function VaultDetailPage() {
         )
           return;
         resourceLoadVersionRef.current += 1;
-        pendingResourceSpaceIdsRef.current.clear();
-        if (resourceBatchTimerRef.current) {
-          clearTimeout(resourceBatchTimerRef.current);
-          resourceBatchTimerRef.current = null;
-        }
-        const loadedCountBySpaceId = new Map<string, number>();
-        for (const resource of nextDetail.resources) {
-          if (!resource.spaceId) continue;
-          loadedCountBySpaceId.set(
-            resource.spaceId,
-            (loadedCountBySpaceId.get(resource.spaceId) ?? 0) + 1,
-          );
-        }
+        const resetResources = options.resetResources ?? true;
+        const validSpaceIds = new Set(nextDetail.spaces.map((space) => space.id));
         const nextPages = Object.fromEntries(
-          nextDetail.spaces.map((space) => {
-            const loadedCount = loadedCountBySpaceId.get(space.id) ?? 0;
-            return [space.id, {
-              complete: loadedCount >= space.resourceCount,
-              loaded: loadedCount > 0 || space.resourceCount === 0,
+          nextDetail.spaces.map((space) => [space.id, resetResources
+            ? {
+              complete: space.resourceCount === 0,
+              loaded: space.resourceCount === 0,
               loading: false,
               nextCursor: null,
-            }];
-          }),
+            }
+            : {
+                ...(resourcePagesRef.current[space.id] ?? {
+                  complete: space.resourceCount === 0,
+                  loaded: space.resourceCount === 0,
+                  nextCursor: null,
+                }),
+                loading: false,
+              }]),
         );
         resourcePagesRef.current = nextPages;
         setResourcePages(nextPages);
+        setResources((current) =>
+          resetResources
+            ? []
+            : current.filter((resource) =>
+                resource.spaceId ? validSpaceIds.has(resource.spaceId) : false,
+              ),
+        );
         setDetail(nextDetail);
         setError("");
       });
@@ -277,149 +276,69 @@ export function VaultDetailPage() {
     [vaultId],
   );
 
-  const flushResourceBatch = useCallback(async () => {
+  const loadResourceSpacePage = useCallback(async (spaceId: string) => {
     if (!vaultId) return;
-    if (resourceBatchRequestActiveRef.current) return;
+    const currentPage = resourcePagesRef.current[spaceId];
+    if (!currentPage || currentPage.loading || currentPage.complete) return;
     const loadVersion = resourceLoadVersionRef.current;
-    const spaceIds = [...pendingResourceSpaceIdsRef.current]
-      .filter((spaceId) => {
-        const page = resourcePagesRef.current[spaceId];
-        return !page?.loading && !page?.complete;
-      })
-      .slice(0, RESOURCE_BATCH_SPACE_LIMIT);
-    if (spaceIds.length === 0) return;
-    for (const spaceId of spaceIds) {
-      pendingResourceSpaceIdsRef.current.delete(spaceId);
-    }
-
-    resourceBatchRequestActiveRef.current = true;
-    const loadingPages = { ...resourcePagesRef.current };
-    for (const spaceId of spaceIds) {
-      const currentPage = loadingPages[spaceId];
-      loadingPages[spaceId] = {
-        complete: currentPage?.complete ?? false,
-        loaded: currentPage?.loaded ?? false,
-        loading: true,
-        nextCursor: currentPage?.nextCursor,
-      };
-    }
+    const loadingPages = {
+      ...resourcePagesRef.current,
+      [spaceId]: { ...currentPage, error: undefined, loading: true },
+    };
     resourcePagesRef.current = loadingPages;
     setResourcePages(loadingPages);
     try {
-      const batch = await listDashboardVaultResourceBatch(vaultId, {
-        limit: RESOURCE_BATCH_PAGE_LIMIT,
-        spaces: spaceIds.map((spaceId) => ({
-          cursor: loadingPages[spaceId]?.nextCursor ?? undefined,
-          spaceId,
-        })),
+      const page = await listResources({
+        cursor: currentPage.nextCursor ?? undefined,
+        limit: RESOURCE_PAGE_LIMIT,
+        spaceId,
       });
       if (loadVersion !== resourceLoadVersionRef.current) return;
-      const incomingResources = batch.pages.flatMap((page) => page.items);
-      setDetail((current) => {
-        if (!current) return current;
-        const incomingIds = new Set(
-          incomingResources.map((resource) => resource.id),
-        );
-        return {
-          ...current,
-          resources: [
-            ...current.resources.filter(
-              (resource) => !incomingIds.has(resource.id),
-            ),
-            ...incomingResources,
-          ],
-        };
+      setResources((current) => {
+        const incomingIds = new Set(page.items.map((resource) => resource.id));
+        return [
+          ...current.filter((resource) => !incomingIds.has(resource.id)),
+          ...page.items,
+        ];
       });
-      const pageBySpaceId = new Map(
-        batch.pages.map((page) => [page.spaceId, page]),
-      );
       const nextPages = { ...resourcePagesRef.current };
-      for (const spaceId of spaceIds) {
-        const page = pageBySpaceId.get(spaceId);
-        nextPages[spaceId] = page
-          ? {
-              complete: page.nextCursor === null,
-              loaded: true,
-              loading: false,
-              nextCursor: page.nextCursor,
-            }
-          : {
-              ...nextPages[spaceId],
-              error: "Resource batch response was incomplete.",
-              loading: false,
-            };
-      }
+      nextPages[spaceId] = {
+        complete: page.nextCursor === null,
+        loaded: true,
+        loading: false,
+        nextCursor: page.nextCursor,
+      };
       resourcePagesRef.current = nextPages;
       setResourcePages(nextPages);
     } catch (reason) {
       if (loadVersion !== resourceLoadVersionRef.current) return;
       const nextPages = { ...resourcePagesRef.current };
-      for (const spaceId of spaceIds) {
-        nextPages[spaceId] = {
-          ...nextPages[spaceId],
-          error:
-            reason instanceof Error
-              ? reason.message
-              : "Could not load resources.",
-          loading: false,
-        };
-      }
+      nextPages[spaceId] = {
+        ...nextPages[spaceId],
+        error:
+          reason instanceof Error
+            ? reason.message
+            : "Could not load resources.",
+        loading: false,
+      };
       resourcePagesRef.current = nextPages;
       setResourcePages(nextPages);
-    } finally {
-      resourceBatchRequestActiveRef.current = false;
-      if (
-        pendingResourceSpaceIdsRef.current.size > 0 &&
-        !resourceBatchTimerRef.current
-      ) {
-        resourceBatchTimerRef.current = setTimeout(() => {
-          resourceBatchTimerRef.current = null;
-          void flushResourceBatch();
-        }, RESOURCE_BATCH_DEBOUNCE_MS);
-      }
     }
   }, [vaultId]);
-
-  const queueResourceSpaceLoad = useCallback((spaceId: string) => {
-    const page = resourcePagesRef.current[spaceId];
-    if (page?.loading || page?.complete) return;
-    pendingResourceSpaceIdsRef.current.add(spaceId);
-    if (resourceBatchRequestActiveRef.current || resourceBatchTimerRef.current) {
-      return;
-    }
-    resourceBatchTimerRef.current = setTimeout(() => {
-      resourceBatchTimerRef.current = null;
-      void flushResourceBatch();
-    }, RESOURCE_BATCH_DEBOUNCE_MS);
-  }, [flushResourceBatch]);
-
-  useEffect(
-    () => () => {
-      if (resourceBatchTimerRef.current) {
-        clearTimeout(resourceBatchTimerRef.current);
-      }
-      pendingResourceSpaceIdsRef.current.clear();
-    },
-    [],
-  );
 
   const refreshResource = useCallback(
     async (resourceId: string, options: { addIfMissing?: boolean } = {}) => {
       const nextResource = await getResource(resourceId);
-      setDetail((current) => {
-        if (!current) return current;
-        const exists = current.resources.some(
+      setResources((current) => {
+        const exists = current.some(
           (resource) => resource.id === resourceId,
         );
         if (!exists && !options.addIfMissing) return current;
-        return {
-          ...current,
-          resources: exists
-            ? current.resources.map((resource) =>
-                resource.id === resourceId ? nextResource : resource,
-              )
-            : [...current.resources, nextResource],
-        };
+        return exists
+          ? current.map((resource) =>
+              resource.id === resourceId ? nextResource : resource,
+            )
+          : [...current, nextResource];
       });
       return nextResource;
     },
@@ -438,9 +357,8 @@ export function VaultDetailPage() {
 
   const applyAiSummaryStreamUpdate = useCallback(
     (update: ResourceAiSummaryStreamUpdate) => {
-      setDetail((current) => {
-        if (!current) return current;
-        const resource = current.resources.find(
+      setResources((current) => {
+        const resource = current.find(
           (item) => item.id === update.id,
         );
         if (!resource) return current;
@@ -458,19 +376,16 @@ export function VaultDetailPage() {
             }
           : resource.metadata;
 
-        return {
-          ...current,
-          resources: current.resources.map((item) =>
-            item.id === update.id
-              ? {
-                  ...item,
-                  description: update.description,
-                  metadata: nextMetadata,
-                  metadataStatus: update.metadataStatus,
-                }
-              : item,
-          ),
-        };
+        return current.map((item) =>
+          item.id === update.id
+            ? {
+                ...item,
+                description: update.description,
+                metadata: nextMetadata,
+                metadataStatus: update.metadataStatus,
+              }
+            : item,
+        );
       });
     },
     [],
@@ -539,7 +454,7 @@ export function VaultDetailPage() {
     if (!detail) return;
 
     const activeIds = new Set(
-      detail.resources
+      resources
         .filter((resource) => isActiveAiSummary(resource))
         .map((resource) => resource.id),
     );
@@ -562,7 +477,7 @@ export function VaultDetailPage() {
         aiSummaryStreamFallbacksRef.current.delete(resourceId);
       }
     }
-  }, [detail, startAiSummaryStream]);
+  }, [detail, resources, startAiSummaryStream]);
 
   useEffect(
     () => () => {
@@ -578,18 +493,18 @@ export function VaultDetailPage() {
   useEffect(() => {
     if (!detail) return;
 
-    const hasPendingMetadata = detail.resources.some(
+    const hasPendingMetadata = resources.some(
       (resource) =>
         resource.metadataStatus === "pending" ||
         resource.metadataStatus === "processing",
     );
-    const hasAiSummaryFallback = detail.resources.some((resource) =>
+    const hasAiSummaryFallback = resources.some((resource) =>
       aiSummaryStreamFallbacksRef.current.has(resource.id),
     );
 
     if (!hasPendingMetadata && !hasAiSummaryFallback) return;
 
-    const pendingResourceIds = detail.resources
+    const pendingResourceIds = resources
       .filter(
         (resource) =>
           resource.metadataStatus === "pending" ||
@@ -609,7 +524,7 @@ export function VaultDetailPage() {
     );
 
     return () => window.clearInterval(timer);
-  }, [detail, refreshResources]);
+  }, [detail, refreshResources, resources]);
 
   function openEditVault() {
     if (!detail) return;
@@ -769,7 +684,7 @@ export function VaultDetailPage() {
     try {
       setBusy(true);
       await action();
-      await loadDetail();
+      await loadDetail(undefined, { resetResources: false });
       toast.add({ title: successMessage, type: "success" });
       return true;
     } catch (reason) {
@@ -924,8 +839,11 @@ export function VaultDetailPage() {
     });
     setBusy(true);
     void createVaultResource(currentVaultId, form)
-      .then(({ id }) => {
-        void refreshResource(id, { addIfMissing: true }).catch(() => undefined);
+      .then(async ({ id }) => {
+        await Promise.all([
+          refreshResource(id, { addIfMissing: true }),
+          loadDetail(undefined, { resetResources: false }),
+        ]);
         toast.add({ title: "Resource added", type: "success" });
       })
       .catch((reason: unknown) => {
@@ -964,7 +882,10 @@ export function VaultDetailPage() {
         );
       });
       if (created && typeof created === "object" && "id" in created) {
-        await refreshResource(String(created.id));
+        await Promise.all([
+          refreshResource(String(created.id), { addIfMissing: true }),
+          loadDetail(undefined, { resetResources: false }),
+        ]);
       }
       setResourceForm({
         description: "",
@@ -1002,37 +923,49 @@ export function VaultDetailPage() {
     resourceId: string,
     patch: Parameters<typeof updateResourceAnnotation>[1],
   ) {
-    await runMutation(
+    const completed = await runMutation(
       () => updateResourceAnnotation(resourceId, patch),
       "Annotation updated",
     );
+    if (completed) await refreshResource(resourceId);
   }
 
   async function handleDeleteResource(resourceId: string) {
-    await runMutation(() => deleteResource(resourceId), "Resource deleted");
+    const deleted = await runMutation(() => deleteResource(resourceId), "Resource deleted");
+    if (deleted) {
+      setResources((current) => current.filter((resource) => resource.id !== resourceId));
+      setSelectedResourceIds((current) => {
+        const next = new Set(current);
+        next.delete(resourceId);
+        return next;
+      });
+    }
   }
 
   async function handleResolveResourceMetadata(resourceId: string) {
-    await runMutation(
+    const completed = await runMutation(
       () => resolveResourceMetadata(resourceId),
       "Metadata retrieval started",
     );
+    if (completed) await refreshResource(resourceId);
   }
 
   async function handleToggleResourceStar(resource: Resource) {
-    await runMutation(
+    const completed = await runMutation(
       () => setResourceStarred(resource.id, !resource.isStarred),
       resource.isStarred ? "Resource removed from starred" : "Resource starred",
     );
+    if (completed) await refreshResource(resource.id);
   }
 
   async function handleToggleResourceReadLater(resource: Resource) {
-    await runMutation(
+    const completed = await runMutation(
       () => setResourceReadLater(resource.id, !resource.isReadLater),
       resource.isReadLater
         ? "Removed from watch later"
         : "Saved to watch later",
     );
+    if (completed) await refreshResource(resource.id);
   }
 
   async function loadTransferTargets() {
@@ -1051,10 +984,15 @@ export function VaultDetailPage() {
     targetVaultId: string;
     targetSpaceId: string;
   }) {
-    await runMutation(
+    const completed = await runMutation(
       () => transferResource(input.resourceId, input),
       input.action === "move" ? "Resource moved" : "Resource copied",
     );
+    if (completed && input.action === "move") {
+      setResources((current) =>
+        current.filter((resource) => resource.id !== input.resourceId),
+      );
+    }
   }
 
   async function handleBatchTransferResources(input: {
@@ -1072,6 +1010,12 @@ export function VaultDetailPage() {
         : `${resourceIds.length} resources copied`,
     );
     if (completed) {
+      if (input.action === "move") {
+        const movedIds = new Set(resourceIds);
+        setResources((current) =>
+          current.filter((resource) => !movedIds.has(resource.id)),
+        );
+      }
       setSelectedResourceIds(new Set());
       setSelectionSpaceId(null);
     }
@@ -1135,14 +1079,14 @@ export function VaultDetailPage() {
 
     if (!sourceId.startsWith("resource:") || initialGroup !== group) return;
     const sourceResourceId = sourceId.slice("resource:".length);
-    const sourceSpaceId = detail.resources.find(
+    const sourceSpaceId = resources.find(
       (resource) => resource.id === sourceResourceId,
     )?.spaceId;
     if (!sourceSpaceId) return;
     const totalInSourceSpace =
       detail.spaces.find((space) => space.id === sourceSpaceId)
         ?.resourceCount ?? 0;
-    const loadedInSourceSpace = detail.resources.filter(
+    const loadedInSourceSpace = resources.filter(
       (resource) => resource.spaceId === sourceSpaceId,
     ).length;
     if (loadedInSourceSpace < totalInSourceSpace) {
@@ -1153,7 +1097,7 @@ export function VaultDetailPage() {
       return;
     }
 
-    const spaceResources = detail.resources
+    const spaceResources = resources
       .filter((resource) => resource.spaceId === sourceSpaceId)
       .sort((left, right) => left.position - right.position);
     const reordered = moveItem(spaceResources, initialIndex, finalIndex);
@@ -1163,10 +1107,10 @@ export function VaultDetailPage() {
       ...resource,
       position,
     }));
-    const firstResourceIndex = detail.resources.findIndex(
+    const firstResourceIndex = resources.findIndex(
       (resource) => resource.spaceId === sourceSpaceId,
     );
-    const nextResources = detail.resources.filter(
+    const nextResources = resources.filter(
       (resource) => resource.spaceId !== sourceSpaceId,
     );
     nextResources.splice(
@@ -1176,9 +1120,7 @@ export function VaultDetailPage() {
     );
     // Ignore any detail request that started before this optimistic reorder.
     detailRevisionRef.current += 1;
-    setDetail((current) =>
-      current ? { ...current, resources: nextResources } : current,
-    );
+    setResources(nextResources);
     setBusy(true);
     void reorderVaultResources(
       vaultId,
@@ -1250,7 +1192,7 @@ export function VaultDetailPage() {
       onCreateResource: canCreateResource
         ? () => setResourceOpen(true)
         : undefined,
-      resources: detail.resources.map((resource) => ({
+      resources: resources.map((resource) => ({
         id: resource.id,
         spaceName:
           detail.spaces.find((space) => space.id === resource.spaceId)?.name ??
@@ -1262,7 +1204,7 @@ export function VaultDetailPage() {
     });
 
     return () => onVaultStatusChange(null);
-  }, [detail, onVaultStatusChange, scrollToResource, vaultId]);
+  }, [detail, onVaultStatusChange, resources, scrollToResource, vaultId]);
 
   async function handleSaveResourceDetails(
     form: ResourceDetailsForm,
@@ -1521,14 +1463,14 @@ export function VaultDetailPage() {
                     "Space icon updated",
                   ).then(() => undefined);
                 }}
-                resources={detail.resources.filter(
+                resources={resources.filter(
                   (resource) => resource.spaceId === space.id,
                 )}
                 hasMoreResources={
                   space.resourceCount > 0 &&
                   !resourcePages[space.id]?.complete
                 }
-                onLoadMoreResources={() => queueResourceSpaceLoad(space.id)}
+                onLoadMoreResources={() => loadResourceSpacePage(space.id)}
                 resourceCount={space.resourceCount}
                 resourcesLoaded={
                   space.resourceCount === 0 ||

@@ -26,7 +26,7 @@ import {
 } from "../db/schema";
 import { normalizeResourceMetadata } from "../domain/resources/metadata";
 import { parseMagnetLink, type ResourceType } from "../domain/resources/input";
-import { notFound } from "../lib/errors";
+import { ApiError, notFound } from "../lib/errors";
 import type { Actor, Db } from "../types/legacy-api";
 import { importVaultSchema } from "../schemas/vault";
 import type { VaultExportPayload } from "../schemas/vault";
@@ -45,9 +45,7 @@ import { recordHistory } from "./history-service";
 
 type VaultVisibility = "public" | "private" | "password";
 const IMPORT_INSERT_BATCH_SIZE = 100;
-const VAULT_DETAIL_INLINE_RESOURCE_LIMIT = 80;
-const VAULT_RESOURCE_BATCH_PAGE_LIMIT = 20;
-const VAULT_RESOURCE_BATCH_SPACE_LIMIT = 12;
+const MAX_RESOURCE_PAGE_SIZE = 50;
 
 export async function getVaultOrThrow(db: Db, vaultId: string) {
   const vault = await findVaultById(db, vaultId);
@@ -621,22 +619,8 @@ export async function getVaultDetail(
     userEmail: input.userEmail,
   });
   const detail = await readVaultSummary(db, vaultId);
-  const totalResources = detail.spaces.reduce(
-    (total, space) => total + space.resourceCount,
-    0,
-  );
-  const initialPage = totalResources <= VAULT_DETAIL_INLINE_RESOURCE_LIMIT
-    ? await listVaultResources(db, vaultId, {
-        actor: input.actor,
-        limit: VAULT_DETAIL_INLINE_RESOURCE_LIMIT,
-        userEmail: input.userEmail,
-      })
-    : null;
   return {
     ...detail,
-    ...(initialPage
-      ? { nextResourceCursor: initialPage.nextCursor, resources: initialPage.items }
-      : {}),
     actorRole: input.actor
       ? await getVaultRoleForActor(db, vaultId, input.actor)
       : ("anonymous" as const),
@@ -680,11 +664,13 @@ export async function readVaultSummary(db: Db, vaultId: string) {
       ...space,
       resourceCount: resourceCountBySpaceId.get(space.id) ?? 0,
     })),
-    resources: [],
   };
 }
 
 type ResourcePageCursor = {
+  spaceId: string | null;
+  vaultId: string;
+  version: 1;
   createdAt: string;
   id: string;
   position: number;
@@ -697,34 +683,42 @@ type VaultResourcePageInput = {
   spaceId?: string;
 };
 
-function decodeResourcePageCursor(value?: string) {
+function invalidResourceCursor() {
+  return new ApiError("INVALID_RESOURCE_CURSOR", "Resource cursor is invalid.")
+}
+
+function decodeResourcePageCursor(
+  value: string | undefined,
+  scope: Pick<ResourcePageCursor, "vaultId" | "spaceId">,
+) {
   if (!value) return undefined;
   try {
-    const parsed = JSON.parse(value) as ResourcePageCursor;
+    const padding = "=".repeat((4 - (value.length % 4)) % 4)
+    const parsed = JSON.parse(
+      atob(value.replace(/-/g, "+").replace(/_/g, "/") + padding),
+    ) as ResourcePageCursor;
     if (
+      parsed.version !== 1 ||
+      parsed.vaultId !== scope.vaultId ||
+      parsed.spaceId !== scope.spaceId ||
       typeof parsed.id !== "string" ||
       typeof parsed.createdAt !== "string" ||
       !Number.isInteger(parsed.position) ||
       !Number.isInteger(parsed.spacePosition)
     ) {
-      return undefined;
+      throw invalidResourceCursor()
     }
-    // URL form decoding treats `+` as a space. Older iOS clients built the
-    // cursor query by string interpolation, so a PostgreSQL `+00` timezone
-    // offset reached this endpoint as ` 00` and caused an invalid timestamp
-    // binding in the page query. Restore that offset for backward safety.
-    const createdAt = parsed.createdAt.replace(
-      / (\d{2}(?::\d{2})?)$/,
-      "+$1",
-    );
-    return { ...parsed, createdAt };
+    return parsed;
   } catch {
-    return undefined;
+    throw invalidResourceCursor()
   }
 }
 
 function encodeResourcePageCursor(value: ResourcePageCursor) {
-  return JSON.stringify(value);
+  return btoa(JSON.stringify(value))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "")
 }
 
 async function selectVaultResourcePageRows(
@@ -732,8 +726,11 @@ async function selectVaultResourcePageRows(
   vaultId: string,
   input: VaultResourcePageInput,
 ) {
-  const cursor = decodeResourcePageCursor(input.cursor);
-  const limit = Math.min(Math.max(input.limit ?? 50, 1), VAULT_DETAIL_INLINE_RESOURCE_LIMIT);
+  const cursor = decodeResourcePageCursor(input.cursor, {
+    spaceId: input.spaceId ?? null,
+    vaultId,
+  });
+  const limit = Math.min(Math.max(input.limit ?? 24, 1), MAX_RESOURCE_PAGE_SIZE);
   const cursorCondition = cursor
     ? or(
         gt(spaces.position, cursor.spacePosition),
@@ -837,10 +834,15 @@ function getNextResourcePageCursor(
   rows: VaultResourcePageRow[],
   pageRows: VaultResourcePageRow[],
   limit: number,
+  vaultId: string,
+  spaceId?: string,
 ) {
   const last = pageRows.at(-1);
   return rows.length > limit && last
     ? encodeResourcePageCursor({
+        spaceId: spaceId ?? null,
+        vaultId,
+        version: 1,
         createdAt: last.createdAt,
         id: last.id,
         position: last.position,
@@ -861,71 +863,67 @@ export async function listVaultResources(
     userEmail: input.userEmail,
   });
 
-  const limit = Math.min(Math.max(input.limit ?? 50, 1), VAULT_DETAIL_INLINE_RESOURCE_LIMIT);
+  const limit = Math.min(Math.max(input.limit ?? 24, 1), MAX_RESOURCE_PAGE_SIZE);
   const rows = await selectVaultResourcePageRows(db, vaultId, input);
   const pageRows = rows.slice(0, limit);
   return {
     items: await serializeVaultResourceRows(db, pageRows, input.actor),
-    nextCursor: getNextResourcePageCursor(rows, pageRows, limit),
+    nextCursor: getNextResourcePageCursor(
+      rows,
+      pageRows,
+      limit,
+      vaultId,
+      input.spaceId,
+    ),
   };
 }
 
 /**
- * Fetches several independently paginated Spaces through one HTTP request.
- * Resource metadata and user-specific flags are hydrated across the whole
- * batch instead of being queried separately for every Space. The scoped page
- * query is the same production-proven query used by the single-Space endpoint.
+ * Lists resources through their top-level collection endpoint. A caller can
+ * scope the collection to an entire Vault or to one of its Spaces, while the
+ * response shape and cursor contract remain identical.
  */
-export async function listVaultResourceBatch(
+export async function listResources(
   db: Db,
-  vaultId: string,
   input: {
     actor?: Actor;
+    cursor?: string;
     limit?: number;
-    spaces: Array<{ cursor?: string; spaceId: string }>;
+    spaceId?: string;
     userEmail?: string;
+    vaultId?: string;
   },
 ) {
-  await requireVaultRead(db, {
-    vaultId,
-    actor: input.actor,
-    userEmail: input.userEmail,
-  });
-  const requestedSpaces = [...new Map(
-    input.spaces
-      .filter((space) => Boolean(space.spaceId))
-      .slice(0, VAULT_RESOURCE_BATCH_SPACE_LIMIT)
-      .map((space) => [space.spaceId, space]),
-  ).values()];
-  const limit = Math.min(
-    Math.max(input.limit ?? VAULT_RESOURCE_BATCH_PAGE_LIMIT, 1),
-    VAULT_RESOURCE_BATCH_PAGE_LIMIT,
-  );
-  const rowsBySpace = await Promise.all(requestedSpaces.map((space) =>
-    selectVaultResourcePageRows(db, vaultId, { ...space, limit }),
-  ));
-  const pageRowsBySpace = rowsBySpace.map((rows) => rows.slice(0, limit));
-  const items = await serializeVaultResourceRows(
-    db,
-    pageRowsBySpace.flat(),
-    input.actor,
-  );
-  const itemById = new Map(items.map((resource) => [resource.id, resource]));
+  const spaceId = input.spaceId?.trim() || undefined
+  let vaultId = input.vaultId?.trim() || undefined
 
-  return {
-    pages: requestedSpaces.map((space, index) => {
-      const rows = rowsBySpace[index] ?? [];
-      const pageRows = pageRowsBySpace[index] ?? [];
-      return {
-        items: pageRows.flatMap((resource) => {
-          const item = itemById.get(resource.id);
-          return item ? [item] : [];
-        }),
-        nextCursor: getNextResourcePageCursor(rows, pageRows, limit),
-        spaceId: space.spaceId,
-      };
-    }),
-  };
+  if (spaceId) {
+    const [space] = await db
+      .select({ vaultId: spaces.vaultId })
+      .from(spaces)
+      .where(and(eq(spaces.id, spaceId), isNull(spaces.deletedAt)))
+      .limit(1)
+    if (!space) throw notFound("Space not found.")
+    if (vaultId && vaultId !== space.vaultId) {
+      throw notFound("Space not found in this vault.")
+    }
+    vaultId = space.vaultId
+  }
+
+  if (!vaultId) {
+    throw new ApiError(
+      "RESOURCE_SCOPE_REQUIRED",
+      "Provide either vaultId or spaceId when listing resources.",
+    )
+  }
+
+  return listVaultResources(db, vaultId, {
+    actor: input.actor,
+    cursor: input.cursor,
+    limit: input.limit,
+    spaceId,
+    userEmail: input.userEmail,
+  })
 }
 
 export async function listVaultResourceMetadataStatus(

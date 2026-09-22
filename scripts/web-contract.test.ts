@@ -3,10 +3,7 @@ import { afterEach, describe, it } from "node:test"
 
 import { listDashboardVaults } from "../src/features/dashboard/api.ts"
 import { getSharedVault } from "../src/features/share/api.ts"
-import {
-  listDashboardVaultResourceBatch,
-  listDashboardVaultResources,
-} from "../src/features/vault/api/vault-api.ts"
+import { listResources } from "../src/features/resource/api/resource-api.ts"
 
 const originalFetch = globalThis.fetch
 
@@ -59,7 +56,7 @@ describe("Web API contracts", () => {
     assert.match(requestedUrl, /\/api\/v1\/shares\/team%20vault%2F2026$/)
   })
 
-  it("loads a vault-wide resource window without a space filter", async () => {
+  it("loads a vault-wide resource window from the canonical collection", async () => {
     let requestedUrl = ""
     globalThis.fetch = async (input) => {
       requestedUrl = String(input)
@@ -69,44 +66,32 @@ describe("Web API contracts", () => {
       }), { status: 200, headers: { "Content-Type": "application/json" } })
     }
 
-    await listDashboardVaultResources("vault-1", { cursor: "next-page" })
+    await listResources({ cursor: "next-page", vaultId: "vault-1" })
 
     const url = new URL(requestedUrl, "https://nexus-vault.test")
-    assert.equal(url.pathname, "/api/v1/vaults/vault-1/resources")
+    assert.equal(url.pathname, "/api/v1/resources")
+    assert.equal(url.searchParams.get("vaultId"), "vault-1")
     assert.equal(url.searchParams.get("spaceId"), null)
     assert.equal(url.searchParams.get("cursor"), "next-page")
-    assert.equal(url.searchParams.get("limit"), "50")
+    assert.equal(url.searchParams.get("limit"), "24")
   })
 
-  it("loads nearby spaces through one independently paginated batch request", async () => {
-    let requestedBody = ""
+  it("loads a Space window through the same resource collection", async () => {
     let requestedUrl = ""
-    let requestMethod = ""
-    globalThis.fetch = async (input, init) => {
+    globalThis.fetch = async (input) => {
       requestedUrl = String(input)
-      requestedBody = String(init?.body)
-      requestMethod = init?.method ?? "GET"
       return new Response(JSON.stringify({
         success: true,
-        data: { pages: [{ items: [], nextCursor: null, spaceId: "space-1" }] },
+        data: { items: [], nextCursor: null },
       }), { status: 200, headers: { "Content-Type": "application/json" } })
     }
 
-    await listDashboardVaultResourceBatch("vault-1", {
-      spaces: [
-        { spaceId: "space-1" },
-        { cursor: "next-page", spaceId: "space-2" },
-      ],
-    })
+    await listResources({ cursor: "next-page", limit: 20, spaceId: "space-1" })
 
-    assert.equal(requestedUrl, "/api/v1/vaults/vault-1/resources/batch")
-    assert.equal(requestMethod, "POST")
-    assert.deepEqual(JSON.parse(requestedBody), {
-      limit: 20,
-      spaces: [
-        { spaceId: "space-1" },
-        { cursor: "next-page", spaceId: "space-2" },
-      ],
-    })
+    const url = new URL(requestedUrl, "https://nexus-vault.test")
+    assert.equal(url.pathname, "/api/v1/resources")
+    assert.equal(url.searchParams.get("spaceId"), "space-1")
+    assert.equal(url.searchParams.get("cursor"), "next-page")
+    assert.equal(url.searchParams.get("limit"), "20")
   })
 })

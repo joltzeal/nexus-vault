@@ -14,6 +14,48 @@ type ApiEnvelope<T> = {
   success?: boolean
 }
 
+export type ResourcePage = {
+  items: Resource[]
+  nextCursor: string | null
+}
+
+export type ListResourcesInput = {
+  cursor?: string
+  limit?: number
+  spaceId?: string
+  vaultId?: string
+}
+
+/**
+ * Lists one cursor window from the canonical Resource collection. The server
+ * requires at least one scope: an entire Vault or an individual Space.
+ */
+export async function listResources(
+  input: ListResourcesInput,
+  signal?: AbortSignal,
+): Promise<ResourcePage> {
+  if (!input.vaultId && !input.spaceId) {
+    throw new Error("Provide either vaultId or spaceId when listing resources.")
+  }
+
+  const params = new URLSearchParams({ limit: String(input.limit ?? 24) })
+  if (input.vaultId) params.set("vaultId", input.vaultId)
+  if (input.spaceId) params.set("spaceId", input.spaceId)
+  if (input.cursor) params.set("cursor", input.cursor)
+
+  const response = await fetch(`/api/v1/resources?${params}`, {
+    credentials: "include",
+    signal,
+  })
+  const payload = (await response.json().catch(() => null)) as ApiEnvelope<ResourcePage> | null
+  if (!response.ok || payload?.success === false) {
+    throw new Error(payload?.error?.message ?? "Could not load resources.")
+  }
+  if (!payload?.data) throw new Error("Resource response was empty.")
+  for (const resource of payload.data.items) writeCachedMetadata(resource)
+  return payload.data
+}
+
 export type ResourceDetailsPatch = {
   title?: string
   description?: string

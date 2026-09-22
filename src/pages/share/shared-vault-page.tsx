@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { ResourceCard } from "@/features/resource/components/resource-card"
 import { ResourceSubmissionDialog } from "@/features/resource/components"
-import { getSharedVault, unlockSharedVault, type SharedVaultResponse } from "@/features/share/api"
+import { getSharedVault, unlockSharedVault, type SharedVaultDetail, type SharedVaultResponse } from "@/features/share/api"
 import { authClient } from "@/lib/auth"
 import { forkDashboardVault, setVaultStarred } from "@/features/vault/api/vault-api"
 import type { AuthMode } from "@/features/auth/components/auth-dialog"
@@ -17,7 +17,6 @@ import type { ResourceTransferTargetVault } from "@/features/resource/types"
 import { getStoredVaultResourceViewMode, storeVaultResourceViewMode } from "@/features/resource/vault-view-mode"
 import { SpaceSection } from "@/features/space/components"
 import { VaultOutline, type VaultViewMode } from "@/features/vault/components/vault-outline"
-import type { VaultDetail } from "@/features/vault/api/vault-api"
 import { VaultHeader } from "@/features/vault/components/vault-header"
 import { useDocumentTitle } from "@/hooks/use-document-title"
 import { toast } from "@/lib/toast"
@@ -72,7 +71,7 @@ export function SharedVaultPage() {
   return <SharedVaultContent detail={detail} shareSlug={shareSlug ?? ""} onSubmit={() => setSubmissionOpen(true)} submissionOpen={submissionOpen} onSubmissionChange={setSubmissionOpen} requestAuth={requestAuth} />
 }
 
-function SharedVaultContent({ detail, shareSlug, onSubmit, submissionOpen, onSubmissionChange, requestAuth }: { detail: VaultDetail; shareSlug: string; onSubmit: () => void; submissionOpen: boolean; onSubmissionChange: (open: boolean) => void; requestAuth?: (mode: AuthMode) => void }) {
+function SharedVaultContent({ detail, shareSlug, onSubmit, submissionOpen, onSubmissionChange, requestAuth }: { detail: SharedVaultDetail; shareSlug: string; onSubmit: () => void; submissionOpen: boolean; onSubmissionChange: (open: boolean) => void; requestAuth?: (mode: AuthMode) => void }) {
   const navigate = useNavigate()
   const session = authClient.useSession()
   const [starred, setStarred] = useState(false)

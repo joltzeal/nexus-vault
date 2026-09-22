@@ -1,6 +1,6 @@
 import type { VaultForm } from "../types"
 import type { SpaceForm } from "@/features/space/types"
-import type { Resource, ResourceForm } from "@/features/resource/types"
+import type { ResourceForm } from "@/features/resource/types"
 
 type CreateVaultResponse = {
   id: string
@@ -22,18 +22,7 @@ export type VaultDetail = {
     nsfwEnabled: boolean
   }
   spaces: Array<{ id: string; name: string; description: string; icon: string; position?: number; resourceCount: number }>
-  resources: Resource[]
-  nextResourceCursor?: string | null
   actorRole: "owner" | "editor" | "viewer" | "anonymous"
-}
-
-export type VaultResourcePage = {
-  items: Resource[]
-  nextCursor: string | null
-}
-
-export type VaultResourceBatch = {
-  pages: Array<VaultResourcePage & { spaceId: string }>
 }
 
 export async function getDashboardVaultDetail(vaultId: string, signal?: AbortSignal): Promise<VaultDetail> {
@@ -41,53 +30,6 @@ export async function getDashboardVaultDetail(vaultId: string, signal?: AbortSig
   const payload = (await response.json().catch(() => null)) as { data?: VaultDetail; error?: { message?: string } | null } | null
   if (!response.ok) throw new Error(payload?.error?.message ?? "Could not load vault.")
   if (!payload?.data) throw new Error("Vault response was empty.")
-  return payload.data
-}
-
-export async function listDashboardVaultResources(
-  vaultId: string,
-  input: { cursor?: string; limit?: number; spaceId?: string } = {},
-  signal?: AbortSignal,
-): Promise<VaultResourcePage> {
-  const params = new URLSearchParams({
-    limit: String(input.limit ?? 50),
-    ...(input.cursor ? { cursor: input.cursor } : {}),
-    ...(input.spaceId ? { spaceId: input.spaceId } : {}),
-  })
-  const response = await fetch(
-    `/api/v1/vaults/${encodeURIComponent(vaultId)}/resources?${params}`,
-    { credentials: "include", signal },
-  )
-  const payload = (await response.json().catch(() => null)) as { data?: VaultResourcePage; error?: { message?: string } | null } | null
-  if (!response.ok) throw new Error(payload?.error?.message ?? "Could not load resources.")
-  if (!payload?.data) throw new Error("Resource response was empty.")
-  return payload.data
-}
-
-export async function listDashboardVaultResourceBatch(
-  vaultId: string,
-  input: {
-    limit?: number
-    spaces: Array<{ cursor?: string; spaceId: string }>
-  },
-  signal?: AbortSignal,
-): Promise<VaultResourceBatch> {
-  const response = await fetch(
-    `/api/v1/vaults/${encodeURIComponent(vaultId)}/resources/batch`,
-    {
-      body: JSON.stringify({
-        limit: input.limit ?? 20,
-        spaces: input.spaces,
-      }),
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-      signal,
-    },
-  )
-  const payload = (await response.json().catch(() => null)) as { data?: VaultResourceBatch; error?: { message?: string } | null } | null
-  if (!response.ok) throw new Error(payload?.error?.message ?? "Could not load resources.")
-  if (!payload?.data) throw new Error("Resource batch response was empty.")
   return payload.data
 }
 

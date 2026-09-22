@@ -42,14 +42,6 @@ export const createResourceWithVaultSchema = createResourceSchema.extend({
   vaultId: z.string().trim().min(1),
 })
 
-export const batchVaultResourcesSchema = z.object({
-  spaces: z.array(z.object({
-    cursor: z.string().max(1000).optional(),
-    spaceId: z.string().trim().min(1),
-  })).min(1).max(12),
-  limit: z.number().int().min(1).max(20).optional(),
-})
-
 export const updateResourceSchema = z
   .object({
     spaceId: z.string().trim().min(1).nullable().optional(),
