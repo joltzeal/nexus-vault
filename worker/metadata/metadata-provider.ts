@@ -60,6 +60,7 @@ export type MetadataResolveOptions = {
     sourceId: string
   }) => Promise<string | undefined>
   persistWechatMpPicture?: (input: {
+    resourceId: string
     url: string
     sourceId: string
   }) => Promise<string | undefined>

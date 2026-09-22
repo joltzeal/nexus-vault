@@ -124,6 +124,8 @@ async function createMetadataResult(
   options?: MetadataResolveOptions,
 ): Promise<MetadataResult> {
   const content = recordValue(data.content) ?? {}
+  const itemShowType = integerValue(data.itemShowType)
+  const isGallery = itemShowType === 8
   const articleUrl = normalizeUrl(firstString(content.link, data.url, sourceUrl)) ?? sourceUrl
   const accountName = firstString(content.nick_name)
   const accountUsername = firstString(content.user_name)
@@ -132,9 +134,15 @@ async function createMetadataResult(
     content.hd_head_img,
     content.ori_head_img_url,
   ))
-  const title = normalizeTitle(firstString(content.title, resource.title)) ?? "微信公众号文章"
-  const contentHtml = firstString(content.content_noencode)
-  const plainDescription = normalizeText(firstString(content.desc) ?? stripHtml(contentHtml))
+  const sourceTitle = normalizeTitle(firstString(content.title))
+  const displayTitle = sourceTitle ?? resource.title
+  const contentHtml = isGallery ? undefined : firstString(content.content_noencode)
+  const sourceDescription = normalizeText(
+    isGallery
+      ? firstString(content.content_text)
+      : firstString(content.desc),
+    isGallery ? 16_000 : 5_000,
+  )
   const authorName = firstString(content.author)
   const signature = firstString(content.signature)
   const coverUrl = normalizeUrl(firstString(
@@ -154,12 +162,11 @@ async function createMetadataResult(
   const album = recordValue(content.appmsgalbuminfo)
   const albumTitle = firstString(album?.title)
   const ipLocation = getIpLocation(recordValue(content.ip_wording))
-  const media = await getArticleMedia({
+  const media = isGallery ? await getGalleryMedia({
     content,
-    coverUrl,
-    title,
+    resourceId: resource.id,
     persist: options?.persistWechatMpPicture,
-  })
+  }) : []
 
   return {
     provider: WECHAT_MP_PROVIDER,
@@ -167,11 +174,11 @@ async function createMetadataResult(
     data: {
       ...createBaseResourceMetadata({
         type: "wechat_mp",
-        title,
+        title: sourceTitle,
         fetchedAt: new Date().toISOString(),
       }),
-      title,
-      description: contentHtml ?? plainDescription ?? "",
+      ...(sourceTitle ? { title: sourceTitle } : {}),
+      description: sourceDescription ?? "",
       ...(media.length > 0 ? { media } : {}),
       identifiers: {
         ...(accountUsername ? { accountUsername } : {}),
@@ -200,12 +207,14 @@ async function createMetadataResult(
           ...(authorName ? { authorName } : {}),
           ...(coverUrl ? { coverUrl } : {}),
           ...(createdAt ? { createdAt } : {}),
-          ...(plainDescription ? { excerpt: plainDescription } : {}),
+          ...(contentHtml ? { contentHtml } : {}),
+          ...(sourceDescription ? { excerpt: sourceDescription } : {}),
           ...(ipLocation ? { ipLocation } : {}),
+          ...(itemShowType !== undefined ? { itemShowType } : {}),
           ...(messageId ? { messageId } : {}),
           ...(signature ? { signature } : {}),
           ...(tags.length > 0 ? { tags } : {}),
-          title,
+          title: displayTitle,
           url: articleUrl,
         },
       },
@@ -214,7 +223,8 @@ async function createMetadataResult(
           api: ARTICLE_DETAIL_ENDPOINT,
           ...(albumTitle ? { albumTitle } : {}),
           ...(ipLocation ? { ipLocation } : {}),
-          ...(plainDescription ? { excerpt: plainDescription } : {}),
+          ...(sourceDescription ? { excerpt: sourceDescription } : {}),
+          ...(itemShowType !== undefined ? { itemShowType } : {}),
           ...(signature ? { signature } : {}),
           ...(tags.length > 0 ? { tags } : {}),
         },
@@ -225,11 +235,14 @@ async function createMetadataResult(
 
 const WECHAT_MP_MEDIA_MAX_ITEMS = 12
 
-async function getArticleMedia(input: {
+async function getGalleryMedia(input: {
   content: Record<string, unknown>
-  coverUrl?: string
-  title: string
-  persist?: (input: { url: string; sourceId: string }) => Promise<string | undefined>
+  resourceId: string
+  persist?: (input: {
+    resourceId: string
+    url: string
+    sourceId: string
+  }) => Promise<string | undefined>
 }) {
   const media: ResourceMediaMetadata[] = []
   const seen = new Set<string>()
@@ -249,11 +262,6 @@ async function getArticleMedia(input: {
     })
   }
 
-  pushImage(input.coverUrl, "cover")
-  for (const [index, url] of extractImageUrlsFromHtml(firstString(input.content.content_noencode)).entries()) {
-    pushImage(url, `content:${index}`)
-  }
-
   const pictureList = Array.isArray(input.content.picture_page_info_list)
     ? input.content.picture_page_info_list
     : []
@@ -270,7 +278,11 @@ async function getArticleMedia(input: {
   await Promise.all(media.map(async (item) => {
     if (!item.sourceId) return
     const persistedUrl = await input
-      .persist?.({ url: item.url ?? "", sourceId: item.sourceId })
+      .persist?.({
+        resourceId: input.resourceId,
+        url: item.url ?? "",
+        sourceId: item.sourceId,
+      })
       .catch(() => undefined)
     if (!persistedUrl) return
     item.url = persistedUrl
@@ -278,27 +290,6 @@ async function getArticleMedia(input: {
   }))
 
   return media
-}
-
-function extractImageUrlsFromHtml(value?: string) {
-  if (!value) return []
-  const urls: string[] = []
-  const imagePattern = /<img\b[^>]*>/gi
-  for (const match of value.matchAll(imagePattern)) {
-    const tag = match[0]
-    const src = getHtmlAttribute(tag, "data-src") ||
-      getHtmlAttribute(tag, "src") ||
-      getHtmlAttribute(tag, "data-original") ||
-      getHtmlAttribute(tag, "data-backsrc")
-    if (src) urls.push(src)
-  }
-  return [...new Set(urls)]
-}
-
-function getHtmlAttribute(tag: string, name: string) {
-  const pattern = new RegExp(`${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i")
-  const match = tag.match(pattern)
-  return match?.[1] ?? match?.[2] ?? match?.[3]
 }
 
 function getPublicTags(content: Record<string, unknown>) {
@@ -360,14 +351,6 @@ function getApiError(value: unknown) {
   return firstString(value.message, value.msg, value.detail)
 }
 
-function stripHtml(value?: string) {
-  return value
-    ?.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-}
-
 function decodeHtmlEntities(value: string) {
   return value
     .replace(/&amp;/g, "&")
@@ -377,11 +360,11 @@ function decodeHtmlEntities(value: string) {
     .replace(/&#39;/g, "'")
 }
 
-function normalizeText(value?: string) {
+function normalizeText(value?: string, limit = 5_000) {
   return decodeHtmlEntities(value ?? "")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 5_000) || undefined
+    .slice(0, limit) || undefined
 }
 
 function normalizeTitle(value?: string) {
@@ -398,6 +381,13 @@ function firstString(...values: unknown[]) {
 
 function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined
+}
+
+function integerValue(value: unknown) {
+  if (typeof value === "number" && Number.isInteger(value)) return value
+  if (typeof value !== "string" || !/^\d+$/.test(value.trim())) return undefined
+  const parsed = Number.parseInt(value, 10)
+  return Number.isSafeInteger(parsed) ? parsed : undefined
 }
 
 function recordValue(value: unknown) {

@@ -98,14 +98,20 @@ export function shouldGenerateResourceAiSummary(input: {
   status: "pending" | "processing" | "completed" | "failed"
   type: ResourceType
 }) {
-  if (!input.env?.AI || input.status !== "completed" || input.type !== "http") {
+  if (!input.env?.AI || input.status !== "completed") {
     return false
   }
-  if (input.provider !== "http-page" && input.provider !== "github") return false
+  if (!isSupportedSummarySource(input.type, input.provider)) return false
   if (input.provider === "http-page") {
     const http = isRecord(input.data.extra?.http) ? input.data.extra.http : undefined
     const content = typeof http?.content === "string" ? http.content.trim() : ""
     if (!content && !input.data.description?.trim()) return false
+  }
+  if (
+    input.provider === "wechat-mp-tikhub" &&
+    !input.data.description?.trim()
+  ) {
+    return false
   }
 
   const currentDescription = input.currentDescription.trim()
@@ -252,7 +258,7 @@ export async function processResourceAiSummaryMessage(
   if (!env?.AI) return
 
   const resource = await getResourceOrThrow(db, message.resourceId)
-  if (resource.vaultId !== message.vaultId || resource.type !== "http") return
+  if (resource.vaultId !== message.vaultId) return
 
   const [row] = await db
     .select({ dataJson: resourceMetadata.dataJson, provider: resourceMetadata.provider })
@@ -261,7 +267,7 @@ export async function processResourceAiSummaryMessage(
     .limit(1)
   if (!row) return
   const data = normalizeResourceMetadata(row.dataJson)
-  if (!data || (row.provider !== "http-page" && row.provider !== "github")) return
+  if (!data || !isSupportedSummarySource(resource.type, row.provider)) return
 
   const currentState = getAiSummaryState(data)
   if (currentState?.status === "completed") return
@@ -300,7 +306,7 @@ export async function processResourceAiSummaryMessage(
           {
             role: "system",
             content:
-              "你是资源归档助手。根据给定网页或 GitHub metadata 生成准确、紧凑的简体中文 Markdown 摘要。必须使用简体中文，项目名、产品名、API 和代码标识符可以保留原文。先写一个简短概述段落，仅在有帮助时追加二到四个一级要点；可以用少量粗体强调关键词。不要使用标题、表格、代码块、嵌套列表、前缀、免责声明或思考过程。只输出最终摘要，不要编造输入中不存在的信息。",
+              "你是资源归档助手。根据给定网页、GitHub metadata 或微信公众号文本生成准确、紧凑的简体中文 Markdown 摘要。必须使用简体中文，项目名、产品名、API 和代码标识符可以保留原文。先写一个简短概述段落，仅在有帮助时追加二到四个一级要点；可以用少量粗体强调关键词。不要使用标题、表格、代码块、嵌套列表、前缀、免责声明或思考过程。只输出最终摘要，不要编造输入中不存在的信息。",
           },
           { role: "user", content: prompt },
         ],
@@ -417,14 +423,33 @@ function createSummaryPrompt(
   ]
   if (data.description) lines.push(`已有描述：${data.description}`)
 
-  if (provider === "github" && data.preview?.data) {
-    lines.push(`GitHub metadata：${JSON.stringify(data.preview.data).slice(0, 16_000)}`)
-  } else {
-    const http = isRecord(data.extra?.http) ? data.extra.http : undefined
-    const content = typeof http?.content === "string" ? http.content.trim() : ""
-    if (content) lines.push(`网页正文：\n${content.slice(0, 16_000)}`)
+  const source = getResourceAiSummarySource(data, provider)
+  if (source && source !== data.description?.trim()) {
+    lines.push(source)
   }
   return lines.join("\n\n")
+}
+
+export function getResourceAiSummarySource(
+  data: NormalizedResourceMetadata,
+  provider: string,
+) {
+  if (provider === "github" && data.preview?.data) {
+    return `GitHub metadata：${JSON.stringify(data.preview.data).slice(0, 16_000)}`
+  }
+  if (provider === "wechat-mp-tikhub") {
+    return data.description?.trim().slice(0, 16_000) ?? ""
+  }
+  const http = isRecord(data.extra?.http) ? data.extra.http : undefined
+  const content = typeof http?.content === "string" ? http.content.trim() : ""
+  return content ? `网页正文：\n${content.slice(0, 16_000)}` : ""
+}
+
+function isSupportedSummarySource(type: ResourceType, provider: string) {
+  return (
+    (type === "http" && (provider === "http-page" || provider === "github")) ||
+    (type === "wechat_mp" && provider === "wechat-mp-tikhub")
+  )
 }
 
 async function* readWorkersAiTextStream(

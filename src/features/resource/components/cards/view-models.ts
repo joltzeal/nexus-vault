@@ -415,11 +415,15 @@ function toPreviewData(
       accountUsername: stringValue(data.accountUsername),
       albumTitle: stringValue(data.albumTitle),
       authorName: stringValue(data.authorName),
-      contentHtml: stringValue(data.contentHtml) ?? metadata?.description ?? resource.description,
+      contentHtml:
+        stringValue(data.contentHtml) ??
+        legacyWechatContentHtml(metadata?.description),
       coverUrl: stringValue(data.coverUrl),
       createdAt: stringValue(data.createdAt),
       excerpt: stringValue(data.excerpt),
       ipLocation: stringValue(data.ipLocation),
+      itemShowType: numberValue(data.itemShowType),
+      media: normalizePreviewMedia(metadata?.media),
       messageId: stringValue(data.messageId),
       signature: stringValue(data.signature),
       tags: stringArray(data.tags),
@@ -598,13 +602,16 @@ function deriveLegacyPreview(resource: Resource): ResourceCardPreview | null {
 
   const wechatMpLink = parseWechatMpArticleLink(url)
   if (wechatMpLink || resource.type === "wechat_mp") {
+    const itemShowType = numberValue(wechatMp?.itemShowType)
     return {
       kind: "wechat_mp_article",
       data: {
         albumTitle: stringValue(wechatMp?.albumTitle),
-        contentHtml: metadata?.description ?? resource.description,
+        contentHtml: legacyWechatContentHtml(metadata?.description),
         excerpt: stringValue(wechatMp?.excerpt),
         ipLocation: stringValue(wechatMp?.ipLocation),
+        itemShowType,
+        media: normalizePreviewMedia(metadata?.media),
         signature: stringValue(wechatMp?.signature),
         tags: stringArray(wechatMp?.tags),
         title: metadata?.title ?? resource.title,
@@ -614,6 +621,11 @@ function deriveLegacyPreview(resource: Resource): ResourceCardPreview | null {
   }
 
   return null
+}
+
+function legacyWechatContentHtml(value: unknown) {
+  const html = stringValue(value)
+  return html && /<\/?[a-z][^>]*>/i.test(html) ? html : undefined
 }
 
 function normalizeSocialVideoMedia(media: ResourcePreviewMedia[]) {

@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 
 import { WechatSourceIcon } from "./platform-icons"
+import { PreviewMedia } from "./preview-media"
 import {
   formatPreviewDate,
   ResourceCardFrame,
@@ -35,6 +36,7 @@ export function WechatMpArticleCard({
   commentAction,
   commentEditor,
   data,
+  descriptionContent,
   footerActions,
   leadingControl,
   mediaVisible = true,
@@ -137,15 +139,9 @@ export function WechatMpArticleCard({
             <h3 className="text-[17px] font-semibold leading-6 text-foreground">
               <span className={viewMode === "masonry" ? "whitespace-normal break-words" : "truncate"}>{data.title}</span>
             </h3>
-            {data.excerpt && (
-              <p className={cn(
-                "mt-1.5 text-sm leading-6 text-muted-foreground",
-                viewMode === "list" && "line-clamp-3",
-              )}>
-                {data.excerpt}
-              </p>
-            )}
           </div>
+
+          {descriptionContent}
 
           {(data.albumTitle || data.ipLocation || (data.tags && data.tags.length > 0)) && (
             <div className="flex min-w-0 flex-wrap gap-1.5">
@@ -180,6 +176,13 @@ export function WechatMpArticleCard({
                 viewMode={viewMode}
               />
             </>
+          )}
+          {data.itemShowType === 8 && mediaVisible && (
+            <PreviewMedia
+              items={data.media}
+              title={data.title}
+              viewMode={viewMode}
+            />
           )}
           </div>
         )}

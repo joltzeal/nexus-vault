@@ -32,6 +32,10 @@ export type VaultResourcePage = {
   nextCursor: string | null
 }
 
+export type VaultResourceBatch = {
+  pages: Array<VaultResourcePage & { spaceId: string }>
+}
+
 export async function getDashboardVaultDetail(vaultId: string, signal?: AbortSignal): Promise<VaultDetail> {
   const response = await fetch(`/api/v1/vaults/${encodeURIComponent(vaultId)}`, { credentials: "include", signal })
   const payload = (await response.json().catch(() => null)) as { data?: VaultDetail; error?: { message?: string } | null } | null
@@ -57,6 +61,33 @@ export async function listDashboardVaultResources(
   const payload = (await response.json().catch(() => null)) as { data?: VaultResourcePage; error?: { message?: string } | null } | null
   if (!response.ok) throw new Error(payload?.error?.message ?? "Could not load resources.")
   if (!payload?.data) throw new Error("Resource response was empty.")
+  return payload.data
+}
+
+export async function listDashboardVaultResourceBatch(
+  vaultId: string,
+  input: {
+    limit?: number
+    spaces: Array<{ cursor?: string; spaceId: string }>
+  },
+  signal?: AbortSignal,
+): Promise<VaultResourceBatch> {
+  const response = await fetch(
+    `/api/v1/vaults/${encodeURIComponent(vaultId)}/resources/batch`,
+    {
+      body: JSON.stringify({
+        limit: input.limit ?? 20,
+        spaces: input.spaces,
+      }),
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+      signal,
+    },
+  )
+  const payload = (await response.json().catch(() => null)) as { data?: VaultResourceBatch; error?: { message?: string } | null } | null
+  if (!response.ok) throw new Error(payload?.error?.message ?? "Could not load resources.")
+  if (!payload?.data) throw new Error("Resource batch response was empty.")
   return payload.data
 }
 

@@ -381,6 +381,7 @@ export const resourceCardShowcaseFixtures: ResourceCardShowcaseFixture[] = [
         createdAt: "2026-08-09T06:03:00.000+08:00",
         excerpt: "一、传统无头 Chrome，规模化自动化的痛点",
         ipLocation: "中国 · 北京",
+        itemShowType: 0,
         messageId: "2247486200",
         signature: "爱折腾的技术控",
         tags: ["优质工具"],

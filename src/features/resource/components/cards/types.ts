@@ -166,6 +166,8 @@ export type WechatMpArticleCardData = {
   createdAt?: string
   excerpt?: string
   ipLocation?: string
+  itemShowType?: number
+  media?: ResourcePreviewMedia[]
   messageId?: string
   signature?: string
   tags?: string[]

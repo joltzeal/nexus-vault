@@ -807,6 +807,14 @@ export function ResourceCard({
           )}
           commentAction={renderCommentAction()}
           commentEditor={renderCommentEditor()}
+          descriptionContent={
+            specializedPreview.kind === "wechat_mp_article" ? (
+              <ResourceDescription
+                aiSummary={aiSummary}
+                description={description}
+              />
+            ) : undefined
+          }
           footerActions={renderSharedManagementActions()}
           resourceCreatedAt={resource.createdAt}
           leadingControl={

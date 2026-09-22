@@ -3,7 +3,10 @@ import { afterEach, describe, it } from "node:test"
 
 import { listDashboardVaults } from "../src/features/dashboard/api.ts"
 import { getSharedVault } from "../src/features/share/api.ts"
-import { listDashboardVaultResources } from "../src/features/vault/api/vault-api.ts"
+import {
+  listDashboardVaultResourceBatch,
+  listDashboardVaultResources,
+} from "../src/features/vault/api/vault-api.ts"
 
 const originalFetch = globalThis.fetch
 
@@ -73,5 +76,37 @@ describe("Web API contracts", () => {
     assert.equal(url.searchParams.get("spaceId"), null)
     assert.equal(url.searchParams.get("cursor"), "next-page")
     assert.equal(url.searchParams.get("limit"), "50")
+  })
+
+  it("loads nearby spaces through one independently paginated batch request", async () => {
+    let requestedBody = ""
+    let requestedUrl = ""
+    let requestMethod = ""
+    globalThis.fetch = async (input, init) => {
+      requestedUrl = String(input)
+      requestedBody = String(init?.body)
+      requestMethod = init?.method ?? "GET"
+      return new Response(JSON.stringify({
+        success: true,
+        data: { pages: [{ items: [], nextCursor: null, spaceId: "space-1" }] },
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
+    }
+
+    await listDashboardVaultResourceBatch("vault-1", {
+      spaces: [
+        { spaceId: "space-1" },
+        { cursor: "next-page", spaceId: "space-2" },
+      ],
+    })
+
+    assert.equal(requestedUrl, "/api/v1/vaults/vault-1/resources/batch")
+    assert.equal(requestMethod, "POST")
+    assert.deepEqual(JSON.parse(requestedBody), {
+      limit: 20,
+      spaces: [
+        { spaceId: "space-1" },
+        { cursor: "next-page", spaceId: "space-2" },
+      ],
+    })
   })
 })

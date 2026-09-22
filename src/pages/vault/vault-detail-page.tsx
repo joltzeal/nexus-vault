@@ -75,7 +75,7 @@ import {
   createVaultSpace,
   deleteDashboardVault,
   getDashboardVaultDetail,
-  listDashboardVaultResources,
+  listDashboardVaultResourceBatch,
   updateDashboardVaultOptions,
   type VaultDetail,
   updateDashboardVault,
@@ -111,10 +111,14 @@ const Button: any = ButtonPrimitive;
 
 const AI_SUMMARY_POLL_INTERVAL_MS = 500;
 const METADATA_POLL_INTERVAL_MS = 2500;
+const RESOURCE_BATCH_DEBOUNCE_MS = 100;
+const RESOURCE_BATCH_PAGE_LIMIT = 20;
+const RESOURCE_BATCH_SPACE_LIMIT = 12;
 
-type ResourceFeedState = {
+type ResourcePageState = {
   complete: boolean;
   error?: string;
+  loaded: boolean;
   loading: boolean;
   nextCursor?: string | null;
 };
@@ -132,19 +136,19 @@ export function VaultDetailPage() {
     resourceViewMode: viewMode,
   } = useOutletContext<DashboardOutletContext>();
   const [detail, setDetail] = useState<VaultDetail | null>(null);
-  const [resourceFeed, setResourceFeed] = useState<ResourceFeedState>({
-    complete: false,
-    loading: false,
-  });
+  const [resourcePages, setResourcePages] = useState<
+    Record<string, ResourcePageState>
+  >({});
   const detailRevisionRef = useRef(0);
   const detailLoadIdRef = useRef(0);
   const loadRequestRef = useRef(0);
-  const resourcePageRequestActiveRef = useRef(false);
+  const resourceBatchRequestActiveRef = useRef(false);
+  const resourceBatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const resourceLoadVersionRef = useRef(0);
-  const resourceFeedRef = useRef<ResourceFeedState>({
-    complete: false,
-    loading: false,
-  });
+  const pendingResourceSpaceIdsRef = useRef(new Set<string>());
+  const resourcePagesRef = useRef<Record<string, ResourcePageState>>({});
   const aiSummaryStreamsRef = useRef(new Map<string, AbortController>());
   const aiSummaryStreamFallbacksRef = useRef(new Set<string>());
   const [error, setError] = useState("");
@@ -240,18 +244,32 @@ export function VaultDetailPage() {
         )
           return;
         resourceLoadVersionRef.current += 1;
-        const totalResources = nextDetail.spaces.reduce(
-          (total, space) => total + space.resourceCount,
-          0,
+        pendingResourceSpaceIdsRef.current.clear();
+        if (resourceBatchTimerRef.current) {
+          clearTimeout(resourceBatchTimerRef.current);
+          resourceBatchTimerRef.current = null;
+        }
+        const loadedCountBySpaceId = new Map<string, number>();
+        for (const resource of nextDetail.resources) {
+          if (!resource.spaceId) continue;
+          loadedCountBySpaceId.set(
+            resource.spaceId,
+            (loadedCountBySpaceId.get(resource.spaceId) ?? 0) + 1,
+          );
+        }
+        const nextPages = Object.fromEntries(
+          nextDetail.spaces.map((space) => {
+            const loadedCount = loadedCountBySpaceId.get(space.id) ?? 0;
+            return [space.id, {
+              complete: loadedCount >= space.resourceCount,
+              loaded: loadedCount > 0 || space.resourceCount === 0,
+              loading: false,
+              nextCursor: null,
+            }];
+          }),
         );
-        const complete = nextDetail.resources.length >= totalResources;
-        const nextFeed = {
-          complete,
-          loading: false,
-          nextCursor: complete ? null : nextDetail.nextResourceCursor,
-        };
-        resourceFeedRef.current = nextFeed;
-        setResourceFeed(nextFeed);
+        resourcePagesRef.current = nextPages;
+        setResourcePages(nextPages);
         setDetail(nextDetail);
         setError("");
       });
@@ -259,62 +277,131 @@ export function VaultDetailPage() {
     [vaultId],
   );
 
-  const loadMoreResources = useCallback(async () => {
+  const flushResourceBatch = useCallback(async () => {
     if (!vaultId) return;
-    if (resourcePageRequestActiveRef.current) return;
+    if (resourceBatchRequestActiveRef.current) return;
     const loadVersion = resourceLoadVersionRef.current;
-    const currentFeed = resourceFeedRef.current;
-    if (currentFeed.loading || currentFeed.complete) return;
+    const spaceIds = [...pendingResourceSpaceIdsRef.current]
+      .filter((spaceId) => {
+        const page = resourcePagesRef.current[spaceId];
+        return !page?.loading && !page?.complete;
+      })
+      .slice(0, RESOURCE_BATCH_SPACE_LIMIT);
+    if (spaceIds.length === 0) return;
+    for (const spaceId of spaceIds) {
+      pendingResourceSpaceIdsRef.current.delete(spaceId);
+    }
 
-    resourcePageRequestActiveRef.current = true;
-
-    const loadingState: ResourceFeedState = {
-      ...currentFeed,
-      loading: true,
-    };
-    resourceFeedRef.current = loadingState;
-    setResourceFeed(loadingState);
+    resourceBatchRequestActiveRef.current = true;
+    const loadingPages = { ...resourcePagesRef.current };
+    for (const spaceId of spaceIds) {
+      const currentPage = loadingPages[spaceId];
+      loadingPages[spaceId] = {
+        complete: currentPage?.complete ?? false,
+        loaded: currentPage?.loaded ?? false,
+        loading: true,
+        nextCursor: currentPage?.nextCursor,
+      };
+    }
+    resourcePagesRef.current = loadingPages;
+    setResourcePages(loadingPages);
     try {
-      const page = await listDashboardVaultResources(vaultId, {
-        cursor: currentFeed.nextCursor ?? undefined,
+      const batch = await listDashboardVaultResourceBatch(vaultId, {
+        limit: RESOURCE_BATCH_PAGE_LIMIT,
+        spaces: spaceIds.map((spaceId) => ({
+          cursor: loadingPages[spaceId]?.nextCursor ?? undefined,
+          spaceId,
+        })),
       });
       if (loadVersion !== resourceLoadVersionRef.current) return;
+      const incomingResources = batch.pages.flatMap((page) => page.items);
       setDetail((current) => {
         if (!current) return current;
-        const incomingIds = new Set(page.items.map((resource) => resource.id));
+        const incomingIds = new Set(
+          incomingResources.map((resource) => resource.id),
+        );
         return {
           ...current,
           resources: [
             ...current.resources.filter(
               (resource) => !incomingIds.has(resource.id),
             ),
-            ...page.items,
+            ...incomingResources,
           ],
         };
       });
-      const nextFeed = {
-        complete: page.nextCursor === null,
-        loading: false,
-        nextCursor: page.nextCursor,
-      };
-      resourceFeedRef.current = nextFeed;
-      setResourceFeed(nextFeed);
+      const pageBySpaceId = new Map(
+        batch.pages.map((page) => [page.spaceId, page]),
+      );
+      const nextPages = { ...resourcePagesRef.current };
+      for (const spaceId of spaceIds) {
+        const page = pageBySpaceId.get(spaceId);
+        nextPages[spaceId] = page
+          ? {
+              complete: page.nextCursor === null,
+              loaded: true,
+              loading: false,
+              nextCursor: page.nextCursor,
+            }
+          : {
+              ...nextPages[spaceId],
+              error: "Resource batch response was incomplete.",
+              loading: false,
+            };
+      }
+      resourcePagesRef.current = nextPages;
+      setResourcePages(nextPages);
     } catch (reason) {
       if (loadVersion !== resourceLoadVersionRef.current) return;
-      const nextFeed = {
-        ...currentFeed,
-        error:
-          reason instanceof Error
-            ? reason.message
-            : "Could not load resources.",
-        loading: false,
-      };
-      resourceFeedRef.current = nextFeed;
-      setResourceFeed(nextFeed);
+      const nextPages = { ...resourcePagesRef.current };
+      for (const spaceId of spaceIds) {
+        nextPages[spaceId] = {
+          ...nextPages[spaceId],
+          error:
+            reason instanceof Error
+              ? reason.message
+              : "Could not load resources.",
+          loading: false,
+        };
+      }
+      resourcePagesRef.current = nextPages;
+      setResourcePages(nextPages);
     } finally {
-      resourcePageRequestActiveRef.current = false;
+      resourceBatchRequestActiveRef.current = false;
+      if (
+        pendingResourceSpaceIdsRef.current.size > 0 &&
+        !resourceBatchTimerRef.current
+      ) {
+        resourceBatchTimerRef.current = setTimeout(() => {
+          resourceBatchTimerRef.current = null;
+          void flushResourceBatch();
+        }, RESOURCE_BATCH_DEBOUNCE_MS);
+      }
     }
   }, [vaultId]);
+
+  const queueResourceSpaceLoad = useCallback((spaceId: string) => {
+    const page = resourcePagesRef.current[spaceId];
+    if (page?.loading || page?.complete) return;
+    pendingResourceSpaceIdsRef.current.add(spaceId);
+    if (resourceBatchRequestActiveRef.current || resourceBatchTimerRef.current) {
+      return;
+    }
+    resourceBatchTimerRef.current = setTimeout(() => {
+      resourceBatchTimerRef.current = null;
+      void flushResourceBatch();
+    }, RESOURCE_BATCH_DEBOUNCE_MS);
+  }, [flushResourceBatch]);
+
+  useEffect(
+    () => () => {
+      if (resourceBatchTimerRef.current) {
+        clearTimeout(resourceBatchTimerRef.current);
+      }
+      pendingResourceSpaceIdsRef.current.clear();
+    },
+    [],
+  );
 
   const refreshResource = useCallback(
     async (resourceId: string, options: { addIfMissing?: boolean } = {}) => {
@@ -1361,25 +1448,6 @@ export function VaultDetailPage() {
     return `${(value / (1024 * 1024)).toFixed(1)} MB`;
   }
 
-  const loadedResourceCountBySpaceId = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const resource of detail?.resources ?? []) {
-      if (!resource.spaceId) continue;
-      counts.set(resource.spaceId, (counts.get(resource.spaceId) ?? 0) + 1);
-    }
-    return counts;
-  }, [detail?.resources]);
-  const resourceFrontierSpaceId = useMemo(() => {
-    if (!detail || resourceFeed.complete) return undefined;
-    const populatedSpaces = detail.spaces.filter(
-      (space) => space.resourceCount > 0,
-    );
-    const loadedSpaces = populatedSpaces.filter(
-      (space) => (loadedResourceCountBySpaceId.get(space.id) ?? 0) > 0,
-    );
-    return (loadedSpaces.at(-1) ?? populatedSpaces[0])?.id;
-  }, [detail, loadedResourceCountBySpaceId, resourceFeed.complete]);
-
   if (!vaultId) return <VaultDetailError message="Vault id is missing." />;
   if (error) return <VaultDetailError message={error} />;
   if (!detail)
@@ -1457,17 +1525,16 @@ export function VaultDetailPage() {
                   (resource) => resource.spaceId === space.id,
                 )}
                 hasMoreResources={
-                  !resourceFeed.complete && resourceFrontierSpaceId === space.id
+                  space.resourceCount > 0 &&
+                  !resourcePages[space.id]?.complete
                 }
-                onLoadMoreResources={() => void loadMoreResources()}
+                onLoadMoreResources={() => queueResourceSpaceLoad(space.id)}
                 resourceCount={space.resourceCount}
                 resourcesLoaded={
                   space.resourceCount === 0 ||
-                  (loadedResourceCountBySpaceId.get(space.id) ?? 0) > 0
+                  resourcePages[space.id]?.loaded === true
                 }
-                resourcesLoading={
-                  resourceFeed.loading && resourceFrontierSpaceId === space.id
-                }
+                resourcesLoading={resourcePages[space.id]?.loading ?? false}
                 space={space}
                 sourceVaultId={detail.vault.id}
                 transferTargets={transferTargets}

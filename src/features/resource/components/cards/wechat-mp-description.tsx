@@ -169,7 +169,7 @@ function sanitizeWechatHtml(value?: string) {
   template.innerHTML = value
 
   template.content
-    .querySelectorAll("script,style,iframe,object,embed,link,meta,base,form,input,button,textarea,select,noscript")
+    .querySelectorAll("script,style,iframe,object,embed,link,meta,base,form,input,button,textarea,select,noscript,svg,math")
     .forEach((element) => element.remove())
 
   for (const element of Array.from(template.content.querySelectorAll("*"))) {
@@ -202,6 +202,7 @@ function normalizeElement(element: Element) {
       name.startsWith("on") ||
       name === "style" ||
       name === "srcset" ||
+      name === "xlink:href" ||
       name === "class" ||
       name === "id"
     ) {

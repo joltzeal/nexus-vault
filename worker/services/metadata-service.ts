@@ -168,9 +168,15 @@ export async function resolveResourceMetadata(
     status: result.status,
   })
   const previousAiSummary = getPersistedAiSummaryText(previousMetadata?.extra?.aiSummary)
+  const currentDescriptionIsProviderOwned = isProviderOwnedDescription({
+    current: resource.description,
+    previous: previousMetadata?.description,
+    type: resource.type,
+  })
   const aiSummaryRequested = !persistence.preserved && shouldGenerateResourceAiSummary({
     currentDescription:
-      previousAiSummary && previousAiSummary === resource.description.trim()
+      (previousAiSummary && previousAiSummary === resource.description.trim()) ||
+      currentDescriptionIsProviderOwned
         ? ""
         : resource.description,
     data: persistence.data,
@@ -182,12 +188,18 @@ export async function resolveResourceMetadata(
   const resolvedData = aiSummaryRequested
     ? markResourceAiSummaryPending(persistence.data, options.env)
     : persistence.data
-  const nextResourceTitle = shouldBackfillResourceTitle(resource.title, resolvedData.title)
+  const nextResourceTitle = shouldBackfillResourceTitle(
+    resource.title,
+    resolvedData.title,
+    resource.type,
+  )
     ? resolvedData.title
     : undefined
   const nextResourceDescription = shouldBackfillResourceDescription(
     resource.description,
-    resolvedData.description
+    resolvedData.description,
+    previousMetadata?.description,
+    resource.type,
   )
     ? resolvedData.description
     : undefined
@@ -306,17 +318,18 @@ async function persistMagnetScreenshot(
 
 async function persistWechatMpPicture(
   env: CloudflareEnv,
-  input: { url: string; sourceId: string },
+  input: { resourceId: string; url: string; sourceId: string },
 ) {
   if (!env.MEDIA) throw new Error("R2 MEDIA binding is not configured.")
   const sourceUrl = new URL(input.url)
   if (sourceUrl.hostname.toLowerCase() !== WECHAT_MP_PICTURE_HOST) {
     throw new Error("Invalid WeChat picture URL.")
   }
-  const id = input.sourceId.replace(/[^a-z0-9_-]/gi, "")
-  if (!id) throw new Error("Invalid WeChat picture ID.")
+  const resourceId = input.resourceId.replace(/[^a-z0-9_-]/gi, "")
+  const sourceId = input.sourceId.replace(/[^a-z0-9_-]/gi, "")
+  if (!resourceId || !sourceId) throw new Error("Invalid WeChat picture ID.")
   const format = getWechatMpPictureFormat(sourceUrl)
-  const key = `wechat-mp/${id}.${format.extension}`
+  const key = `wechat-mp/${resourceId}/${sourceId}.${format.extension}`
 
   try {
     const existing = await env.MEDIA.head(key)
@@ -330,13 +343,14 @@ async function persistWechatMpPicture(
       },
       customMetadata: {
         provider: "wechat-mp",
-        sourceId: id,
+        resourceId,
+        sourceId,
         sourceUrl: sourceUrl.toString().slice(0, 512),
       },
     })
     return `/api/v1/media/${key}`
   } catch (error) {
-    console.warn("Failed to persist WeChat picture", { sourceId: id, error })
+    console.warn("Failed to persist WeChat picture", { resourceId, sourceId, error })
     throw error
   }
 }
@@ -869,7 +883,11 @@ function getRuntimeBinding(env: CloudflareEnv, name: string) {
   return bindings[name]?.trim() || undefined
 }
 
-function shouldBackfillResourceTitle(currentTitle: string, metadataTitle?: string) {
+function shouldBackfillResourceTitle(
+  currentTitle: string,
+  metadataTitle: string | undefined,
+  type?: string,
+) {
   if (!metadataTitle) return false
   const normalizedCurrent = currentTitle.trim().toLowerCase()
   const normalizedNext = metadataTitle.trim().toLowerCase()
@@ -877,17 +895,36 @@ function shouldBackfillResourceTitle(currentTitle: string, metadataTitle?: strin
   return (
     normalizedNext.length > 0 &&
     normalizedNext !== normalizedCurrent &&
-    ["名称未知", "untitled resource", "untitled link", "untitled tweet", "抖音视频", "gofile folder", "mega folder"].includes(
+    ["名称未知", "untitled resource", "untitled link", "untitled tweet", "抖音视频", "微信公众号文章", "gofile folder", "mega folder"].includes(
       normalizedCurrent
-    )
+    ) && (type !== "wechat_mp" || normalizedCurrent === "微信公众号文章")
   )
 }
 
 function shouldBackfillResourceDescription(
   currentDescription: string,
-  metadataDescription?: string
+  metadataDescription?: string,
+  previousMetadataDescription?: string,
+  type?: string,
 ) {
-  return !currentDescription.trim() && Boolean(metadataDescription?.trim())
+  if (!metadataDescription?.trim()) return false
+  if (!currentDescription.trim()) return true
+  return isProviderOwnedDescription({
+    current: currentDescription,
+    previous: previousMetadataDescription,
+    type,
+  })
+}
+
+function isProviderOwnedDescription(input: {
+  current: string
+  previous?: string
+  type?: string
+}) {
+  if (input.type !== "wechat_mp") return false
+  const current = input.current.trim()
+  const previous = input.previous?.trim() ?? ""
+  return Boolean(current && previous && current === previous)
 }
 
 function getPersistedAiSummaryText(value: unknown) {

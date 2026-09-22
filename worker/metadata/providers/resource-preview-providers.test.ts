@@ -541,6 +541,7 @@ test("WeChat MP provider sends the raw article url to TikHub and normalizes arti
       code: 200,
       data: {
         bizUin: 3957893683,
+        itemShowType: 0,
         content: {
           bizuin: "Mzk1Nzg5MzY4Mw==",
           content_noencode: "<section><p>公众号原文</p><p><img src=\"https://cdn.example/article.jpeg\" /></p></section>",
@@ -581,13 +582,112 @@ test("WeChat MP provider sends the raw article url to TikHub and normalizes arti
   assert.equal(result.status, "completed")
   assert.equal(result.data.type, "wechat_mp")
   assert.equal(result.data.title, "开源轻量无头浏览器 Obscura，AI 爬虫直接平替 Chrome")
-  assert.equal(result.data.description?.includes("公众号原文"), true)
+  assert.equal(result.data.description, "一、传统无头 Chrome，规模化自动化的痛点")
   assert.equal(result.data.preview?.kind, "wechat_mp_article")
   assert.equal(result.data.preview?.data.accountName, "飞翔的SA")
+  assert.equal(result.data.preview?.data.contentHtml, "<section><p>公众号原文</p><p><img src=\"https://cdn.example/article.jpeg\" /></p></section>")
+  assert.equal(result.data.preview?.data.itemShowType, 0)
   assert.equal(result.data.source?.attribution?.url, "https://api.tikhub.io/")
   assert.equal(result.data.identifiers?.articleToken, "b2jhSldjmuR3yfNgV2ZUrA")
   assert.equal(result.data.identifiers?.messageId, "2247486200")
-  assert.equal(result.data.media?.[0]?.url, "https://cdn.example/article.jpeg")
+  assert.equal(result.data.media, undefined)
+})
+
+test("WeChat MP provider normalizes gallery text and persists only picture_page_info_list", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => jsonResponse({
+    code: 200,
+    data: {
+      itemShowType: "8",
+      content: {
+        content_noencode: "<p><img src=\"https://mmbiz.qpic.cn/not-gallery.jpeg\" /></p>",
+        content_text: "这是图片集的完整文字说明。",
+        cdn_url: "https://mmbiz.qpic.cn/cover.jpeg",
+        nick_name: "图片号",
+        picture_page_info_list: [
+          {
+            cdn_url: "https://mmbiz.qpic.cn/gallery-a.jpeg?wx_fmt=jpeg",
+            height: 1200,
+            width: 900,
+          },
+          {
+            cdn_url: "https://mmbiz.qpic.cn/gallery-b.png?wx_fmt=png",
+            height: 800,
+            width: 800,
+          },
+        ],
+        title: "Gallery 原始标题",
+      },
+      url: "https://mp.weixin.qq.com/s/gallery-token",
+    },
+  }))
+
+  const persisted: Array<{ resourceId: string; sourceId: string; url: string }> = []
+  const result = await wechatMpMetadataProvider.resolve({
+    id: "wechat-gallery-resource",
+    type: "wechat_mp",
+    title: "微信公众号文章",
+    description: "",
+    url: "https://mp.weixin.qq.com/s/gallery-token",
+  }, {
+    tikhubApiToken: "test-tikhub-token",
+    persistWechatMpPicture: async (input) => {
+      persisted.push(input)
+      return `/api/v1/media/wechat-mp/${input.resourceId}/${input.sourceId}.jpg`
+    },
+  })
+
+  assert.equal(result.status, "completed")
+  assert.equal(result.data.title, "Gallery 原始标题")
+  assert.equal(result.data.description, "这是图片集的完整文字说明。")
+  assert.equal(result.data.preview?.data.itemShowType, 8)
+  assert.equal(result.data.preview?.data.contentHtml, undefined)
+  assert.equal(result.data.media?.length, 2)
+  assert.deepEqual(persisted.map((item) => item.resourceId), [
+    "wechat-gallery-resource",
+    "wechat-gallery-resource",
+  ])
+  assert.deepEqual(persisted.map((item) => item.sourceId), ["picture:0", "picture:1"])
+  assert.equal(result.data.media?.[0]?.url.includes("wechat-gallery-resource"), true)
+  assert.equal(result.data.media?.[0]?.width, 900)
+  assert.equal(result.data.media?.[0]?.height, 1200)
+  assert.equal(
+    result.data.media?.some((item) => item.sourceUrl?.includes("not-gallery") || item.sourceUrl?.includes("cover")),
+    false,
+  )
+})
+
+test("WeChat MP gallery keeps the source image when object storage persistence fails", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => jsonResponse({
+    code: 200,
+    data: {
+      itemShowType: 8,
+      content: {
+        content_text: "图片集说明",
+        picture_page_info_list: [
+          { cdn_url: "https://mmbiz.qpic.cn/gallery-source.jpeg?wx_fmt=jpeg" },
+        ],
+        title: "图片集",
+      },
+    },
+  }))
+
+  const result = await wechatMpMetadataProvider.resolve({
+    id: "wechat-gallery-fallback",
+    type: "wechat_mp",
+    title: "微信公众号文章",
+    description: "",
+    url: "https://mp.weixin.qq.com/s/gallery-fallback",
+  }, {
+    tikhubApiToken: "test-tikhub-token",
+    persistWechatMpPicture: async () => {
+      throw new Error("R2 unavailable")
+    },
+  })
+
+  assert.equal(
+    result.data.media?.[0]?.url,
+    "https://mmbiz.qpic.cn/gallery-source.jpeg?wx_fmt=jpeg",
+  )
 })
 
 test("GitHub provider calculates user totals only from a complete repository set", async (t) => {

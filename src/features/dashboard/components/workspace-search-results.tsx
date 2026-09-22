@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FolderKanban, PanelsTopLeft } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { SearchField } from "@/components/aicanvas/andromeda/components/SearchField";
@@ -6,11 +6,18 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { ResourceCard } from "@/features/resource/components";
 import {
+  listResourceTransferTargets,
+  resolveResourceMetadata,
   setResourceReadLater,
   setResourceStarred,
+  transferResource,
   updateResourceAnnotation,
 } from "@/features/resource/api";
-import type { Resource, ResourceAnnotationPatch } from "@/features/resource/types";
+import type {
+  Resource,
+  ResourceAnnotationPatch,
+  ResourceTransferTargetVault,
+} from "@/features/resource/types";
 import type { VaultResourceViewMode } from "@/features/resource/vault-view-mode";
 import {
   searchWorkspace,
@@ -43,6 +50,9 @@ export function WorkspaceSearchResults({
   const [searching, setSearching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyResourceId, setBusyResourceId] = useState("");
+  const [transferTargets, setTransferTargets] = useState<
+    ResourceTransferTargetVault[]
+  >([]);
   const resultsRef = useRef<HTMLDivElement>(null);
 
   useDocumentTitle(`Search: ${query} · Nexus Vault`);
@@ -126,6 +136,15 @@ export function WorkspaceSearchResults({
     if (nextQuery) onSearch(nextQuery);
   }
 
+  async function refreshResults() {
+    const nextResults = await searchWorkspace(query);
+    setResults(nextResults);
+  }
+
+  async function loadTransferTargets() {
+    setTransferTargets(await listResourceTransferTargets());
+  }
+
   async function updateStar(resource: Resource) {
     if (busyResourceId) return;
     setBusyResourceId(resource.id);
@@ -200,6 +219,52 @@ export function WorkspaceSearchResults({
           reason instanceof Error
             ? reason.message
             : "Could not update resource note.",
+        type: "error",
+      });
+    } finally {
+      setBusyResourceId("");
+    }
+  }
+
+  async function refreshMetadata(resource: Resource) {
+    if (busyResourceId) return;
+    setBusyResourceId(resource.id);
+    try {
+      await resolveResourceMetadata(resource.id);
+      await refreshResults();
+      toast.add({ title: "Metadata retrieval started", type: "success" });
+    } catch (reason) {
+      toast.add({
+        title: "Could not retrieve metadata",
+        description: reason instanceof Error ? reason.message : undefined,
+        type: "error",
+      });
+    } finally {
+      setBusyResourceId("");
+    }
+  }
+
+  async function moveResource(input: {
+    action: "move" | "copy";
+    resourceId: string;
+    targetVaultId: string;
+    targetSpaceId: string;
+  }) {
+    if (busyResourceId) return;
+    setBusyResourceId(input.resourceId);
+    try {
+      await transferResource(input.resourceId, input);
+      await refreshResults();
+      toast.add({
+        title: input.action === "move" ? "Resource moved" : "Resource copied",
+        type: "success",
+      });
+    } catch (reason) {
+      toast.add({
+        title:
+          reason instanceof Error
+            ? reason.message
+            : "Could not move resource.",
         type: "error",
       });
     } finally {
@@ -296,9 +361,16 @@ export function WorkspaceSearchResults({
                 }
                 key={entry.resource.id}
               >
+                <ResourceOrigin
+                  spaceName={entry.spaceName}
+                  vaultTitle={entry.vaultTitle}
+                />
                 <ResourceCard
                   canDeleteResource={false}
                   canEditResource={false}
+                  canResolveMetadata
+                  canTransferResource
+                  className="rounded-t-none"
                   disabled={busyResourceId === entry.resource.id}
                   index={index}
                   isActive={false}
@@ -307,18 +379,19 @@ export function WorkspaceSearchResults({
                   mediaVisible={mediaVisible}
                   onCreateTransferTargetSpace={() => undefined}
                   onDelete={() => undefined}
-                  onLoadTransferTargets={() => Promise.resolve()}
+                  onLoadTransferTargets={loadTransferTargets}
                   onOpenDetails={() => undefined}
+                  onResolveMetadata={() => void refreshMetadata(entry.resource)}
                   onToggleReadLater={() => void updateReadLater(entry.resource)}
                   onToggleStar={() => void updateStar(entry.resource)}
-                  onTransferResource={() => Promise.resolve()}
+                  onTransferResource={moveResource}
                   onUpdateAnnotation={(resourceId, patch) =>
                     void updateAnnotation(resourceId, patch)
                   }
                   resource={entry.resource}
                   spaceId={entry.spaceId ?? "unsorted"}
                   spaceName={entry.spaceName ?? "Unsorted"}
-                  transferTargets={[]}
+                  transferTargets={transferTargets}
                   vaultId={entry.vaultId}
                   vaultName={entry.vaultTitle}
                   viewMode={viewMode}
@@ -329,6 +402,27 @@ export function WorkspaceSearchResults({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function ResourceOrigin({
+  spaceName,
+  vaultTitle,
+}: {
+  spaceName: string | null;
+  vaultTitle: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-1.5 rounded-t-card border-x border-t border-border bg-card/80 px-2.5 py-1.5 text-[10px] text-muted-foreground">
+      <FolderKanban aria-hidden="true" className="size-3 shrink-0 text-primary" />
+      <span className="sr-only">Located in</span>
+      <span className="min-w-0 truncate font-medium text-foreground">
+        {vaultTitle}
+      </span>
+      <span aria-hidden="true" className="text-border">/</span>
+      <PanelsTopLeft aria-hidden="true" className="size-3 shrink-0" />
+      <span className="min-w-0 truncate">{spaceName ?? "Unsorted"}</span>
+    </div>
   );
 }
 
