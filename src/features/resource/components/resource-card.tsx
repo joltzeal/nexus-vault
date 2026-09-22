@@ -66,6 +66,7 @@ import {
 } from "@/components/kibo-ui/tree";
 import { Tooltip as AndromedaTooltip } from "@/components/aicanvas/andromeda/components/Tooltip";
 import { ResourceMediaGallery } from "@/features/resource/resource-media-gallery";
+import { matchesPinyinQuery, normalizePinyinQuery } from "@/lib/pinyin";
 import {
   IconEmule,
   IconGithub,
@@ -1045,7 +1046,7 @@ async function downloadResourceMedia(item: { src: string; alt?: string }) {
 }
 
 function normalizeTransferQuery(value: string) {
-  return value.trim().toLocaleLowerCase();
+  return normalizePinyinQuery(value);
 }
 
 function getFilteredTransferTargets(
@@ -1056,11 +1057,11 @@ function getFilteredTransferTargets(
 
   return targets
     .map((target) => {
-      const vaultMatches = normalizeTransferQuery(target.title).includes(query);
+      const vaultMatches = matchesPinyinQuery(target.title, query);
       const spaces = vaultMatches
         ? target.spaces
         : target.spaces.filter((space) =>
-            normalizeTransferQuery(space.name).includes(query),
+            matchesPinyinQuery(space.name, query),
           );
 
       return {
@@ -1070,7 +1071,7 @@ function getFilteredTransferTargets(
     })
     .filter(
       (target) =>
-        normalizeTransferQuery(target.title).includes(query) ||
+        matchesPinyinQuery(target.title, query) ||
         target.spaces.length > 0,
     );
 }

@@ -105,6 +105,7 @@ import {
 import type { VaultForm } from "@/features/vault/types";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Spinner } from "@/components/aicanvas/andromeda/components/Spinner";
+import { compareSpaceNames } from "@/lib/pinyin";
 import "@/features/vault/styles/vault-detail-layout.css";
 
 const Button: any = ButtonPrimitive;
@@ -978,6 +979,45 @@ export function VaultDetailPage() {
     setSpaceOpen(true);
   }
 
+  function handleResortSpaces() {
+    if (!detail || !vaultId) return;
+
+    const nextSpaces = [...detail.spaces]
+      .sort(
+        (left, right) =>
+          compareSpaceNames(left.name, right.name) ||
+          (left.position ?? 0) - (right.position ?? 0),
+      )
+      .map((space, position) => ({ ...space, position }));
+    const changed = nextSpaces.some(
+      (space, index) => space.id !== detail.spaces[index]?.id,
+    );
+    if (!changed) {
+      toast.add({ title: "Spaces are already sorted", type: "info" });
+      return;
+    }
+
+    detailRevisionRef.current += 1;
+    setDetail((current) =>
+      current ? { ...current, spaces: nextSpaces } : current,
+    );
+    setBusy(true);
+    void reorderVaultSpaces(
+      vaultId,
+      nextSpaces.map((space) => ({ id: space.id, position: space.position })),
+    )
+      .then(() => toast.add({ title: "Spaces sorted", type: "success" }))
+      .catch((reason: unknown) => {
+        toast.add({
+          title:
+            reason instanceof Error ? reason.message : "Could not sort spaces.",
+          type: "error",
+        });
+        void loadDetail();
+      })
+      .finally(() => setBusy(false));
+  }
+
   async function handleTransferResource(input: {
     action: "move" | "copy";
     resourceId: string;
@@ -1412,6 +1452,7 @@ export function VaultDetailPage() {
             onCreateSpace={() => setSpaceOpen(true)}
             onDeleteVault={() => setDeleteOpen(true)}
             onEditVault={openEditVault}
+            onResortSpaces={handleResortSpaces}
             onOpenSettings={(tab) => {
               void openVaultSettings(tab);
             }}

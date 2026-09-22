@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Archive, Eye, FolderKanban, Star, Users } from "lucide-react";
 import { Link, useOutletContext } from "react-router-dom";
 
@@ -38,6 +38,9 @@ import type {
 import { Spinner } from "@/components/aicanvas/andromeda/components/Spinner";
 import { Avatar } from "@/components/aicanvas/andromeda/components/Avatar";
 import { ShaderBackground } from "@/components/motion/shader-background";
+import { CreateSpaceDialog } from "@/features/space/components";
+import type { SpaceForm } from "@/features/space/types";
+import { createVaultSpace } from "@/features/vault/api";
 
 const viewCopy: Record<
   DashboardView,
@@ -264,6 +267,13 @@ export function FlashStashPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
+  const [spaceOpen, setSpaceOpen] = useState(false);
+  const [targetSpaceVaultId, setTargetSpaceVaultId] = useState<string>();
+  const [spaceForm, setSpaceForm] = useState<SpaceForm>({
+    description: "",
+    icon: "tv",
+    name: "",
+  });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -317,6 +327,37 @@ export function FlashStashPage() {
     } finally {
       setBusyId("");
     }
+  }
+
+  function openCreateTransferTargetSpace(vaultId: string) {
+    setTargetSpaceVaultId(vaultId);
+    setSpaceForm({ description: "", icon: "tv", name: "" });
+    setSpaceOpen(true);
+  }
+
+  function handleCreateTransferTargetSpace(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!targetSpaceVaultId) return;
+
+    const vaultId = targetSpaceVaultId;
+    const form = spaceForm;
+    setTargetSpaceVaultId(undefined);
+    setSpaceOpen(false);
+    setSpaceForm({ description: "", icon: "tv", name: "" });
+    void createVaultSpace(vaultId, form)
+      .then(() => {
+        void listResourceTransferTargets()
+          .then(setTargets)
+          .catch(() => undefined);
+        toast.add({ title: "Space created", type: "success" });
+      })
+      .catch((reason: unknown) => {
+        toast.add({
+          title:
+            reason instanceof Error ? reason.message : "Could not create space.",
+          type: "error",
+        });
+      });
   }
 
   async function handleDelete(resourceId: string) {
@@ -395,7 +436,7 @@ export function FlashStashPage() {
                 isSignedIn
                 isVaultOwner={false}
                 mediaVisible={mediaVisible}
-                onCreateTransferTargetSpace={() => undefined}
+                onCreateTransferTargetSpace={openCreateTransferTargetSpace}
                 onDelete={() => void handleDelete(resource.id)}
                 onLoadTransferTargets={async () => {
                   setTargets(await listResourceTransferTargets());
@@ -417,6 +458,21 @@ export function FlashStashPage() {
           ))}
         </div>
       )}
+      <CreateSpaceDialog
+        contextLabel={
+          targetSpaceVaultId
+            ? targets.find((target) => target.id === targetSpaceVaultId)?.title
+            : undefined
+        }
+        form={spaceForm}
+        onFormChange={setSpaceForm}
+        onOpenChange={(open) => {
+          setSpaceOpen(open);
+          if (!open) setTargetSpaceVaultId(undefined);
+        }}
+        onSubmit={handleCreateTransferTargetSpace}
+        open={spaceOpen}
+      />
     </section>
   );
 

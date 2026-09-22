@@ -3,6 +3,7 @@ import { afterEach, describe, it } from "node:test"
 
 import { listDashboardVaults } from "../src/features/dashboard/api.ts"
 import { getSharedVault } from "../src/features/share/api.ts"
+import { compareSpaceNames, matchesPinyinQuery } from "../src/lib/pinyin.ts"
 import { listResources } from "../src/features/resource/api/resource-api.ts"
 
 const originalFetch = globalThis.fetch
@@ -12,6 +13,25 @@ afterEach(() => {
 })
 
 describe("Web API contracts", () => {
+  it("matches transfer targets by Chinese pinyin and initials", () => {
+    assert.equal(matchesPinyinQuery("爱看的资源", "aikande"), true)
+    assert.equal(matchesPinyinQuery("爱看的资源", "akdz"), true)
+    assert.equal(matchesPinyinQuery("爱看的资源", "资源"), true)
+    assert.equal(matchesPinyinQuery("爱看的资源", "not-found"), false)
+  })
+
+  it("sorts spaces with Latin names first, then Chinese and other names", () => {
+    const spaces = ["自", "c space", "爱", "a space", "123"]
+
+    assert.deepEqual([...spaces].sort(compareSpaceNames), [
+      "a space",
+      "c space",
+      "爱",
+      "自",
+      "123",
+    ])
+  })
+
   it("normalizes a dashboard vault list envelope", async () => {
     let requestedUrl = ""
     let credentials: RequestCredentials | undefined

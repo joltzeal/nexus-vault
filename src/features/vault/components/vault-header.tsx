@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   ChevronRight,
+  ArrowDownAZ,
   FolderPlus,
   GitFork,
   Inbox,
@@ -32,6 +33,7 @@ export type VaultHeaderProps = {
   onCreateSpace?: () => void;
   onDeleteVault?: () => void;
   onEditVault?: () => void;
+  onResortSpaces?: () => void;
   onForkVault?: () => void;
   onOpenSettings?: (tab: "share" | "members" | "submissions") => void;
   onToggleMediaVisibility?: (visible: boolean) => void;
@@ -48,6 +50,7 @@ export function VaultHeader({
   onCreateSpace,
   onDeleteVault,
   onEditVault,
+  onResortSpaces,
   onForkVault,
   onOpenSettings,
   onToggleMediaVisibility,
@@ -73,6 +76,7 @@ export function VaultHeader({
       ? [
           { label: "Add space", icon: FolderPlus, onSelect: onCreateSpace },
           { label: "Edit vault", icon: Pencil, onSelect: onEditVault },
+          { label: "Resort spaces", icon: ArrowDownAZ, onSelect: onResortSpaces },
           {
             label: "Delete vault",
             icon: Trash2,
