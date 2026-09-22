@@ -58,9 +58,13 @@ export function VaultHeader({
   const owner = detail?.actorRole === "owner";
   const canAddResource =
     detail?.actorRole === "owner" || detail?.actorRole === "editor";
+  const resourceCount = detail?.spaces.reduce(
+    (total, space) => total + space.resourceCount,
+    0,
+  ) ?? 0;
   const stats = [
     ["spaces", detail?.spaces.length ?? 0],
-    ["resources", detail?.resources.length ?? 0],
+    ["resources", resourceCount],
     ["stars", vault?.starCount ?? 0],
     ["forks", vault?.forkCount ?? 0],
   ] as const;
