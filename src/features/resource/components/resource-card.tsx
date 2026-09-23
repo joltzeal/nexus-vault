@@ -1253,18 +1253,15 @@ export function ResourceTransferDialog({
                           {vault.spaces.length}
                         </span>
                         <Button
-                          className="ml-1 size-6 shrink-0 opacity-0 transition group-hover:opacity-100 active:translate-y-0 [&_svg]:size-3.5"
+                          className="ml-1 size-6 shrink-0 opacity-0 transition-[opacity,transform] duration-150 group-hover:opacity-100 hover:-translate-y-0.5 hover:scale-105 active:translate-y-0 [&_svg]:size-3.5"
                           onPointerDown={(event) => {
                             event.stopPropagation();
                           }}
                           onClick={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
-                            // A new space dialog is another modal. Close this
-                            // transfer dialog first so its focus trap/backdrop
-                            // cannot intercept the create dialog's controls.
-                            onOpenChange(false);
-                            window.setTimeout(() => onCreateSpace(vault.id), 0);
+                            setQuery("");
+                            onCreateSpace(vault.id);
                           }}
                           size="icon-xs"
                           type="button"

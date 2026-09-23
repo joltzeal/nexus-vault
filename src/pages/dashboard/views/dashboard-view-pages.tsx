@@ -269,6 +269,7 @@ export function FlashStashPage() {
   const [error, setError] = useState("");
   const [spaceOpen, setSpaceOpen] = useState(false);
   const [targetSpaceVaultId, setTargetSpaceVaultId] = useState<string>();
+  const [transferFocusSpaceId, setTransferFocusSpaceId] = useState<string>();
   const [spaceForm, setSpaceForm] = useState<SpaceForm>({
     description: "",
     icon: "tv",
@@ -345,10 +346,9 @@ export function FlashStashPage() {
     setSpaceOpen(false);
     setSpaceForm({ description: "", icon: "tv", name: "" });
     void createVaultSpace(vaultId, form)
-      .then(() => {
-        void listResourceTransferTargets()
-          .then(setTargets)
-          .catch(() => undefined);
+      .then(async (created) => {
+        setTargets(await listResourceTransferTargets());
+        setTransferFocusSpaceId(created.id);
         toast.add({ title: "Space created", type: "success" });
       })
       .catch((reason: unknown) => {
@@ -449,6 +449,7 @@ export function FlashStashPage() {
                 resource={resource}
                 spaceId="flash-stash"
                 spaceName="Unsorted"
+                transferFocusSpaceId={transferFocusSpaceId}
                 transferTargets={targets}
                 vaultId="flash-stash"
                 vaultName="Flash stash"

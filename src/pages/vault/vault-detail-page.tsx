@@ -735,10 +735,8 @@ export function VaultDetailPage() {
       setSpaceForm({ description: "", icon: "tv", name: "" });
       setBusy(true);
       void createVaultSpace(destinationVaultId, form)
-        .then((created) => {
-          void Promise.all([loadDetail(), loadTransferTargets()]).catch(
-            () => undefined,
-          );
+        .then(async (created) => {
+          await Promise.all([loadDetail(), loadTransferTargets()]);
           setTransferFocusSpaceId(created.id);
           toast.add({ title: "Space created", type: "success" });
         })
